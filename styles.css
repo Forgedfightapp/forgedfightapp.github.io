@@ -400,3 +400,15 @@ details.details>summary small{color:var(--dim);font-weight:600;margin-left:auto}
 .month.grp{display:flex;align-items:center;justify-content:space-between}
 .allbtn{min-height:40px;text-transform:none;letter-spacing:0}
 .alldone{color:var(--accent);text-transform:none;letter-spacing:0;font-size:13px}
+.repeat.compact{flex-direction:row;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px 2px}
+.repeat.compact::-webkit-scrollbar{display:none}
+.repeat.compact .rep{flex:none;width:auto;max-width:200px;min-height:54px;padding:8px 12px}
+.repeat.compact .rep em{display:none}
+.repeat.compact .rep b{font-size:14.5px;white-space:nowrap}
+.cats.n4{grid-template-columns:repeat(4,1fr);gap:8px}
+.cats.n4 button{min-height:70px;font-size:12.5px;padding:0 2px}
+.cats.n4 button svg{width:24px;height:24px}
+.actions{position:sticky;bottom:calc(86px + var(--safe-b));z-index:4;padding:10px 0 4px;background:linear-gradient(to bottom,transparent,var(--bg) 30%)}
+.seg.wrap.n6,.seg.wrap{flex-wrap:wrap}
+.seg.wrap.three button{flex:1 1 28%;min-height:42px}
+.actions{position:static}.actions.stick{position:sticky}

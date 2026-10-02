@@ -256,7 +256,7 @@ const CATS = {
   grappling:{ label:'Grappling', color:'#E8392F', dur:60, disc:[['bjj','BJJ'],['wrestling','Wrestling'],['judo','Judo']],
     icon:'<path d="M8 4a2 2 0 1 0 0 .1M16 4a2 2 0 1 0 0 .1M5 21l2-7-3-3 4-4h8l4 4-3 3 2 7M9 11l3 2 3-2"/>' },
   striking:{ label:'Striking', color:'#F5B83D', dur:60, disc:[['boxing','Boxing'],['muaythai','Muay Thai'],['kickboxing','Kickboxing'],['mma','MMA']],
-    icon:'<path d="M7 11V7a3 3 0 0 1 3-3h4a4 4 0 0 1 4 4v5a6 6 0 0 1-6 6h-1a5 5 0 0 1-5-5v-1a2 2 0 0 1 2-2h4M10 4v5"/>' },
+    icon:'<path d="M6 10a5 5 0 0 1 5-5h3a4 4 0 0 1 4 4v4a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5zM8 18v3h8v-3M9.5 10.5h5.5"/>' },
   weights:{ label:'Weights', color:'#8FB0D9', dur:60, disc:[['strength','Strength']],
     icon:'<path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/>' },
   cardio:{ label:'Cardio', color:'#6FD3A8', dur:30, disc:[['run','Run'],['bike','Bike'],['row','Row'],['swim','Swim'],['rope','Jump rope'],['other','Other']],
@@ -355,9 +355,9 @@ function repeatSession(src){
   undoToast(`Logged ${sessTitle(rec)} · ${rec.duration} min`, () => { db.sessions = db.sessions.filter(x => x.id !== rec.id); save(); route(); });
   return rec;
 }
-function repeatButtons(){
+function repeatButtons(compact){
   const t = templates(); if (!t.length) return '';
-  return `<div class="repeat">${t.map(s => `<button type="button" class="rep" data-rep="${esc(s.id)}">${catDot(catOf(s))}<span><b>${esc(sessTitle(s))}</b><small>${s.duration} min${catOf(s)==='cardio' && s.cardio?.distance ? ` · ${r1(s.cardio.distance)} ${s.cardio.unit}` : ''}</small></span><em>Log again</em></button>`).join('')}</div>`;
+  return `<div class="repeat ${compact?'compact':''}">${t.map(s => `<button type="button" class="rep" data-rep="${esc(s.id)}">${catDot(catOf(s))}<span><b>${esc(sessTitle(s))}</b><small>${s.duration} min${catOf(s)==='cardio' && s.cardio?.distance ? ` · ${r1(s.cardio.distance)} ${s.cardio.unit}` : ''}</small></span><em>Log again</em></button>`).join('')}</div>`;
 }
 function wireRepeat(root, after){ root.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => { const s = db.sessions.find(x => x.id === b.dataset.rep); if (s) { repeatSession(s); after ? after() : route(); } }); }
 
@@ -527,7 +527,7 @@ function viewForm(id){
   if (editing && !cats.includes(f.category)) cats.push(f.category);
   const redraw = () => { const y = window.scrollY; viewForm(id); window.scrollTo(0, y); };
 
-  if (!editing) { const rb = repeatButtons(); if (rb) { const r = h(`<div class="field"><label>Log again</label>${rb}</div>`); wireRepeat(r, () => { location.hash = '#/'; }); v.appendChild(r); } }
+  if (!editing) { const rb = repeatButtons(true); if (rb) { const r = h(`<div class="field"><label>One tap: log again</label>${rb}</div>`); wireRepeat(r, () => { location.hash = '#/'; }); v.appendChild(r); } }
 
   // 1. category
   const catEl = h(`<div class="cats n${cats.length}" role="radiogroup">${cats.map(k => `<button type="button" role="radio" data-c="${k}" class="${f.category===k?'on':''}" aria-checked="${f.category===k}" style="--cat:${CATS[k].color}"><svg viewBox="0 0 24 24">${CATS[k].icon}</svg>${CATS[k].label}</button>`).join('')}</div>`);
@@ -542,7 +542,7 @@ function viewForm(id){
   v.appendChild(field('Workout', catEl));
   // 2. discipline (+ gi for BJJ)
   const C = CATS[f.category];
-  if (C.disc.length > 1) v.appendChild(field(f.category === 'cardio' ? 'Activity' : 'Style', seg(C.disc, f.discipline, x => { f.discipline = x; if (f.category === 'grappling') redraw(); }, C.disc.length > 4)));
+  if (C.disc.length > 1) { const ds = seg(C.disc, f.discipline, x => { f.discipline = x; if (f.category === 'grappling') redraw(); }, C.disc.length > 4); if (C.disc.length > 4) ds.classList.add('three'); v.appendChild(field(f.category === 'cardio' ? 'Activity' : 'Style', ds)); }
   if (f.category === 'grappling' && f.discipline === 'bjj') v.appendChild(field('Uniform', seg([['gi','Gi'],['nogi','No-Gi']], f.gi, x => f.gi = x)));
   // 3. duration + date
   const g = h('<div class="grid2"></div>');
@@ -670,6 +670,7 @@ function viewForm(id){
   };
   const d = actions.querySelector('[data-del]');
   if (d) d.onclick = async () => { if (await confirmSheet('Delete this workout?', "This can't be undone.")) { db.sessions = db.sessions.filter(x => x.id !== f.id); save(); form = null; toast('Workout deleted'); location.hash = '#/history'; } };
+  actions.classList.toggle('stick', det.open); det.addEventListener('toggle', () => actions.classList.toggle('stick', det.open));
   v.appendChild(actions);
 }
 const r2 = n => Math.round(n*100)/100;
@@ -1497,7 +1498,7 @@ function sampleOtherWorkouts(){
   const partners = ['Mo','Sam','Coach Lee','Tasha','Vince'];
   const lifts = [['Back squat', 245, 275, 5], ['Bench press', 185, 205, 5], ['Deadlift', 315, 355, 3], ['Overhead press', 115, 130, 5], ['Pull-up', 0, 0, 8], ['Barbell row', 155, 175, 8]];
   for (let d = new Date(start), i = 0; d <= new Date(); d = addDays(d, 1), i++) {
-    const dow = d.getDay(), prog = i / total, date = iso(d), created = d.getTime() + 3600e3;
+    const dow = d.getDay(), prog = i / total, date = iso(d), created = Math.min(Date.now() - 120000, d.getTime() - 3600e3);
     if (dow === 2 && rnd() < .85) { // Tuesday: Muay Thai
       const mix = { shadow:2, pads:3 + Math.floor(rnd()*2), bag:2 + Math.floor(rnd()*2), drills:1, sparring: rnd() < .6 ? 2 + Math.floor(rnd()*2) : 0 };
       const rounds = Object.values(mix).reduce((a,b) => a+b, 0);
@@ -1548,7 +1549,7 @@ function loadSample(){
       duration: type==='open' ? 90 : type==='private' ? 60 : rnd() < .6 ? 75 : 60,
       rounds: Math.max(rolls.length, nRolls), intensity: Math.min(5, Math.max(1, Math.round(2.6 + rnd()*2.2))),
       techniques: [pick(TECHNIQUES), pick(TECHNIQUES)].filter((x,i,a) => a.indexOf(x)===i).concat(rnd()<.4?[pick(TECHNIQUES)]:[]),
-      rolls, weight: rnd() < .7 ? Math.round(w*10)/10 : '', notes: rnd() < .55 ? pick(notes) : '', sample:true, createdAt:d.getTime() });
+      rolls, weight: rnd() < .7 ? Math.round(w*10)/10 : '', notes: rnd() < .55 ? pick(notes) : '', sample:true, createdAt:Math.min(Date.now() - 60000, d.getTime()) });
   }
   sessions.push(...sampleOtherWorkouts(w));
   db.sessions = db.sessions.filter(s => !s.sample).concat(sessions.map(sanitizeSession));

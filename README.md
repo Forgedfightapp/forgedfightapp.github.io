@@ -34,5 +34,10 @@ Cardio (distance/time, pace/speed), heart rate + zones on all, GPX/TCX/FIT/CSV i
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 
-## Brand
-`brand/make_brand.py` generates the logo/banner/lockup SVGs (text converted to paths); icons rendered to `icons/`.
+## Brand (v2.1.1)
+Approved 2026-10 logo: DISCIPLINE (white, Oswald Bold) › red chevron #DC141F › MOTIVATION (gray, Barlow) on #111.
+Final assets in `brand/` (copied from /workspace/dm-logo/final). Header uses `brand/wordmark-header.svg` (the transparent-light wordmark
+with padding trimmed). Icons are rendered from `brand/app_icon.svg`; the maskable icon (`brand/app_icon_maskable.svg`) shrinks the chevron to 86%
+so it sits inside the 40% safe-zone circle. Re-render: `node brand/render_svg.mjs brand/icon-jobs.json`; preview: `node brand/make_icon_preview.mjs`.
+Colors: `--brand #DC141F` (fills, white text on it 5.0:1), `--accent #F04A52` for small red text (5.2:1 on #111, ≥4.5:1 on all surfaces).
+Fonts Oswald/Barlow are bundled in `brand/fonts/` (SIL OFL) and used only for headings. Old boxed D > M marks live in `brand/legacy/` (unused).

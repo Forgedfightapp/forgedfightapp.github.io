@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.1.1';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -387,7 +387,7 @@ function lineChart(series, goal){
   let lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
   const X = d => pl + (W-pl-pr) * (parse(d).getTime()-t0)/span;
   const Y = v => pt + (H-pt-pb) * (1 - (v-lo)/(hi-lo));
-  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weight trend"><defs><linearGradient id="wgrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#E8392F" stop-opacity=".28"/><stop offset="1" stop-color="#E8392F" stop-opacity="0"/></linearGradient></defs>`;
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weight trend"><defs><linearGradient id="wgrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#DC141F" stop-opacity=".28"/><stop offset="1" stop-color="#DC141F" stop-opacity="0"/></linearGradient></defs>`;
   [hi, (hi+lo)/2, lo].forEach(v => { const y = Y(v); s += `<line class="grid" x1="${pl}" x2="${W}" y1="${y}" y2="${y}"/><text x="${pl-6}" y="${y+3}" text-anchor="end">${Math.round(v)}</text>`; });
   if (goal) { const y = Y(goal); s += `<line class="goal" x1="${pl}" x2="${W-pr}" y1="${y}" y2="${y}"/><text x="${W-pr}" y="${y-5}" text-anchor="end" style="fill:#ffc43d">Goal ${goal}</text>`; }
   const pts = series.map(p => [X(p.date), Y(p.w)]);
@@ -418,7 +418,7 @@ function beltCard(){
 
 /* ---------------- disciplines ---------------- */
 const CATS = {
-  grappling:{ label:'Grappling', color:'#E8392F', dur:60, disc:[['bjj','BJJ'],['wrestling','Wrestling'],['judo','Judo']],
+  grappling:{ label:'Grappling', color:'#DC141F', dur:60, disc:[['bjj','BJJ'],['wrestling','Wrestling'],['judo','Judo']],
     icon:'<path d="M8 4a2 2 0 1 0 0 .1M16 4a2 2 0 1 0 0 .1M5 21l2-7-3-3 4-4h8l4 4-3 3 2 7M9 11l3 2 3-2"/>' },
   striking:{ label:'Striking', color:'#F5B83D', dur:60, disc:[['boxing','Boxing'],['muaythai','Muay Thai'],['kickboxing','Kickboxing'],['mma','MMA']],
     icon:'<path d="M6 10a5 5 0 0 1 5-5h3a4 4 0 0 1 4 4v4a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5zM8 18v3h8v-3M9.5 10.5h5.5"/>' },
@@ -473,8 +473,8 @@ function setHeader(title, action='', back=null){
   const t = $('#title'), tg = $('#tagline'), br = $('#backRow');
   br.hidden = !back;
   if (back) { br.querySelector('span').textContent = back.label || 'Back'; br.querySelector('button').setAttribute('aria-label', back.label || 'Back'); br.querySelector('button').onclick = () => goBack(back.parent || '#/'); }
-  if (title) { t.textContent = title; tg.innerHTML = 'Discipline <span style="color:var(--accent)">&gt;</span> Motivation'; }
-  else { t.innerHTML = '<img class="banner-logo" src="brand/banner-logo.svg" alt="Discipline &gt; Motivation" width="1200" height="180">'; tg.innerHTML = '<b>Training Log</b><span>Track your progress</span>'; }
+  if (title) { t.textContent = title; tg.innerHTML = 'Discipline <span style="color:var(--accent);font-weight:700">&gt;</span> Motivation'; }
+  else { t.innerHTML = '<img class="banner-logo" src="brand/wordmark-header.svg" alt="Discipline &gt; Motivation" width="1149" height="120">'; tg.innerHTML = '<b>Training Log</b><span>Track your progress</span>'; }
   document.querySelector('.topbar').classList.toggle('home', !title);
   $('#topAction').innerHTML = action;
 }
@@ -489,7 +489,7 @@ function updateNav(){
 function viewSetup(){
   setHeader('');
   const v = $('#view'), pick = { grappling:true, striking:false, weights:false, cardio:false, food:true, supps:false, weight:false };
-  v.innerHTML = `<div class="welcome setup"><img class="dm-logo" src="brand/dm-logo.svg" alt="D &gt; M · Discipline &gt; Motivation">
+  v.innerHTML = `<div class="welcome setup"><img class="mark" src="brand/chevron_mark_transparent_1024.svg" alt="" width="64" height="64">
     <h2>What do you train?</h2><p>Pick all that apply. You can change this any time in Profile.</p>
     <div class="tiles" id="catTiles">${CAT_KEYS.map(k => `<button type="button" class="tile" data-k="${k}" aria-pressed="false"><svg viewBox="0 0 24 24">${CATS[k].icon}</svg><b>${CATS[k].label}</b><small>${CATS[k].disc.map(d=>d[1]).slice(0,3).join(', ')}</small></button>`).join('')}</div>
     <h3>Also track</h3>
@@ -615,7 +615,7 @@ function viewHistory(){
 
 function hrBlock(hr){
   if (!hr) return '';
-  const z = hr.zones || [], tot = z.reduce((a,x) => a + (Number(x)||0), 0), cols = ['#5b8def','#6fd3a8','#f5b83d','#ff9a3c','#E8392F'];
+  const z = hr.zones || [], tot = z.reduce((a,x) => a + (Number(x)||0), 0), cols = ['#5b8def','#6fd3a8','#f5b83d','#ff9a3c','#DC141F'];
   return `<div class="card"><h2>Heart rate</h2><div class="kv" style="margin-bottom:${tot?10:0}px"><div><b>${hr.avg||'—'}</b><span>Avg bpm</span></div><div><b>${hr.max||'—'}</b><span>Max bpm</span></div><div><b>${hr.cal||'—'}</b><span>kcal</span></div></div>
     ${tot ? `<div class="split">${z.map((x,i) => `<i style="width:${(Number(x)||0)/tot*100}%;background:${cols[i]}"></i>`).join('')}</div><div class="split-l zl">${z.map((x,i) => `<span><i style="background:${cols[i]}"></i>Z${i+1} ${r1(Number(x)||0)}m</span>`).join('')}</div>` : ''}</div>`;
 }

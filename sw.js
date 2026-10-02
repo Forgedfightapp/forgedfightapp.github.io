@@ -1,11 +1,12 @@
 /* Discipline > Motivation service worker: caches the app shell for offline use. */
-const CACHE = 'dm-shell-v2.1.0';
+const CACHE = 'dm-shell-v2.1.1';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'icons/icon-maskable-192.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png', 'icons/favicon-32.png', 'icons/favicon-16.png',
-  'brand/banner-logo.svg', 'brand/dm-logo.svg', 'brand/training-log-lockup.svg'
+  'brand/wordmark-header.svg', 'brand/chevron_mark_transparent_1024.svg',
+  'brand/fonts/Oswald.ttf', 'brand/fonts/Barlow-Regular.ttf', 'brand/fonts/Barlow-SemiBold.ttf'
 ];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

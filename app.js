@@ -9,7 +9,7 @@ const APP_VERSION = '1.0.0';
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
 const TECHNIQUES = ['Scissor sweep','Hip bump sweep','Flower sweep','Butterfly sweep','Knee slice pass','Toreando pass','Over-under pass','Stack pass','Leg drag','Elbow-knee escape','Bridge and roll','Back take from turtle','Seatbelt control','Arm drag','Double leg','Single leg','Hip escape (shrimp)','Technical stand-up','Collar drag','De La Riva entry','X-guard sweep','Berimbolo','Mount maintenance','Side control transitions','Guard retention','Kimura trap','Body triangle','Ashi garami entry'];
-const SESSION_TYPES = [['class','Class'],['open','Open mat'],['private','Private'],['comp','Competition']];
+const SESSION_TYPES = [['class','Class'],['open','Open mat'],['drill','Drilling'],['private','Private'],['comp','Competition'],['seminar','Seminar'],['other','Other']];
 const BELTS = [['white','White','#f1f1f1'],['blue','Blue','#2563eb'],['purple','Purple','#7c3aed'],['brown','Brown','#7b4a26'],['black','Black','#151515']];
 const INTENSITY = ['', 'Light','Easy','Moderate','Hard','All-out'];
 
@@ -167,9 +167,9 @@ function periodStats(){
 }
 function weeklyHours(n=12){
   const start = weekStart(new Date());
-  const weeks = Array.from({length:n}, (_,i) => { const d = addDays(start, -7*(n-1-i)); return { key:iso(d), date:d, min:0 }; });
+  const weeks = Array.from({length:n}, (_,i) => { const d = addDays(start, -7*(n-1-i)); return { key:iso(d), date:d, min:0, n:0 }; });
   const idx = new Map(weeks.map((w,i) => [w.key, i]));
-  db.sessions.forEach(s => { const k = iso(weekStart(parse(s.date))); if (idx.has(k)) weeks[idx.get(k)].min += Number(s.duration)||0; });
+  db.sessions.forEach(s => { const k = iso(weekStart(parse(s.date))); if (idx.has(k)) { const w = weeks[idx.get(k)]; w.min += Number(s.duration)||0; w.n++; } });
   return weeks;
 }
 function weightSeries(){
@@ -253,6 +253,7 @@ function viewHome(){
   const caught = countBy(allRolls().flatMap(r => r.subsTapped||[])).slice(0,5);
   const hasSample = db.sessions.some(s => s.sample);
   const avg = weeks.slice(0,-1).reduce((a,w) => a+w.min, 0) / 60 / Math.max(1, weeks.length-1);
+  const avgS = weeks.slice(0,-1).reduce((a,w) => a+w.n, 0) / Math.max(1, weeks.length-1);
   let weightHtml = `<div class="empty">Add your body weight when you log a session to see the trend.</div>`;
   if (ws.length) {
     const first = ws[0].w, last = ws[ws.length-1].w, diff = Math.round((last-first)*10)/10;
@@ -269,8 +270,10 @@ function viewHome(){
       <div class="stat"><div class="v">${streak}<small>wk</small></div><div class="l">Training streak 🔥</div></div>
       <div class="stat"><div class="v">${st.month}</div><div class="l">Sessions in ${MONTHS[new Date().getMonth()]}</div></div>
       <div class="stat"><div class="v">${hrs(st.monthMin)}<small>h</small></div><div class="l">Mat hours this month</div></div>
+      <div class="stat"><div class="v">${hrs(st.weekMin)}<small>h</small></div><div class="l">Mat hours this week</div></div>
+      <div class="stat"><div class="v">${hrs(st.totalMin)}<small>h</small></div><div class="l">Total mat hours</div></div>
     </div>
-    <div class="card"><h2>Weekly mat hours <small>avg ${Math.round(avg*10)/10} h/wk</small></h2>${barChart(weeks)}</div>
+    <div class="card"><h2>Weekly mat hours <small>avg ${Math.round(avg*10)/10} h · ${Math.round(avgS*10)/10} sessions/wk</small></h2>${barChart(weeks)}<div class="wkcounts">${weeks.map(w => `<span title="${w.key}">${w.n}</span>`).join('')}</div><div class="hint" style="text-align:center;margin-top:2px">Sessions per week (last 12 weeks)</div></div>
     ${beltCard()}
     <div class="card"><h2>Submissions <a href="#/stats" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">See all ›</a></h2>
       <div class="subcols"><div><h3 class="win">Landed</h3>${hbars(landed,'win')}</div><div><h3 class="loss">Caught by</h3>${hbars(caught,'loss')}</div></div></div>
@@ -298,14 +301,14 @@ function viewHistory(){
   const v = $('#view');
   if (!db.sessions.length) { v.innerHTML = `<div class="empty" style="padding:60px 10px">No sessions yet.<br><br><a class="btn primary" href="#/log">Log a session</a></div>`; return; }
   v.innerHTML = `<div class="search"><input class="input" type="search" placeholder="Search techniques, partners, notes…" value="${esc(histQuery)}" id="q"></div>
-    <div class="filters">${[['all','All'],['gi','Gi'],['nogi','No-Gi'],['comp','Competition'],['open','Open mat']].map(([k,l]) => `<button data-f="${k}" class="${histFilter===k?'on':''}">${l}</button>`).join('')}</div>
+    <div class="filters">${[['all','All'],['gi','Gi'],['nogi','No-Gi'],['class','Class'],['open','Open mat'],['drill','Drilling'],['comp','Competition']].map(([k,l]) => `<button data-f="${k}" class="${histFilter===k?'on':''}">${l}</button>`).join('')}</div>
     <div id="list"></div>`;
   const draw = () => {
     const q = histQuery.toLowerCase();
     const list = sorted().filter(s => {
       if (histFilter==='gi' && s.gi!=='gi') return false;
       if (histFilter==='nogi' && s.gi!=='nogi') return false;
-      if ((histFilter==='comp' || histFilter==='open') && s.type!==histFilter) return false;
+      if (!['all','gi','nogi'].includes(histFilter) && s.type!==histFilter) return false;
       if (!q) return true;
       const hay = [s.notes, typeLabel(s.type), ...(s.techniques||[]), ...(s.rolls||[]).flatMap(r => [r.partner, ...(r.subsLanded||[]), ...(r.subsTapped||[]), ...(r.stuck||[])])].join(' ').toLowerCase();
       return hay.includes(q);
@@ -391,7 +394,7 @@ function viewForm(id){
     const isNew = i == null;
     const r = isNew ? { id:uid(), partner:'', result:'draw', subsLanded:[], subsTapped:[], stuck:[] } : JSON.parse(JSON.stringify(f.rolls[i]));
     const el = h(`<div><h3>${isNew ? `Roll ${f.rolls.length+1}` : `Edit roll ${i+1}`}</h3></div>`);
-    const partner = h(`<input class="input" type="text" autocapitalize="words" placeholder="Optional" value="${esc(r.partner)}" list="partners"><datalist id="partners">${usedPartners().map(p => `<option value="${esc(p)}">`).join('')}</datalist>`);
+    const partner = h(`<input class="input" type="text" autocapitalize="words" autocomplete="off" placeholder="Optional" value="${esc(r.partner)}" list="partners">`);
     const pw = h('<div></div>'); pw.appendChild(partner); pw.appendChild(h(`<datalist id="partners">${usedPartners().map(p => `<option value="${esc(p)}">`).join('')}</datalist>`));
     partner.oninput = () => r.partner = partner.value;
     el.appendChild(field('Partner', pw));
@@ -488,7 +491,8 @@ function viewSettings(){
       <button class="btn block" id="exp"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Export backup (JSON)</button>
       <label class="btn block" for="impFile"><svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg>Import backup</label>
       <input type="file" id="impFile" accept="application/json,.json" hidden>
-      ${hasSample ? '<button class="btn block" id="rmS">Remove sample data</button>' : '<button class="btn block" id="ldS">Load sample data (demo)</button>'}
+      <button class="btn block" id="ldS">Load sample data (demo)</button>
+      ${hasSample ? '<button class="btn block" id="rmS">Remove sample data</button>' : ''}
       <button class="btn block danger" id="clr">Clear all data</button>
     </div></div>`);
   v.appendChild(data);

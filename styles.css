@@ -314,3 +314,5 @@ details.more .grid3{padding-bottom:4px}
 .welcome .lockup{display:block;width:min(240px,64vw);height:auto;margin:0 auto 18px}
 .welcome .logo{display:none}
 .tabbar{border-top:2px solid var(--brand)}
+.chart rect,.chart path.area{stroke:none}
+.supp-item.done b{color:var(--text)}

@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.2.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -18,9 +18,9 @@ const defaultProfile = () => ({ name:'', belt:'white', stripes:0, promotedOn:'',
 function load(){
   try{
     const d = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (d && Array.isArray(d.sessions)) return { sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[] } };
+    if (d && Array.isArray(d.sessions)) return { sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[] }, supps:{ items:d.supps?.items||[], log:d.supps?.log||[] } };
   }catch(e){ console.warn('Could not read saved data', e); }
-  return { sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[] } };
+  return { sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] } };
 }
 let db = load();
 function save(){
@@ -55,7 +55,7 @@ const usedPositions = () => countBy(allRolls().flatMap(r => r.stuck||[])).map(x 
 const usedPartners = () => countBy(allRolls().map(r => r.partner||'')).map(x => x[0]);
 
 let toastTimer;
-function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200); }
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.remove('act'); t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200); }
 
 function h(html){ const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }
 
@@ -253,7 +253,7 @@ function viewHome(){
   const st = periodStats(), streak = weekStreak(), weeks = weeklyHours(12), ws = weightSeries();
   const landed = countBy(allRolls().flatMap(r => r.subsLanded||[])).slice(0,5);
   const caught = countBy(allRolls().flatMap(r => r.subsTapped||[])).slice(0,5);
-  const hasSample = db.sessions.some(s => s.sample) || db.nutrition.entries.some(e => e.sample);
+  const hasSample = db.sessions.some(s => s.sample) || db.nutrition.entries.some(e => e.sample) || db.supps.items.some(i => i.sample);
   const avg = weeks.slice(0,-1).reduce((a,w) => a+w.min, 0) / 60 / Math.max(1, weeks.length-1);
   const avgS = weeks.slice(0,-1).reduce((a,w) => a+w.n, 0) / Math.max(1, weeks.length-1);
   let weightHtml = `<div class="empty">Add your body weight when you log a session to see the trend.</div>`;
@@ -281,6 +281,7 @@ function viewHome(){
     <div class="card"><h2>Submissions <a href="#/stats" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">See all ›</a></h2>
       <div class="subcols"><div><h3 class="win">Landed</h3>${hbars(landed,'win')}</div><div><h3 class="loss">Caught by</h3>${hbars(caught,'loss')}</div></div></div>
     ${nutritionCard()}
+    ${suppCard()}
     <div class="card"><h2>Weight trend</h2>${weightHtml}</div>
     <div class="card"><h2>Recent <a href="#/history" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">History ›</a></h2>
       ${recent.map(sessRow).join('')}</div>
@@ -548,10 +549,10 @@ function viewFood(d){
   if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) foodDate = d;
   if (!foodDate) foodDate = today();
   const day = foodDate, isToday = day === today();
-  setHeader('Food', `<button class="btn sm" id="savedFoods">My foods</button>`);
+  setHeader('Fuel', `<button class="btn sm" id="savedFoods">My foods</button>`);
   const list = entriesOn(day), t = totals(list), tg = targets(), wk = weekSummary(day);
   const v = $('#view');
-  v.innerHTML = `
+  v.innerHTML = `${fuelSwitch('food')}
     <div class="daynav"><a class="iconbtn big" href="#/food/${iso(addDays(parse(day),-1))}" aria-label="Previous day"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></a>
       <div class="dn-t"><b>${isToday ? 'Today' : fmtDate(day).replace(/, \d{4}$/,'')}</b>${isToday ? `<span>${fmtShort(day)}</span>` : `<a href="#/food/${today()}">Jump to today</a>`}</div>
       ${isToday ? '<span class="iconbtn big" style="opacity:.25"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>' : `<a class="iconbtn big" href="#/food/${iso(addDays(parse(day),1))}" aria-label="Next day"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></a>`}</div>
@@ -704,6 +705,204 @@ function sanitizeNutrition(n){
   return { entries, foods };
 }
 
+/* ---------------- supplements ---------------- */
+const SUPP_TIMES = [['morning','Morning'],['pre','Pre-training'],['post','Post-training'],['afternoon','Afternoon'],['evening','Evening'],['bed','Bedtime'],['any','Any time']];
+const SUPP_UNITS = ['g','mg','mcg','IU','ml','caps','tabs','scoop','serving'];
+const defaultSupps = () => ({ items:[], log:[] });
+const timeLabel = t => (SUPP_TIMES.find(x => x[0]===t)||[,'Any time'])[1];
+const daysBetween = (a, b) => Math.round((parse(b) - parse(a)) / 864e5);
+function suppScheduledOn(it, d){
+  if (d < (it.start || '0000')) return false;
+  const s = it.schedule || { type:'daily' };
+  if (s.type === 'weekdays') return (s.days||[]).includes(parse(d).getDay());
+  if (s.type === 'interval') { const n = Math.max(1, Number(s.every)||1); return daysBetween(it.start || d, d) % n === 0; }
+  return true;
+}
+function schedLabel(it){
+  const s = it.schedule || { type:'daily' };
+  if (s.type === 'weekdays') { const ds = [...(s.days||[])].sort((a,b) => ((a+6)%7)-((b+6)%7)); return ds.length === 7 ? 'Daily' : ds.length === 1 ? `${DOW[ds[0]]}s only` : ds.map(x => DOW[x]).join(' · '); }
+  if (s.type === 'interval') return Number(s.every) > 1 ? `Every ${s.every} days` : 'Daily';
+  return 'Daily';
+}
+const activeSupps = () => db.supps.items.filter(i => !i.archived);
+const takenRec = (id, d) => db.supps.log.find(l => l.itemId === id && l.date === d);
+function suppToday(d=today()){
+  const items = activeSupps().filter(i => suppScheduledOn(i, d));
+  return { items, taken: items.filter(i => takenRec(i.id, d)).length };
+}
+// Adherence over the last n days. Today's still-pending doses aren't counted as misses.
+function itemAdherence(it, n){
+  let due = 0, done = 0; const t = today();
+  for (let k = 0; k < n; k++) { const d = iso(addDays(parse(t), -k)); if (!suppScheduledOn(it, d)) continue; const tk = !!takenRec(it.id, d); if (d === t && !tk) continue; due++; if (tk) done++; }
+  return { due, done, pct: due ? Math.round(done/due*100) : null };
+}
+function itemStreak(it){
+  let n = 0, d = parse(today());
+  for (let k = 0; k < 800; k++, d = addDays(d, -1)) {
+    const ds = iso(d); if (ds < (it.start||'0000')) break;
+    if (!suppScheduledOn(it, ds)) continue;
+    if (takenRec(it.id, ds)) n++; else if (ds === today()) continue; else break;
+  }
+  return n;
+}
+function overallAdherence(n){
+  let due = 0, done = 0; activeSupps().forEach(it => { const a = itemAdherence(it, n); due += a.due; done += a.done; });
+  return due ? Math.round(done/due*100) : null;
+}
+function overallStreak(){ // consecutive days on which every scheduled item was taken
+  const items = activeSupps(); if (!items.length) return 0;
+  let n = 0, d = parse(today());
+  for (let k = 0; k < 800; k++, d = addDays(d, -1)) {
+    const ds = iso(d), due = items.filter(i => suppScheduledOn(i, ds));
+    if (!due.length) { if (items.every(i => ds < (i.start||'0000'))) break; continue; }
+    const all = due.every(i => takenRec(i.id, ds));
+    if (all) n++; else if (ds === today()) continue; else break;
+  }
+  return n;
+}
+const fmtTime = ts => { const d = new Date(ts); let h = d.getHours(); const m = pad(d.getMinutes()), ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return `${h}:${m} ${ap}`; };
+function suppCard(){
+  if (!db.supps.items.length) return `<div class="card" id="suppCard"><h2>Supplements</h2><div class="empty" style="padding:4px 0 10px">Set up your stack to get a daily checklist.</div><a class="btn block" href="#/supps">Set up supplements</a></div>`;
+  const st = suppToday(), a7 = overallAdherence(7), pct = st.items.length ? st.taken/st.items.length*100 : 0;
+  return `<div class="card" id="suppCard"><h2>Supplements today <a href="#/supps" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">Checklist ›</a></h2>
+    <div class="supp-sum"><b>${st.taken}<small>/${st.items.length}</small></b><span>taken today</span><span class="r">${a7==null?'—':a7+'%'}<small>7-day adherence</small></span></div>
+    <div class="mbar"><div class="b"><i style="width:${pct}%"></i></div></div>
+    ${st.items.length && st.taken < st.items.length ? `<div class="hint">Next: ${esc(st.items.filter(i => !takenRec(i.id, today())).slice(0,3).map(i => i.name).join(', '))}</div>` : st.items.length ? '<div class="hint">All done for today ✓</div>' : '<div class="hint">Nothing scheduled today.</div>'}</div>`;
+}
+function fuelSwitch(which){
+  return `<div class="seg fuelseg" role="tablist"><a role="tab" href="#/food" class="${which==='food'?'on':''}">Food</a><a role="tab" href="#/supps" class="${which==='supps'?'on':''}">Supplements</a></div>`;
+}
+
+let suppDate = null;
+function viewSupps(d){
+  if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) suppDate = d;
+  if (!suppDate || suppDate > today()) suppDate = today();
+  const day = suppDate, isToday = day === today();
+  setHeader('Fuel', `<button class="btn sm" id="manageStack">My stack</button>`);
+  const v = $('#view');
+  const items = activeSupps().filter(i => suppScheduledOn(i, day));
+  const taken = items.filter(i => takenRec(i.id, day)).length;
+  const groups = SUPP_TIMES.map(([k,l]) => [k, l, items.filter(i => (i.time||'any') === k)]).filter(g => g[2].length);
+  const a7 = overallAdherence(7), a30 = overallAdherence(30), streak = overallStreak();
+  v.innerHTML = `${fuelSwitch('supps')}
+    <div class="daynav"><a class="iconbtn big" href="#/supps/${iso(addDays(parse(day),-1))}" aria-label="Previous day"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></a>
+      <div class="dn-t"><b>${isToday ? 'Today' : fmtDate(day).replace(/, \d{4}$/,'')}</b>${isToday ? `<span>${fmtShort(day)}</span>` : `<a href="#/supps/${today()}">Jump to today</a>`}</div>
+      ${isToday ? '<span class="iconbtn big" style="opacity:.25"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>' : `<a class="iconbtn big" href="#/supps/${iso(addDays(parse(day),1))}" aria-label="Next day"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></a>`}</div>
+    ${!db.supps.items.length ? `<div class="welcome" style="padding-top:10px"><h2>Build your stack</h2><p>Add each supplement with its dose, time of day and schedule. You'll get a one-tap daily checklist and adherence stats.</p><button class="btn primary" id="firstSupp">Add a supplement</button></div>` : `
+    <div class="card supp-head"><div><b id="suppCount">${taken}<small>/${items.length}</small></b><span>taken ${isToday ? 'today' : 'this day'}</span></div><div class="mbar" style="flex:1"><div class="b"><i style="width:${items.length ? taken/items.length*100 : 0}%"></i></div></div></div>
+    ${groups.length ? groups.map(([k,l,list]) => `<div class="supp-group"><div class="month">${l}</div>${list.map(it => { const r = takenRec(it.id, day); return `<button type="button" class="supp-item ${r?'done':''}" data-id="${esc(it.id)}" aria-pressed="${!!r}">
+        <span class="tick">${r ? '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : ''}</span>
+        <span class="grow"><b>${esc(it.name)}</b><small>${esc(it.dose)} ${esc(it.unit)} · ${esc(schedLabel(it))}</small></span>
+        <span class="when">${r ? `Taken<br>${fmtTime(r.takenAt)}` : 'Tap to<br>mark taken'}</span></button>`; }).join('')}</div>`).join('') : '<div class="empty">Nothing scheduled for this day.</div>'}
+    <div class="card"><h2>Adherence</h2>
+      <div class="kv" style="margin-bottom:10px"><div><b>${a7==null?'—':a7+'%'}</b><span>Last 7 days</span></div><div><b>${a30==null?'—':a30+'%'}</b><span>Last 30 days</span></div><div><b>${streak}<small style="font-size:13px;color:var(--muted)"> d</small></b><span>All-taken streak</span></div></div>
+      ${activeSupps().map(it => { const w = itemAdherence(it, 7), m = itemAdherence(it, 30), s = itemStreak(it); return `<div class="list-row adh"><div class="grow"><b>${esc(it.name)}</b><small>${esc(schedLabel(it))} · streak ${s}</small></div><span class="pct ${w.pct!=null&&w.pct<70?'low':''}">${w.pct==null?'—':w.pct+'%'}<small>7d</small></span><span class="pct ${m.pct!=null&&m.pct<70?'low':''}">${m.pct==null?'—':m.pct+'%'}<small>30d</small></span></div>`; }).join('')}
+      <div class="hint">Streak = consecutive scheduled doses taken. Today's pending doses don't count as missed.</div></div>`}`;
+  v.querySelectorAll('.supp-item').forEach(b => b.onclick = () => toggleSupp(b.dataset.id, day));
+  $('#manageStack').onclick = stackSheet;
+  const fs = $('#firstSupp'); if (fs) fs.onclick = () => suppForm(null);
+}
+function toggleSupp(id, day){
+  const r = takenRec(id, day), it = db.supps.items.find(x => x.id === id);
+  if (r) { db.supps.log = db.supps.log.filter(l => l !== r); save(); toast(`Unmarked ${it.name}`); }
+  else {
+    const now = new Date(); let ts = now.getTime();
+    if (day !== today()) { const d = parse(day); d.setHours(12,0,0,0); ts = d.getTime(); } // backfilled day: noon placeholder
+    const rec = { id:uid(), itemId:id, date:day, takenAt:ts }; db.supps.log.push(rec); save();
+    undoToast(`${it.name} taken ✓`, () => { db.supps.log = db.supps.log.filter(l => l.id !== rec.id); save(); route(); });
+  }
+  const y = window.scrollY; route(); window.scrollTo(0, y);
+}
+function undoToast(msg, undo){
+  const t = $('#toast'); t.innerHTML = `${esc(msg)} <button type="button" class="undo">Undo</button>`; t.classList.add('show', 'act');
+  t.querySelector('.undo').onclick = () => { t.classList.remove('show','act'); undo(); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show','act'), 4000);
+}
+function stackSheet(){
+  const el = h(`<div><h3>My stack</h3><div class="slist"></div><button type="button" class="btn primary block" id="addSupp" style="margin-top:12px"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add supplement</button></div>`);
+  const list = el.querySelector('.slist');
+  const rows = arr => arr.map(it => `<button type="button" class="list-row srow ${it.archived?'arch':''}" data-id="${esc(it.id)}"><div class="grow"><b>${esc(it.name)}</b><small>${esc(it.dose)} ${esc(it.unit)} · ${esc(timeLabel(it.time))} · ${esc(schedLabel(it))}</small></div><svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>`).join('');
+  const act = db.supps.items.filter(i => !i.archived), arch = db.supps.items.filter(i => i.archived);
+  list.innerHTML = (act.length ? rows(act) : '<div class="empty">No active supplements.</div>') + (arch.length ? `<div class="month">Archived</div>${rows(arch)}` : '');
+  list.querySelectorAll('.srow').forEach(b => b.onclick = () => suppForm(b.dataset.id));
+  el.querySelector('#addSupp').onclick = () => suppForm(null);
+  openSheet(el);
+}
+function suppForm(id){
+  const ex = id ? db.supps.items.find(i => i.id === id) : null;
+  const it = ex ? JSON.parse(JSON.stringify(ex)) : { id:null, name:'', dose:'', unit:'g', time:'morning', schedule:{ type:'daily', days:[1,2,3,4,5,6,0], every:2 }, start:today(), archived:false };
+  it.schedule = { type:'daily', days:[], every:2, ...it.schedule }; if (!it.schedule.days.length) it.schedule.days = [parse(today()).getDay()];
+  const el = h(`<div class="suppform"><h3>${ex ? 'Edit supplement' : 'Add supplement'}</h3></div>`);
+  const name = h(`<input class="input" type="text" autocapitalize="words" autocomplete="off" placeholder="e.g. Creatine" value="${esc(it.name)}">`);
+  name.oninput = () => it.name = name.value; el.appendChild(field('Name', name));
+  const g = h('<div class="grid2"></div>');
+  const dose = h(`<input class="input" type="text" inputmode="decimal" placeholder="e.g. 5" value="${esc(it.dose)}">`); dose.oninput = () => it.dose = dose.value.trim();
+  g.appendChild(field('Dose', dose));
+  const unitSel = h(`<select class="input">${SUPP_UNITS.map(u => `<option ${it.unit===u?'selected':''}>${u}</option>`).join('')}</select>`); unitSel.onchange = () => it.unit = unitSel.value;
+  g.appendChild(field('Unit', unitSel)); el.appendChild(g);
+  el.appendChild(field('Time of day', seg(SUPP_TIMES, it.time, x => it.time = x, true)));
+  const schedWrap = h('<div></div>');
+  const days = h(`<div class="daychips">${[1,2,3,4,5,6,0].map(dw => `<button type="button" data-d="${dw}" aria-pressed="false">${DOW[dw].slice(0,2)}</button>`).join('')}</div>`);
+  const syncDays = () => days.querySelectorAll('button').forEach(b => { const on = it.schedule.days.includes(Number(b.dataset.d)); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  days.querySelectorAll('button').forEach(b => b.onclick = () => { const dw = Number(b.dataset.d), s = it.schedule; s.days = s.days.includes(dw) ? s.days.filter(x => x !== dw) : [...s.days, dw]; syncDays(); });
+  const every = stepper(it.schedule.every || 2, { min:2, max:60, unitLabel:'days', onChange:x => it.schedule.every = x });
+  const start = h(`<input class="input" type="date" value="${esc(it.start)}">`); start.onchange = () => it.start = start.value || today();
+  const extra = h('<div class="sched-extra"></div>');
+  const drawSched = () => { extra.innerHTML = ''; if (it.schedule.type === 'weekdays') { extra.appendChild(field('On these days', days)); syncDays(); } else if (it.schedule.type === 'interval') { extra.appendChild(field('Every', every)); } };
+  schedWrap.appendChild(field('Schedule', seg([['daily','Daily'],['weekdays','Specific days'],['interval','Every N days']], it.schedule.type, x => { it.schedule.type = x; drawSched(); })));
+  schedWrap.appendChild(extra); el.appendChild(schedWrap); drawSched();
+  el.appendChild(field('Start date', start, 'Adherence and "every N days" are counted from this date.'));
+  const btns = h(`<div class="suppbtns"><button type="button" class="btn primary block" data-save>${ex ? 'Save changes' : 'Add to stack'}</button>${ex ? `<div style="display:flex;gap:10px"><button type="button" class="btn" style="flex:1" data-arch>${ex.archived ? 'Restore' : 'Archive'}</button><button type="button" class="btn danger" style="flex:1" data-del>Delete</button></div>` : ''}</div>`);
+  btns.querySelector('[data-save]').onclick = () => {
+    const nm = (name.value||'').trim(); if (!nm) { toast('Enter a name'); return; }
+    if (it.schedule.type === 'weekdays' && !it.schedule.days.length) { toast('Pick at least one day'); return; }
+    const rec = { id: ex ? ex.id : uid(), name:nm, dose:String(it.dose||'').trim(), unit:it.unit, time:it.time, schedule:{ type:it.schedule.type, days:[...it.schedule.days].sort(), every:Number(it.schedule.every)||2 }, start:it.start || today(), archived:!!it.archived, createdAt: ex?.createdAt || Date.now() };
+    if (ex) db.supps.items[db.supps.items.findIndex(i => i.id === ex.id)] = rec; else db.supps.items.push(rec);
+    save(); closeSheet(); toast(ex ? 'Supplement updated' : `${nm} added to stack`); route();
+  };
+  const ar = btns.querySelector('[data-arch]'); if (ar) ar.onclick = () => { ex.archived = !ex.archived; save(); closeSheet(); toast(ex.archived ? `${ex.name} archived` : `${ex.name} restored`); route(); };
+  const dl = btns.querySelector('[data-del]'); if (dl) dl.onclick = async () => { if (await confirmSheet(`Delete ${ex.name}?`, 'This removes the item and its whole taken history. Archive instead to keep the history.')) { db.supps.items = db.supps.items.filter(i => i.id !== ex.id); db.supps.log = db.supps.log.filter(l => l.itemId !== ex.id); save(); toast('Supplement deleted'); route(); } };
+  el.appendChild(btns);
+  openSheet(el);
+  if (!ex) name.focus({ preventScroll:true });
+}
+function sampleSupps(){
+  let seed = 23; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const start = iso(addDays(new Date(), -42));
+  const S = (name, dose, unit, time, schedule) => ({ id:uid(), name, dose, unit, time, schedule:{ days:[], every:2, ...schedule }, start, archived:false, sample:true, createdAt:Date.now() });
+  const items = [
+    S('Creatine monohydrate','5','g','morning',{ type:'daily' }),
+    S('Multivitamin','1','tabs','morning',{ type:'daily' }),
+    S('Fish oil','2','caps','morning',{ type:'daily' }),
+    S('Protein shake','1','scoop','post',{ type:'weekdays', days:[1,3,6] }),
+    S('Magnesium glycinate','400','mg','evening',{ type:'daily' }),
+    S('Vitamin D3','50000','IU','morning',{ type:'weekdays', days:[6] }),
+    S('Collagen + vitamin C','10','g','pre',{ type:'interval', every:2 })
+  ];
+  const log = [], t = today();
+  for (let k = 42; k >= 0; k--) {
+    const d = iso(addDays(new Date(), -k));
+    items.forEach(it => {
+      if (!suppScheduledOn(it, d)) return;
+      if (d === t && it.time !== 'morning') return; // today: only morning items done so far
+      const miss = it.time === 'evening' ? .2 : .1;
+      if (rnd() < miss && !(d === t)) return;
+      const base = parse(d); base.setHours({ morning:7, pre:17, post:19, evening:21 }[it.time] || 12, Math.floor(rnd()*50), 0, 0);
+      log.push({ id:uid(), itemId:it.id, date:d, takenAt:Math.min(base.getTime(), Date.now()), sample:true });
+    });
+  }
+  return { items, log };
+}
+function sanitizeSupps(s){
+  const items = Array.isArray(s?.items) ? s.items.filter(i => i && i.name).map(i => ({ id:String(i.id||uid()), name:String(i.name), dose:String(i.dose??''), unit:String(i.unit||''),
+    time:SUPP_TIMES.some(t => t[0]===i.time) ? i.time : 'any',
+    schedule:{ type:['daily','weekdays','interval'].includes(i.schedule?.type) ? i.schedule.type : 'daily', days:Array.isArray(i.schedule?.days) ? i.schedule.days.map(Number).filter(x => x>=0 && x<=6) : [], every:Math.max(1, Number(i.schedule?.every)||2) },
+    start:/^\d{4}-\d{2}-\d{2}$/.test(i.start||'') ? i.start : today(), archived:!!i.archived, ...(i.sample ? { sample:true } : {}), createdAt:i.createdAt||Date.now() })) : [];
+  const ids = new Set(items.map(i => i.id));
+  const log = Array.isArray(s?.log) ? s.log.filter(l => l && ids.has(String(l.itemId)) && /^\d{4}-\d{2}-\d{2}$/.test(l.date||'')).map(l => ({ id:String(l.id||uid()), itemId:String(l.itemId), date:l.date, takenAt:Number(l.takenAt)||parse(l.date).getTime(), ...(l.sample ? { sample:true } : {}) })) : [];
+  return { items, log };
+}
+
 /* ---------------- settings ---------------- */
 function viewSettings(){
   setHeader('Profile');
@@ -735,7 +934,7 @@ function viewSettings(){
   tcard.appendChild(h('<div class="hint">Shown as progress on the Food tab and the dashboard. Rough guide: protein ≈ 0.8–1 g per lb of body weight.</div>'));
   v.appendChild(tcard);
 
-  const hasSample = db.sessions.some(s => s.sample) || db.nutrition.entries.some(e => e.sample);
+  const hasSample = db.sessions.some(s => s.sample) || db.nutrition.entries.some(e => e.sample) || db.supps.items.some(i => i.sample);
   const data = h(`<div class="card"><h2>Your data</h2>
     <p class="hint" style="margin:-4px 0 14px;font-size:13px">Stored only on this device. Export a backup regularly, especially before clearing Safari data.</p>
     <div style="display:flex;flex-direction:column;gap:10px">
@@ -755,14 +954,14 @@ function viewSettings(){
   const ld = $('#ldS'); if (ld) ld.onclick = loadSample;
   const rm = $('#rmS'); if (rm) rm.onclick = removeSample;
   $('#clr').onclick = async () => {
-    if (await confirmSheet('Clear all data?', `This permanently deletes ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries, saved foods and your profile from this device. Export a backup first if you want to keep them.`, 'Clear everything')) {
-      db = { sessions:[], profile:defaultProfile(), nutrition:defaultNutrition() }; save(); form = null; foodDate = null; toast('All data cleared'); route();
+    if (await confirmSheet('Clear all data?', `This permanently deletes ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries, saved foods, ${db.supps.items.length} supplements with their history and your profile from this device. Export a backup first if you want to keep them.`, 'Clear everything')) {
+      db = { sessions:[], profile:defaultProfile(), nutrition:defaultNutrition(), supps:defaultSupps() }; save(); form = null; foodDate = null; suppDate = null; toast('All data cleared'); route();
     }
   };
 }
 
 function exportData(){
-  const payload = { app:'discipline-motivation-bjj', version:1, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition };
+  const payload = { app:'discipline-motivation-bjj', version:1, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition, supps:db.supps };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = `dm-bjj-backup-${today()}.json`;
@@ -782,9 +981,9 @@ async function importData(file){
       rolls:Array.isArray(s.rolls)?s.rolls.map(r => ({ id:String(r.id||uid()), partner:String(r.partner||''), result:['win','loss','draw'].includes(r.result)?r.result:'draw',
         subsLanded:(r.subsLanded||[]).map(String), subsTapped:(r.subsTapped||[]).map(String), stuck:(r.stuck||[]).map(String) })):[],
       sample:!!s.sample, createdAt:s.createdAt||Date.now(), ...(s.updatedAt ? { updatedAt:s.updatedAt } : {}) }));
-    const nut = sanitizeNutrition(d.nutrition);
-    if (await confirmSheet(`Import ${valid.length} sessions and ${nut.entries.length} food entries?`, `This replaces the ${db.sessions.length} sessions and ${db.nutrition.entries.length} food entries currently on this device.`, 'Replace & import', false)) {
-      db = { sessions:valid, profile:{ ...defaultProfile(), ...(d.profile||{}) }, nutrition:nut }; save(); toast(`Imported ${valid.length} sessions`); route();
+    const nut = sanitizeNutrition(d.nutrition), sup = sanitizeSupps(d.supps);
+    if (await confirmSheet(`Import ${valid.length} sessions, ${nut.entries.length} food entries and ${sup.items.length} supplements?`, `This replaces the ${db.sessions.length} sessions and ${db.nutrition.entries.length} food entries currently on this device.`, 'Replace & import', false)) {
+      db = { sessions:valid, profile:{ ...defaultProfile(), ...(d.profile||{}) }, nutrition:nut, supps:sup }; save(); toast(`Imported ${valid.length} sessions`); route();
     }
   } catch(e) { console.warn(e); toast('That file isn\'t a valid backup'); }
   finally { const f = $('#impFile'); if (f) f.value = ''; }
@@ -823,6 +1022,7 @@ function loadSample(){
   }
   db.sessions = db.sessions.filter(s => !s.sample).concat(sessions);
   const nut = sampleNutrition(), names = new Set(db.nutrition.foods.map(f => f.name.toLowerCase()));
+  const sup = sampleSupps(); db.supps = { items: db.supps.items.filter(i => !i.sample).concat(sup.items), log: db.supps.log.filter(l => !l.sample).concat(sup.log) };
   db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample).concat(nut.entries), foods: db.nutrition.foods.filter(f => !f.sample).concat(nut.foods.filter(f => !names.has(f.name.toLowerCase()))) };
   if (!db.profile.targets) db.profile = { ...db.profile, targets:{ cal:2300, p:190, c:220, f:75 } };
   if (!db.profile.promotedOn) { db.profile = { ...db.profile, belt:'blue', stripes:2, promotedOn:iso(addDays(new Date(), -152)), goalWeight: db.profile.goalWeight || '195', sampleProfile:true }; }
@@ -832,6 +1032,8 @@ function removeSample(){
   const n = db.sessions.filter(s => s.sample).length;
   db.sessions = db.sessions.filter(s => !s.sample);
   db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample), foods: db.nutrition.foods.filter(f => !f.sample) };
+  const sids = new Set(db.supps.items.filter(i => i.sample).map(i => i.id));
+  db.supps = { items: db.supps.items.filter(i => !i.sample), log: db.supps.log.filter(l => !l.sample && !sids.has(l.itemId)) };
   if (db.profile.sampleProfile) db.profile = { ...defaultProfile(), unit:db.profile.unit };
   save(); toast(`Removed ${n} sample sessions`); route();
 }
@@ -841,7 +1043,7 @@ function route(){
   if (!$('#sheet').hidden) closeSheet();
   const hash = location.hash.replace(/^#/, '') || '/';
   const [, a, b] = hash.split('/');
-  const tab = { '':'home', history:'history', session:'history', log:'log', edit:'history', stats:'history', settings:'settings', food:'food' }[a||''] || 'home';
+  const tab = { '':'home', history:'history', session:'history', log:'log', edit:'history', stats:'history', settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
   document.querySelectorAll('.tabbar a').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   if (a !== 'log' && a !== 'edit') form = (a === 'session' ? null : form && !form.id ? form : null);
   switch (a || '') {
@@ -851,6 +1053,7 @@ function route(){
     case 'edit': viewForm(b); break;
     case 'stats': viewStats(); break;
     case 'food': viewFood(b); break;
+    case 'supps': viewSupps(b); break;
     case 'settings': viewSettings(); break;
     default: viewHome();
   }

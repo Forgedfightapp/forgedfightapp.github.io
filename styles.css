@@ -255,3 +255,43 @@ details.more .grid3{padding-bottom:4px}
 .flist small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .flist .grow{min-width:0}
 .ring text{stroke:none}
+/* ---- fuel switch + supplements ---- */
+.fuelseg{margin-bottom:12px}
+.fuelseg a{flex:1;display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:11px;text-decoration:none;color:var(--muted);font-weight:700}
+.fuelseg a.on{background:var(--accent);color:var(--accent-ink)}
+.supp-head{display:flex;align-items:center;gap:16px}
+.supp-head b{font-size:32px;font-weight:780;letter-spacing:-.03em;display:block;line-height:1}
+.supp-head b small,.supp-sum b small{font-size:17px;color:var(--muted)}
+.supp-head span{font-size:12px;color:var(--muted);font-weight:600}
+.supp-group{margin-bottom:8px}
+.supp-item{display:flex;align-items:center;gap:14px;width:100%;min-height:72px;padding:12px 14px;margin-bottom:10px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);text-align:left;cursor:pointer;transition:background .15s,border-color .15s}
+.supp-item:active{transform:scale(.99)}
+.supp-item .tick{flex:none;width:34px;height:34px;border-radius:50%;border:2.5px solid #3a414d;display:grid;place-items:center}
+.supp-item .tick svg{width:20px;height:20px;stroke-width:3}
+.supp-item.done{background:var(--accent-soft);border-color:rgba(62,232,181,.4)}
+.supp-item.done .tick{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.supp-item .grow{flex:1;min-width:0}
+.supp-item b{display:block;font-size:16.5px}
+.supp-item small{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.supp-item.done b{color:var(--accent)}
+.supp-item .when{flex:none;text-align:right;font-size:11.5px;color:var(--dim);font-weight:650;line-height:1.3}
+.supp-item.done .when{color:var(--accent)}
+.adh .pct{flex:none;width:52px;text-align:right;font-weight:750;font-size:16px;color:var(--accent)}
+.adh .pct.low{color:var(--danger)}
+.adh .pct small{display:block;font-size:11px;color:var(--muted);font-weight:600}
+.supp-sum{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+.supp-sum b{font-size:30px;font-weight:780}
+.supp-sum span{color:var(--muted);font-size:13px;font-weight:600}
+.supp-sum .r{margin-left:auto;text-align:right;color:var(--text);font-size:20px;font-weight:750}
+.supp-sum .r small{display:block;font-size:11px;color:var(--muted);font-weight:600}
+.srow{width:100%;background:none;border:0;border-bottom:1px solid var(--line);text-align:left;cursor:pointer;padding:8px 0}
+.srow b{display:block}.srow .grow{min-width:0}
+.srow small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srow.arch{opacity:.55}
+.srow .chev{width:20px;height:20px;color:var(--dim);flex:none}
+.daychips{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.daychips button{min-height:48px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);color:var(--muted);font-weight:700;cursor:pointer}
+.daychips button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.suppbtns{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.toast.act{pointer-events:auto;display:flex;align-items:center;gap:12px;padding:8px 8px 8px 18px}
+.toast .undo{border:0;background:var(--bg);color:var(--accent);font-weight:800;border-radius:999px;min-height:36px;padding:0 14px;cursor:pointer}

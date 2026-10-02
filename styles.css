@@ -190,3 +190,7 @@ input[type=date].input{display:block}
 .wkcounts span:last-child{color:var(--accent)}
 .filters{scrollbar-width:none}.filters::-webkit-scrollbar{display:none}
 .statrow .stat.hero{grid-column:1/-1}
+/* prevent horizontally-scrolling suggestion rows from widening the layout */
+.sheet .panel,.field,.card,.grid2>*,.grid3>*,main{min-width:0}
+html,body{overflow-x:hidden}
+.sugg{max-width:100%}

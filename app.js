@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.2';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -121,7 +121,9 @@ function tagField({ values, suggestions, placeholder, kind='', onChange }){
     if (e.key === 'Enter') { e.preventDefault(); add(input.value); }
     else if (e.key === 'Backspace' && !input.value && values.length) { values.pop(); onChange && onChange(values); draw(); }
   });
-  input.addEventListener('blur', () => { if (input.value.trim()) add(input.value); });
+  // Commit typed text on blur, but defer so tapping a suggestion (which also blurs the input) wins.
+  input.addEventListener('blur', () => setTimeout(() => { if (input.value.trim() && document.activeElement !== input) { const v = input.value; input.value = ''; values.some(x => x.toLowerCase()===v.trim().toLowerCase()) || (values.push(v.trim().replace(/\s+/g,' ')), onChange && onChange(values)); draw(); } }, 180));
+  sugg.addEventListener('mousedown', e => e.preventDefault());
   box.addEventListener('click', e => { if (e.target === box) input.focus(); });
   draw();
   return wrap;
@@ -530,7 +532,7 @@ async function importData(file){
       techniques:Array.isArray(s.techniques)?s.techniques.map(String):[], notes:String(s.notes||''), weight:s.weight===''||s.weight==null?'':Number(s.weight)||'',
       rolls:Array.isArray(s.rolls)?s.rolls.map(r => ({ id:String(r.id||uid()), partner:String(r.partner||''), result:['win','loss','draw'].includes(r.result)?r.result:'draw',
         subsLanded:(r.subsLanded||[]).map(String), subsTapped:(r.subsTapped||[]).map(String), stuck:(r.stuck||[]).map(String) })):[],
-      sample:!!s.sample, createdAt:s.createdAt||Date.now() }));
+      sample:!!s.sample, createdAt:s.createdAt||Date.now(), ...(s.updatedAt ? { updatedAt:s.updatedAt } : {}) }));
     if (await confirmSheet(`Import ${valid.length} sessions?`, `This replaces the ${db.sessions.length} sessions currently on this device.`, 'Replace & import', false)) {
       db = { sessions:valid, profile:{ ...defaultProfile(), ...(d.profile||{}) } }; save(); toast(`Imported ${valid.length} sessions`); route();
     }

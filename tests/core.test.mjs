@@ -25,17 +25,24 @@ await page.getByRole('button', { name: /Load sample data/ }).tap();
 await page.waitForSelector('.statrow');
 const n0 = (await db()).sessions.length;
 ok('sample data loads', n0 > 20, `(${n0} sessions)`);
-ok('weekly chart renders', await page.locator('svg.chart rect.bar').count() === 12);
-ok('weight chart renders', await page.locator('svg.chart path.line').count() === 1);
+ok('home shows essentials only', await page.locator('#nutriCard').count() === 1 && await page.locator('#suppCard').count() === 1 && await page.locator('svg.chart').count() === 0);
+await page.locator('#seeStats').tap(); await page.waitForSelector('#catCard');
+ok('weekly chart renders (stats)', await page.locator('svg.chart g.wk').count() === 12);
+ok('weight chart renders (stats)', await page.locator('svg.chart path.line').count() === 1);
+const month0 = Number(await stat('Sessions in'));
+await page.goto(BASE); await page.waitForSelector('.statrow');
 ok('belt card', /blue belt/i.test(await page.locator('.card', { hasText: /belt/i }).first().innerText()));
 await page.waitForTimeout(2700);
 await page.screenshot({ path: `${SHOTS}/01-dashboard.png` });
 await page.screenshot({ path: `${SHOTS}/01b-dashboard-full.png`, fullPage:true });
-const week0 = Number(await stat('Sessions this week')), month0 = Number(await stat('Sessions in'));
+const week0 = Number(await stat('Sessions this week'));
 
 // log session
 await page.locator('.tabbar a.fab').tap();
-await page.waitForSelector('text=Session type');
+await page.waitForSelector('.cats');
+await page.locator('.cats button[data-c="grappling"]').tap();
+await page.getByRole('radio', { name: 'BJJ' }).tap();
+await page.locator('details.details summary').tap();
 await page.getByRole('radio', { name: 'No-Gi' }).tap();
 await page.getByRole('radio', { name: 'Drilling' }).tap();
 await page.locator('.field', { hasText: 'Duration' }).getByRole('button', { name: 'Increase' }).tap(); // 60/75 -> +15
@@ -79,11 +86,14 @@ let d = await db(); const mine = d.sessions.find(s => s.notes === 'Playwright te
 ok('session saved', !!mine && mine.gi === 'nogi' && mine.type === 'drill' && mine.intensity === 4 && mine.weight === 201.4 && mine.techniques.includes('Test Technique Zeta'), JSON.stringify(mine && {gi:mine.gi,type:mine.type,dur:mine.duration,w:mine.weight}));
 ok('roll saved', mine?.rolls.length === 1 && mine.rolls[0].partner === 'Edited Partner' && mine.rolls[0].subsLanded[0] === 'Omoplata' && mine.rolls[0].subsTapped[0] === 'Heel hook' && mine.rolls[0].stuck[0] === 'Turtle');
 ok('dashboard week count +1', Number(await stat('Sessions this week')) === week0 + 1, `${week0} -> ${await stat('Sessions this week')}`);
-ok('dashboard month count +1', Number(await stat('Sessions in')) === month0 + 1);
+await page.goto(BASE + '#/stats'); await page.waitForSelector('#catCard');
+ok('stats month count +1', Number(await stat('Sessions in')) === month0 + 1);
 ok('weight trend shows latest weight', (await page.locator('.card', { hasText: 'Weight trend' }).innerText()).includes('201.4'));
+await page.goto(BASE); await page.waitForSelector('.statrow');
 
 // autocomplete includes custom tag from history
 await page.locator('.tabbar a.fab').tap();
+await page.locator('details.details summary').tap();
 const ti2 = page.locator('.field', { hasText: 'Techniques drilled' }).locator('.tags input');
 await ti2.fill('zeta');
 ok('previously-used tag autocompletes', await page.locator('.sugg button', { hasText: 'Test Technique Zeta' }).count() === 1);
@@ -93,9 +103,9 @@ await page.goto(BASE + '#/history');
 await page.waitForSelector('.sess'); await page.waitForTimeout(2500);
 await page.screenshot({ path: `${SHOTS}/04-history.png` });
 await page.locator(`a.sess[href="#/session/${mine.id}"]`).tap();
-await page.waitForSelector('text=Edit session');
+await page.waitForSelector('#del');
 await page.screenshot({ path: `${SHOTS}/05-session-detail.png`, fullPage:true });
-await page.locator('a.btn', { hasText: 'Edit session' }).tap();
+await page.locator('a.btn.primary', { hasText: 'Edit' }).tap();
 await page.locator('textarea').fill('Playwright test session EDITED');
 await page.locator('.actions [data-save]').tap();
 await page.waitForSelector('text=Delete');

@@ -274,6 +274,7 @@ function viewHome(){
       <div class="stat"><div class="v">${hrs(st.monthMin)}<small>h</small></div><div class="l">Mat hours this month</div></div>
       <div class="stat"><div class="v">${hrs(st.weekMin)}<small>h</small></div><div class="l">Mat hours this week</div></div>
       <div class="stat"><div class="v">${hrs(st.totalMin)}<small>h</small></div><div class="l">Total mat hours</div></div>
+      <div class="stat"><div class="v">${st.total}</div><div class="l">Total sessions</div></div>
     </div>
     <div class="card"><h2>Weekly mat hours <small>avg ${Math.round(avg*10)/10} h · ${Math.round(avgS*10)/10} sessions/wk</small></h2>${barChart(weeks)}<div class="wkcounts">${weeks.map(w => `<span title="${w.key}">${w.n}</span>`).join('')}</div><div class="hint" style="text-align:center;margin-top:2px">Sessions per week (last 12 weeks)</div></div>
     ${beltCard()}

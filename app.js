@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -830,7 +830,7 @@ function stackSheet(){
 }
 function suppForm(id){
   const ex = id ? db.supps.items.find(i => i.id === id) : null;
-  const it = ex ? JSON.parse(JSON.stringify(ex)) : { id:null, name:'', dose:'', unit:'g', time:'morning', schedule:{ type:'daily', days:[1,2,3,4,5,6,0], every:2 }, start:today(), archived:false };
+  const it = ex ? JSON.parse(JSON.stringify(ex)) : { id:null, name:'', dose:'', unit:'g', time:'morning', schedule:{ type:'daily', days:[], every:2 }, start:today(), archived:false };
   it.schedule = { type:'daily', days:[], every:2, ...it.schedule }; if (!it.schedule.days.length) it.schedule.days = [parse(today()).getDay()];
   const el = h(`<div class="suppform"><h3>${ex ? 'Edit supplement' : 'Add supplement'}</h3></div>`);
   const name = h(`<input class="input" type="text" autocapitalize="words" autocomplete="off" placeholder="e.g. Creatine" value="${esc(it.name)}">`);
@@ -885,7 +885,7 @@ function sampleSupps(){
     items.forEach(it => {
       if (!suppScheduledOn(it, d)) return;
       if (d === t && it.time !== 'morning') return; // today: only morning items done so far
-      const miss = it.time === 'evening' ? .2 : .1;
+      const miss = it.schedule.type === 'weekdays' && it.schedule.days.length === 1 ? 0 : it.time === 'evening' ? .2 : .1;
       if (rnd() < miss && !(d === t)) return;
       const base = parse(d); base.setHours({ morning:7, pre:17, post:19, evening:21 }[it.time] || 12, Math.floor(rnd()*50), 0, 0);
       log.push({ id:uid(), itemId:it.id, date:d, takenAt:Math.min(base.getTime(), Date.now()), sample:true });

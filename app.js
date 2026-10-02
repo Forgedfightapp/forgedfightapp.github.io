@@ -14,13 +14,30 @@ const BELTS = [['white','White','#f1f1f1'],['blue','Blue','#2563eb'],['purple','
 const INTENSITY = ['', 'Light','Easy','Moderate','Hard','All-out'];
 
 /* ---------------- storage ---------------- */
-const defaultProfile = () => ({ name:'', belt:'white', stripes:0, promotedOn:'', goalWeight:'', unit:'lb', sampleProfile:false });
+const SCHEMA = 2;
+const defaultProfile = () => ({ name:'', belt:'white', stripes:0, promotedOn:'', goalWeight:'', unit:'lb', distUnit:'mi', maxHR:'', sampleProfile:false, setupDone:false,
+  enabled:{ grappling:true, striking:false, weights:false, cardio:false, food:true, supps:true } });
+const emptyDb = () => ({ schema:SCHEMA, sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] } });
+/* Versioned schema. v1 (BJJ-only) -> v2 (multi-discipline): sessions gain category/discipline; a copy of the
+   pre-migration data is kept under STORE_KEY + '.backup.v1' so nothing can be lost. */
+function migrate(d){
+  let v = Number(d.schema) || 1;
+  if (v < 2) {
+    try { if (!localStorage.getItem(STORE_KEY + '.backup.v1')) localStorage.setItem(STORE_KEY + '.backup.v1', JSON.stringify(d)); } catch(e) { console.warn('backup failed', e); }
+    d.sessions = (d.sessions||[]).map(s => ({ ...s, category:s.category || 'grappling', discipline:s.discipline || 'bjj' }));
+    const had = d.sessions.length || d.nutrition?.entries?.length || d.supps?.items?.length;
+    d.profile = { ...(d.profile||{}), setupDone: d.profile?.setupDone ?? !!had, enabled:{ grappling:true, striking:false, weights:false, cardio:false, food:true, supps:true, ...(d.profile?.enabled||{}) } };
+    v = 2;
+  }
+  d.schema = v; return d;
+}
 function load(){
   try{
-    const d = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (d && Array.isArray(d.sessions)) return { sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[] }, supps:{ items:d.supps?.items||[], log:d.supps?.log||[] } };
+    let d = JSON.parse(localStorage.getItem(STORE_KEY));
+    if (d && Array.isArray(d.sessions)) { const before = d.schema; d = migrate(d); if (before !== d.schema) setTimeout(() => { try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch(e){} }, 0);
+      return { schema:d.schema, sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[] }, supps:{ items:d.supps?.items||[], log:d.supps?.log||[] } }; }
   }catch(e){ console.warn('Could not read saved data', e); }
-  return { sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] } };
+  return emptyDb();
 }
 let db = load();
 function save(){
@@ -169,9 +186,9 @@ function periodStats(){
 }
 function weeklyHours(n=12){
   const start = weekStart(new Date());
-  const weeks = Array.from({length:n}, (_,i) => { const d = addDays(start, -7*(n-1-i)); return { key:iso(d), date:d, min:0, n:0 }; });
+  const weeks = Array.from({length:n}, (_,i) => { const d = addDays(start, -7*(n-1-i)); return { key:iso(d), date:d, min:0, n:0, cat:{} }; });
   const idx = new Map(weeks.map((w,i) => [w.key, i]));
-  db.sessions.forEach(s => { const k = iso(weekStart(parse(s.date))); if (idx.has(k)) { const w = weeks[idx.get(k)]; w.min += Number(s.duration)||0; w.n++; } });
+  db.sessions.forEach(s => { const k = iso(weekStart(parse(s.date))); if (idx.has(k)) { const w = weeks[idx.get(k)], c = CATS[s.category] ? s.category : 'grappling'; w.min += Number(s.duration)||0; w.n++; w.cat[c] = (w.cat[c]||0) + (Number(s.duration)||0); } });
   return weeks;
 }
 function weightSeries(){
@@ -185,11 +202,14 @@ function barChart(weeks){
   const max = Math.max(1, ...weeks.map(w => w.min/60));
   const nice = Math.ceil(max);
   const bw = (W - pl - pr) / weeks.length;
-  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly mat hours, last ${weeks.length} weeks">`;
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly training hours, last ${weeks.length} weeks">`;
   for (let g = 0; g <= 2; g++) { const y = pt + (H-pt-pb) * g/2; s += `<line class="grid" x1="0" x2="${W}" y1="${y}" y2="${y}"/>`; }
   weeks.forEach((w,i) => {
     const v = w.min/60, bh = (H-pt-pb) * v/nice, x = pl + i*bw + bw*0.18, y = H - pb - bh, cur = i === weeks.length-1;
-    s += `<rect class="bar ${v===0?'dim':''}" x="${x.toFixed(1)}" y="${(v===0?H-pb-3:y).toFixed(1)}" width="${(bw*0.64).toFixed(1)}" height="${(v===0?3:bh).toFixed(1)}" rx="4" ${cur?'':'opacity=".55"'}/>`;
+    s += `<g class="wk" ${cur?'':'opacity=".6"'}>`;
+    if (v === 0) s += `<rect class="bar dim" x="${x.toFixed(1)}" y="${(H-pb-3).toFixed(1)}" width="${(bw*0.64).toFixed(1)}" height="3" rx="1.5"/>`;
+    else { let yy = H - pb; CAT_KEYS.forEach(c => { const m = w.cat[c]||0; if (!m) return; const hh = (H-pt-pb) * (m/60)/nice; yy -= hh; s += `<rect class="bar" x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${(bw*0.64).toFixed(1)}" height="${hh.toFixed(1)}" style="fill:${CATS[c].color}"/>`; }); }
+    s += '</g>';
     if (v > 0 && (cur || i % 2 === 1)) s += `<text x="${(x+bw*0.32).toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" style="fill:${cur?'var(--accent)':'var(--muted)'}">${hrs(w.min)}</text>`;
     if (i % 3 === 2 || cur) s += `<text x="${(x+bw*0.32).toFixed(1)}" y="${H-6}" text-anchor="middle">${cur?'This wk':`${w.date.getMonth()+1}/${w.date.getDate()}`}</text>`;
   });
@@ -224,11 +244,62 @@ function beltCard(){
   let since = '';
   if (p.promotedOn) {
     const days = Math.floor((new Date() - parse(p.promotedOn)) / 864e5);
-    const n = db.sessions.filter(s => s.date >= p.promotedOn).length;
+    const n = db.sessions.filter(s => s.date >= p.promotedOn && (s.category||'grappling') === 'grappling').length;
     since = `<div class="belt-meta"><span>Promoted <b>${fmtShort(p.promotedOn)}</b></span><span><b>${days}</b> days · <b>${n}</b> sessions</span></div>`;
   } else since = `<div class="belt-meta"><span>Set your promotion date in <a href="#/settings" style="color:var(--accent)">Profile</a></span></div>`;
   return `<div class="card"><h2>${esc(b[1])} belt${p.stripes?` · ${p.stripes} stripe${p.stripes>1?'s':''}`:''} ${p.sampleProfile?'<span class="pill sample">Sample</span>':''}</h2>
     <div class="belt"><div class="beltbar ${b[0]}" style="background:${b[2]}"><div class="tip">${stripes}</div></div></div>${since}</div>`;
+}
+
+/* ---------------- disciplines ---------------- */
+const CATS = {
+  grappling:{ label:'Grappling', color:'#E8392F', dur:60, disc:[['bjj','BJJ'],['wrestling','Wrestling'],['judo','Judo']],
+    icon:'<path d="M8 4a2 2 0 1 0 0 .1M16 4a2 2 0 1 0 0 .1M5 21l2-7-3-3 4-4h8l4 4-3 3 2 7M9 11l3 2 3-2"/>' },
+  striking:{ label:'Striking', color:'#F5B83D', dur:60, disc:[['boxing','Boxing'],['muaythai','Muay Thai'],['kickboxing','Kickboxing'],['mma','MMA']],
+    icon:'<path d="M7 11V7a3 3 0 0 1 3-3h4a4 4 0 0 1 4 4v5a6 6 0 0 1-6 6h-1a5 5 0 0 1-5-5v-1a2 2 0 0 1 2-2h4M10 4v5"/>' },
+  weights:{ label:'Weights', color:'#8FB0D9', dur:60, disc:[['strength','Strength']],
+    icon:'<path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/>' },
+  cardio:{ label:'Cardio', color:'#6FD3A8', dur:30, disc:[['run','Run'],['bike','Bike'],['row','Row'],['swim','Swim'],['rope','Jump rope'],['other','Other']],
+    icon:'<path d="M3 12h4l2-5 4 10 2-5h6"/>' }
+};
+const CAT_KEYS = Object.keys(CATS);
+const STRIKE_TECH = ['Jab','Cross','Lead hook','Rear hook','Uppercut','Teep','Roundhouse kick','Low kick','Body kick','Head kick','Knee','Elbow','Clinch','Check kick','Slip & counter','Roll under','Parry','Footwork','Head movement','1-2-3','Jab-cross-low kick','Level change','Cage work'];
+const EXERCISES = ['Back squat','Front squat','Bench press','Incline bench press','Deadlift','Romanian deadlift','Trap bar deadlift','Overhead press','Barbell row','Pull-up','Chin-up','Dip','Lat pulldown','Cable row','Hip thrust','Bulgarian split squat','Lunge','Leg press','Kettlebell swing','Turkish get-up','Farmer carry','Power clean','Bicep curl','Tricep extension','Face pull','Neck curl','Plank','Push-up'];
+const STRIKE_MIX = [['shadow','Shadow'],['pads','Pads'],['bag','Bag'],['drills','Drills'],['sparring','Sparring']];
+const catOf = s => CATS[s.category] ? s.category : 'grappling';
+const discLabel = s => { const c = CATS[catOf(s)]; return (c.disc.find(d => d[0]===s.discipline) || c.disc[0])[1]; };
+const enabled = k => { const e = db.profile.enabled || {}; return k in e ? !!e[k] : (k === 'grappling' || k === 'food' || k === 'supps'); };
+const enabledCats = () => { const l = CAT_KEYS.filter(enabled); return l.length ? l : ['grappling']; };
+const distU = () => db.profile.distUnit === 'km' ? 'km' : 'mi';
+const toUnit = (d, from, to) => from === to ? d : (to === 'km' ? d * 1.609344 : d / 1.609344);
+const fmtDur = sec => { sec = Math.round(sec); const h = Math.floor(sec/3600), m = Math.floor(sec%3600/60), s = sec%60; return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`; };
+const paceStr = (sec, dist, unit) => dist > 0 && sec > 0 ? `${fmtDur(sec/dist)} /${unit}` : '';
+const speedStr = (sec, dist, unit) => dist > 0 && sec > 0 ? `${r1(dist/(sec/3600))} ${unit==='km'?'km/h':'mph'}` : '';
+const e1rm = (w, r) => w > 0 && r > 0 ? w * (1 + Math.min(r, 12)/30) : 0;
+const volumeOf = s => (s.exercises||[]).reduce((a,e) => a + e.sets.reduce((b,x) => b + (Number(x.reps)||0)*(Number(x.weight)||0), 0), 0);
+function sessTitle(s){ const c = catOf(s); if (c === 'grappling' || c === 'striking') { const t = (s.type && s.type !== 'class') ? ` · ${typeLabel(s.type)}` : ''; return discLabel(s) + t; } return c === 'weights' ? 'Weights' : discLabel(s); }
+function catDot(c){ return `<i class="catdot" style="background:${CATS[c].color}"></i>`; }
+
+/* schema-2 session sanitizer: used for import, migration and every save (so stored == exported == re-imported) */
+function sanitizeSession(s){
+  const n = v => v === '' || v == null || isNaN(Number(v)) ? '' : Number(v);
+  const cat = CATS[s.category] ? s.category : 'grappling';
+  const disc = CATS[cat].disc.some(d => d[0]===s.discipline) ? s.discipline : CATS[cat].disc[0][0];
+  const out = { id:String(s.id||uid()), date:s.date, category:cat, discipline:disc, gi:s.gi==='nogi'?'nogi':'gi',
+    type:SESSION_TYPES.some(t => t[0]===s.type) ? s.type : 'class', duration:Math.max(0, Math.round(Number(s.duration)||0)), rounds:Math.max(0, Number(s.rounds)||0),
+    intensity:Math.min(5, Math.max(1, Number(s.intensity)||3)), techniques:Array.isArray(s.techniques) ? s.techniques.map(String) : [],
+    notes:String(s.notes||''), weight:n(s.weight),
+    rolls:Array.isArray(s.rolls) ? s.rolls.map(r => ({ id:String(r.id||uid()), partner:String(r.partner||''), result:['win','loss','draw'].includes(r.result)?r.result:'draw',
+      subsLanded:(r.subsLanded||[]).map(String), subsTapped:(r.subsTapped||[]).map(String), stuck:(r.stuck||[]).map(String) })) : [],
+    sample:!!s.sample, createdAt:s.createdAt||Date.now() };
+  if (s.updatedAt) out.updatedAt = s.updatedAt;
+  if (s.strike) out.strike = { roundLen:Number(s.strike.roundLen)||3, mix:Object.fromEntries(STRIKE_MIX.map(([k]) => [k, Math.max(0, Number(s.strike.mix?.[k])||0)])),
+    spar:Array.isArray(s.strike.spar) ? s.strike.spar.filter(x => x && (x.partner || x.notes)).map(x => ({ partner:String(x.partner||''), notes:String(x.notes||'') })) : [] };
+  if (Array.isArray(s.exercises)) out.exercises = s.exercises.filter(e => e && String(e.name||'').trim()).map(e => ({ name:String(e.name).trim(), sets:(e.sets||[]).map(x => ({ reps:n(x.reps), weight:n(x.weight), rpe:n(x.rpe) })) }));
+  if (s.cardio) out.cardio = { distance:n(s.cardio.distance), unit:s.cardio.unit==='km'?'km':'mi', sec:Math.max(0, Math.round(Number(s.cardio.sec)||0)) };
+  if (s.hr) { const hr = { avg:n(s.hr.avg), max:n(s.hr.max), cal:n(s.hr.cal), zones:[0,1,2,3,4].map(i => n(s.hr.zones?.[i])) }; if (hr.avg!==''||hr.max!==''||hr.cal!==''||hr.zones.some(z => z!=='')) out.hr = hr; }
+  if (s.source) out.source = String(s.source);
+  return out;
 }
 
 /* ---------------- views ---------------- */
@@ -239,109 +310,159 @@ function setHeader(title, action=''){
   document.querySelector('.topbar').classList.toggle('home', !title);
   $('#topAction').innerHTML = action;
 }
+function updateNav(){
+  const fuel = $('.tabbar a[data-tab="food"]'); if (!fuel) return;
+  const f = enabled('food'), s = enabled('supps');
+  if (!f && !s) { fuel.href = '#/stats'; fuel.dataset.tab = 'food'; fuel.querySelector('span').textContent = 'Stats'; fuel.dataset.mode = 'stats'; }
+  else { fuel.href = f ? '#/food' : '#/supps'; fuel.querySelector('span').textContent = f && s ? 'Nutrition' : f ? 'Food' : 'Supplements'; fuel.dataset.mode = 'fuel'; }
+}
+
+/* first-run */
+function viewSetup(){
+  setHeader('');
+  const v = $('#view'), pick = { grappling:true, striking:false, weights:false, cardio:false, food:true, supps:false };
+  v.innerHTML = `<div class="welcome setup"><img class="dm-logo" src="brand/dm-logo.svg" alt="D &gt; M · Discipline &gt; Motivation">
+    <h2>What do you train?</h2><p>Pick all that apply. You can change this any time in Profile.</p>
+    <div class="tiles" id="catTiles">${CAT_KEYS.map(k => `<button type="button" class="tile" data-k="${k}" aria-pressed="false"><svg viewBox="0 0 24 24">${CATS[k].icon}</svg><b>${CATS[k].label}</b><small>${CATS[k].disc.map(d=>d[1]).slice(0,3).join(', ')}</small></button>`).join('')}</div>
+    <h3>Also track</h3>
+    <div class="tiles two" id="extraTiles"><button type="button" class="tile" data-k="food"><b>Food</b><small>Calories &amp; protein</small></button><button type="button" class="tile" data-k="supps"><b>Supplements</b><small>Daily checklist</small></button></div>
+    <div id="tgtWrap" class="grid2" style="text-align:left;margin-top:14px"></div>
+    <button class="btn primary block" id="go" style="margin-top:18px">Get started</button>
+    <button class="btn block ghost" id="loadSample" style="margin-top:10px">Load sample data (demo)</button></div>`;
+  const tgt = $('#tgtWrap');
+  const cal = h(`<input class="input" type="text" inputmode="numeric" placeholder="e.g. 2400" id="setupCal">`), pro = h(`<input class="input" type="text" inputmode="numeric" placeholder="e.g. 180" id="setupPro">`);
+  tgt.appendChild(field('Daily calories (optional)', cal)); tgt.appendChild(field('Protein g (optional)', pro));
+  const sync = () => { v.querySelectorAll('.tile').forEach(b => { b.classList.toggle('on', !!pick[b.dataset.k]); b.setAttribute('aria-pressed', !!pick[b.dataset.k]); }); tgt.hidden = !pick.food; };
+  v.querySelectorAll('.tile').forEach(b => b.onclick = () => { pick[b.dataset.k] = !pick[b.dataset.k]; if (!CAT_KEYS.some(k => pick[k])) pick.grappling = true; sync(); });
+  sync();
+  $('#go').onclick = () => {
+    const t = { ...targets() }; if (num(cal.value)) t.cal = Math.round(num(cal.value)); if (num(pro.value)) t.p = Math.round(num(pro.value));
+    db.profile = { ...db.profile, enabled:{ ...pick }, setupDone:true, ...(num(cal.value)||num(pro.value) ? { targets:t } : {}) };
+    save(); toast('All set. Tap + to log a workout'); route();
+  };
+  $('#loadSample').onclick = loadSample;
+}
+
+/* quick log helpers */
+function lastOf(cat){ return sorted().find(s => catOf(s) === cat); }
+function templates(){ return enabledCats().map(lastOf).filter(Boolean); }
+function repeatSession(src){
+  const rec = sanitizeSession({ category:catOf(src), discipline:src.discipline, gi:src.gi, type:src.type, duration:src.duration, rounds:src.rounds, intensity:src.intensity,
+    ...(src.strike ? { strike:{ roundLen:src.strike.roundLen, mix:src.strike.mix, spar:[] } } : {}),
+    ...(src.exercises ? { exercises:src.exercises } : {}), ...(src.cardio ? { cardio:src.cardio } : {}),
+    date:today(), id:uid(), createdAt:Date.now() });
+  db.sessions.push(rec); save(); form = null;
+  undoToast(`Logged ${sessTitle(rec)} · ${rec.duration} min`, () => { db.sessions = db.sessions.filter(x => x.id !== rec.id); save(); route(); });
+  return rec;
+}
+function repeatButtons(){
+  const t = templates(); if (!t.length) return '';
+  return `<div class="repeat">${t.map(s => `<button type="button" class="rep" data-rep="${esc(s.id)}">${catDot(catOf(s))}<span><b>${esc(sessTitle(s))}</b><small>${s.duration} min${catOf(s)==='cardio' && s.cardio?.distance ? ` · ${r1(s.cardio.distance)} ${s.cardio.unit}` : ''}</small></span><em>Log again</em></button>`).join('')}</div>`;
+}
+function wireRepeat(root, after){ root.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => { const s = db.sessions.find(x => x.id === b.dataset.rep); if (s) { repeatSession(s); after ? after() : route(); } }); }
 
 function viewHome(){
+  if (!db.profile.setupDone && !db.sessions.length) return viewSetup();
   setHeader('');
   const v = $('#view');
-  if (!db.sessions.length) {
-    v.innerHTML = `<div class="welcome"><img class="dm-logo" src="brand/dm-logo.svg" alt="D &gt; M · Discipline &gt; Motivation"><img class="lockup" src="brand/training-log-lockup.svg" alt="Training Log · Track your progress"><h2>Show up. Log it. Repeat.</h2>
-      <p>Track sessions, rolls, submissions and weight. Everything stays on your phone.</p>
-      <a class="btn primary" href="#/log">Log your first session</a>
-      <button class="btn" id="loadSample">Load sample data (demo)</button></div>${beltCard()}`;
-    $('#loadSample').onclick = loadSample;
-    return;
-  }
-  const st = periodStats(), streak = weekStreak(), weeks = weeklyHours(12), ws = weightSeries();
-  const landed = countBy(allRolls().flatMap(r => r.subsLanded||[])).slice(0,5);
-  const caught = countBy(allRolls().flatMap(r => r.subsTapped||[])).slice(0,5);
+  const st = periodStats(), streak = weekStreak();
   const hasSample = db.sessions.some(s => s.sample) || db.nutrition.entries.some(e => e.sample) || db.supps.items.some(i => i.sample);
-  const avg = weeks.slice(0,-1).reduce((a,w) => a+w.min, 0) / 60 / Math.max(1, weeks.length-1);
-  const avgS = weeks.slice(0,-1).reduce((a,w) => a+w.n, 0) / Math.max(1, weeks.length-1);
-  let weightHtml = `<div class="empty">Add your body weight when you log a session to see the trend.</div>`;
-  if (ws.length) {
-    const first = ws[0].w, last = ws[ws.length-1].w, diff = Math.round((last-first)*10)/10;
-    const goal = Number(db.profile.goalWeight) || null;
-    weightHtml = `<div style="display:flex;align-items:baseline;gap:10px;margin:-4px 0 6px"><span style="font-size:30px;font-weight:760;letter-spacing:-.03em">${last}<small style="font-size:15px;color:var(--muted)"> ${unit()}</small></span>
-      <span style="font-weight:700;color:${diff<=0?'var(--accent)':'var(--danger)'}">${diff>0?'+':''}${diff} ${unit()}</span><span style="color:var(--dim);font-size:13px">since ${fmtShort(ws[0].date)}</span></div>
-      ${ws.length > 1 ? lineChart(ws, goal) : ''}${goal ? `<div class="hint">${Math.max(0, Math.round((last-goal)*10)/10)} ${unit()} to goal</div>` : ''}`;
-  }
-  const recent = sorted().slice(0,3);
   v.innerHTML = `
     ${hasSample ? `<div class="banner"><span>📋 <b>Sample data</b> is loaded for the demo.</span><button class="btn sm" id="rmSample">Remove</button></div>` : ''}
-    <div class="statrow">
+    <div class="statrow three">
       <div class="stat hero"><div class="v">${st.week}</div><div class="l">Sessions this week</div></div>
-      <div class="stat"><div class="v">${streak}<small>wk</small></div><div class="l">Training streak 🔥</div></div>
-      <div class="stat"><div class="v">${st.month}</div><div class="l">Sessions in ${MONTHS[new Date().getMonth()]}</div></div>
-      <div class="stat"><div class="v">${hrs(st.monthMin)}<small>h</small></div><div class="l">Mat hours this month</div></div>
-      <div class="stat"><div class="v">${hrs(st.weekMin)}<small>h</small></div><div class="l">Mat hours this week</div></div>
-      <div class="stat"><div class="v">${hrs(st.totalMin)}<small>h</small></div><div class="l">Total mat hours</div></div>
-      <div class="stat"><div class="v">${st.total}</div><div class="l">Total sessions</div></div>
+      <div class="stat"><div class="v">${hrs(st.weekMin)}<small>h</small></div><div class="l">Hours this week</div></div>
+      <div class="stat"><div class="v">${streak}<small>wk</small></div><div class="l">Week streak 🔥</div></div>
     </div>
-    <div class="card"><h2>Weekly mat hours <small>avg ${Math.round(avg*10)/10} h · ${Math.round(avgS*10)/10} sessions/wk</small></h2>${barChart(weeks)}<div class="wkcounts">${weeks.map(w => `<span title="${w.key}">${w.n}</span>`).join('')}</div><div class="hint" style="text-align:center;margin-top:2px">Sessions per week (last 12 weeks)</div></div>
-    ${beltCard()}
-    <div class="card"><h2>Submissions <a href="#/stats" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">See all ›</a></h2>
-      <div class="subcols"><div><h3 class="win">Landed</h3>${hbars(landed,'win')}</div><div><h3 class="loss">Caught by</h3>${hbars(caught,'loss')}</div></div></div>
-    ${nutritionCard()}
-    ${suppCard()}
-    <div class="card"><h2>Weight trend</h2>${weightHtml}</div>
-    <div class="card"><h2>Recent <a href="#/history" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">History ›</a></h2>
-      ${recent.map(sessRow).join('')}</div>
-    <div class="foot">${st.total} sessions · ${hrs(st.totalMin)} total mat hours</div>`;
+    <div class="card quick"><h2>Quick log</h2>${repeatButtons() || '<div class="empty" style="padding:2px 0 10px">Your recent workouts will show here for one-tap logging.</div>'}
+      <a class="btn primary block" href="#/log" id="homeLog"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Log a workout</a></div>
+    ${enabled('food') ? nutritionCard() : ''}
+    ${enabled('supps') ? suppCard() : ''}
+    ${enabled('grappling') ? beltCard() : ''}
+    <a class="btn block" href="#/stats" id="seeStats">See all stats ›</a>`;
+  wireRepeat(v);
   const rm = $('#rmSample'); if (rm) rm.onclick = removeSample;
 }
 
-function sessRow(s){
-  const d = parse(s.date), rolls = s.rolls||[];
+function sessSub(s){
+  const c = catOf(s), rolls = s.rolls||[];
+  if (c === 'cardio' && s.cardio) { const k = s.cardio; const bits = [k.distance ? `${r1(k.distance)} ${k.unit}` : '', k.sec ? fmtDur(k.sec) : `${s.duration} min`, s.discipline === 'bike' ? speedStr(k.sec, k.distance, k.unit) : paceStr(k.sec, k.distance, k.unit)]; return bits.filter(Boolean).join(' · '); }
+  if (c === 'weights') { const ex = s.exercises||[]; return [`${s.duration} min`, ex.length ? `${ex.length} exercise${ex.length>1?'s':''}` : '', volumeOf(s) ? `${Math.round(volumeOf(s)).toLocaleString()} ${unit()} vol` : ''].filter(Boolean).join(' · '); }
+  if (c === 'striking') { const m = s.strike?.mix || {}; return [`${s.duration} min`, s.rounds ? `${s.rounds} rds${s.strike ? ` × ${s.strike.roundLen} min` : ''}` : '', m.sparring ? `${m.sparring} sparring` : ''].filter(Boolean).join(' · '); }
   const w = rolls.filter(r => r.result==='win').length, l = rolls.filter(r => r.result==='loss').length;
+  return [`${s.duration} min`, `${s.rounds||0} rounds`, rolls.length ? `${w}W ${l}L` : ''].filter(Boolean).join(' · ');
+}
+function sessRow(s){
+  const d = parse(s.date), c = catOf(s);
   const dots = [1,2,3,4,5].map(i => `<i class="${i<=s.intensity?'on':''}"></i>`).join('');
-  return `<a class="sess" href="#/session/${esc(s.id)}">
+  const tags = c === 'weights' ? (s.exercises||[]).map(e => e.name) : (s.techniques||[]);
+  return `<a class="sess" href="#/session/${esc(s.id)}" style="--cat:${CATS[c].color}">
     <div class="d"><b>${d.getDate()}</b><span>${DOW[d.getDay()]}</span></div>
-    <div class="m"><div class="t">${esc(typeLabel(s.type))} <span class="pill ${s.gi==='nogi'?'nogi':'gi'}">${s.gi==='nogi'?'No-Gi':'Gi'}</span>${s.sample?'<span class="pill sample">Sample</span>':''}</div>
-      <div class="s">${s.duration} min · ${s.rounds||0} rounds${rolls.length?` · ${w}W ${l}L`:''} · <span class="dots" aria-label="Intensity ${s.intensity}">${dots}</span></div>
-      ${(s.techniques||[]).length ? `<div class="tg">${esc(s.techniques.join(' · '))}</div>` : ''}</div></a>`;
+    <div class="m"><div class="t">${catDot(c)}${esc(sessTitle(s))} ${c==='grappling' && s.discipline==='bjj' ? `<span class="pill ${s.gi==='nogi'?'nogi':'gi'}">${s.gi==='nogi'?'No-Gi':'Gi'}</span>` : ''}${s.sample?'<span class="pill sample">Sample</span>':''}</div>
+      <div class="s">${esc(sessSub(s))} · <span class="dots" aria-label="Intensity ${s.intensity}">${dots}</span></div>
+      ${tags.length ? `<div class="tg">${esc(tags.join(' · '))}</div>` : ''}</div></a>`;
 }
 
 let histFilter = 'all', histQuery = '';
 function viewHistory(){
-  setHeader('History', `<a class="btn sm" href="#/stats">Subs</a>`);
+  setHeader('History', `<a class="btn sm" href="#/stats">Stats</a>`);
   const v = $('#view');
-  if (!db.sessions.length) { v.innerHTML = `<div class="empty" style="padding:60px 10px">No sessions yet.<br><br><a class="btn primary" href="#/log">Log a session</a></div>`; return; }
-  v.innerHTML = `<div class="search"><input class="input" type="search" placeholder="Search techniques, partners, notes…" value="${esc(histQuery)}" id="q"></div>
-    <div class="filters">${[['all','All'],['gi','Gi'],['nogi','No-Gi'],['class','Class'],['open','Open mat'],['drill','Drilling'],['comp','Competition']].map(([k,l]) => `<button data-f="${k}" class="${histFilter===k?'on':''}">${l}</button>`).join('')}</div>
+  if (!db.sessions.length) { v.innerHTML = `<div class="empty" style="padding:60px 10px">No workouts yet.<br><br><a class="btn primary" href="#/log">Log a workout</a></div>`; return; }
+  const cats = enabledCats().filter(k => db.sessions.some(s => catOf(s) === k));
+  const filters = [['all','All'], ...(cats.length > 1 ? cats.map(k => [k, CATS[k].label]) : []), ...(enabled('grappling') ? [['gi','Gi'],['nogi','No-Gi']] : []), ['comp','Competition']];
+  if (!filters.some(f => f[0]===histFilter)) histFilter = 'all';
+  v.innerHTML = `<div class="search"><input class="input" type="search" placeholder="Search workouts, partners, notes…" value="${esc(histQuery)}" id="q"></div>
+    <div class="filters">${filters.map(([k,l]) => `<button data-f="${k}" class="${histFilter===k?'on':''}">${l}</button>`).join('')}</div>
     <div id="list"></div>`;
   const draw = () => {
     const q = histQuery.toLowerCase();
     const list = sorted().filter(s => {
-      if (histFilter==='gi' && s.gi!=='gi') return false;
-      if (histFilter==='nogi' && s.gi!=='nogi') return false;
-      if (!['all','gi','nogi'].includes(histFilter) && s.type!==histFilter) return false;
+      if (CATS[histFilter] && catOf(s) !== histFilter) return false;
+      if (histFilter==='gi' && !(catOf(s)==='grappling' && s.gi==='gi')) return false;
+      if (histFilter==='nogi' && !(catOf(s)==='grappling' && s.gi==='nogi')) return false;
+      if (histFilter==='comp' && s.type!=='comp') return false;
       if (!q) return true;
-      const hay = [s.notes, typeLabel(s.type), ...(s.techniques||[]), ...(s.rolls||[]).flatMap(r => [r.partner, ...(r.subsLanded||[]), ...(r.subsTapped||[]), ...(r.stuck||[])])].join(' ').toLowerCase();
+      const hay = [s.notes, sessTitle(s), CATS[catOf(s)].label, ...(s.techniques||[]), ...(s.exercises||[]).map(e => e.name), ...(s.strike?.spar||[]).flatMap(x => [x.partner, x.notes]),
+        ...(s.rolls||[]).flatMap(r => [r.partner, ...(r.subsLanded||[]), ...(r.subsTapped||[]), ...(r.stuck||[])])].join(' ').toLowerCase();
       return hay.includes(q);
     });
     let html = '', cur = '';
     list.forEach(s => { const d = parse(s.date), m = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`; if (m !== cur) { cur = m; const n = list.filter(x => x.date.startsWith(s.date.slice(0,7))).length; html += `<div class="month">${m} · ${n}</div>`; } html += sessRow(s); });
-    $('#list').innerHTML = html || `<div class="empty">No matching sessions.</div>`;
+    $('#list').innerHTML = html || `<div class="empty">No matching workouts.</div>`;
   };
   $('#q').oninput = e => { histQuery = e.target.value; draw(); };
   v.querySelectorAll('.filters button').forEach(b => b.onclick = () => { histFilter = b.dataset.f; v.querySelectorAll('.filters button').forEach(x => x.classList.toggle('on', x===b)); draw(); });
   draw();
 }
 
+function hrBlock(hr){
+  if (!hr) return '';
+  const z = hr.zones || [], tot = z.reduce((a,x) => a + (Number(x)||0), 0), cols = ['#5b8def','#6fd3a8','#f5b83d','#ff9a3c','#E8392F'];
+  return `<div class="card"><h2>Heart rate</h2><div class="kv" style="margin-bottom:${tot?10:0}px"><div><b>${hr.avg||'—'}</b><span>Avg bpm</span></div><div><b>${hr.max||'—'}</b><span>Max bpm</span></div><div><b>${hr.cal||'—'}</b><span>kcal</span></div></div>
+    ${tot ? `<div class="split">${z.map((x,i) => `<i style="width:${(Number(x)||0)/tot*100}%;background:${cols[i]}"></i>`).join('')}</div><div class="split-l zl">${z.map((x,i) => `<span><i style="background:${cols[i]}"></i>Z${i+1} ${r1(Number(x)||0)}m</span>`).join('')}</div>` : ''}</div>`;
+}
 function viewSession(id){
   const s = db.sessions.find(x => x.id === id);
   if (!s) { location.hash = '#/history'; return; }
-  setHeader(typeLabel(s.type), `<a class="btn sm" href="#/edit/${esc(s.id)}">Edit</a>`);
+  const c = catOf(s);
+  setHeader(sessTitle(s), `<a class="btn sm" href="#/edit/${esc(s.id)}">Edit</a>`);
   const rolls = s.rolls||[];
+  let body = '';
+  if (c === 'grappling') body = `<div class="card"><h2>Techniques drilled</h2>${(s.techniques||[]).length ? `<div class="chips">${s.techniques.map(t => `<span class="chip" style="padding:7px 12px">${esc(t)}</span>`).join('')}</div>` : '<div class="empty" style="padding:4px 0">—</div>'}</div>
+    <div class="card"><h2>Rolls <small>${rolls.filter(r=>r.result==='win').length}W · ${rolls.filter(r=>r.result==='loss').length}L · ${rolls.filter(r=>r.result==='draw').length}D</small></h2>${rolls.length ? rolls.map((r,i) => rollCard(r,i,false)).join('') : '<div class="empty" style="padding:4px 0">No rolls logged</div>'}</div>`;
+  if (c === 'striking') { const m = s.strike?.mix || {}; body = `<div class="card"><h2>Rounds <small>${s.rounds||0} × ${s.strike?.roundLen||3} min</small></h2><div class="mix">${STRIKE_MIX.map(([k,l]) => `<div><b>${m[k]||0}</b><span>${l}</span></div>`).join('')}</div></div>
+    ${(s.strike?.spar||[]).length ? `<div class="card"><h2>Sparring notes</h2>${s.strike.spar.map(x => `<div class="list-row"><div class="grow"><b>${esc(x.partner||'Partner')}</b><small style="white-space:pre-wrap">${esc(x.notes)}</small></div></div>`).join('')}</div>` : ''}
+    ${(s.techniques||[]).length ? `<div class="card"><h2>Worked on</h2><div class="chips">${s.techniques.map(t => `<span class="chip" style="padding:7px 12px">${esc(t)}</span>`).join('')}</div></div>` : ''}`; }
+  if (c === 'weights') { const prs = prMap(s.id); body = `<div class="card"><h2>Exercises <small>${Math.round(volumeOf(s)).toLocaleString()} ${unit()} volume</small></h2>${(s.exercises||[]).length ? s.exercises.map(e => { const best = Math.max(0, ...e.sets.map(x => e1rm(Number(x.weight)||0, Number(x.reps)||0))); const pr = best && best > (prs[e.name.toLowerCase()]?.e1 || 0); return `<div class="ex-view"><div class="t"><b>${esc(e.name)}</b>${pr ? '<span class="pill pr">PR</span>' : ''}</div><div class="sets">${e.sets.map((x,i) => `<span>${i+1}. ${x.reps||0} × ${x.weight||0}${x.rpe!==''&&x.rpe!=null?` @${x.rpe}`:''}</span>`).join('')}</div></div>`; }).join('') : '<div class="empty" style="padding:4px 0">No exercises logged</div>'}</div>`; }
+  if (c === 'cardio' && s.cardio) { const k = s.cardio; body = `<div class="kv"><div><b>${k.distance ? r1(k.distance) : '—'}<small style="font-size:13px;color:var(--muted)"> ${k.unit}</small></b><span>Distance</span></div><div><b>${k.sec ? fmtDur(k.sec) : s.duration+'m'}</b><span>Time</span></div><div><b>${(s.discipline==='bike' ? speedStr(k.sec,k.distance,k.unit) : paceStr(k.sec,k.distance,k.unit)) || '—'}</b><span>${s.discipline==='bike'?'Speed':'Pace'}</span></div></div>`; }
   $('#view').innerHTML = `
-    <div style="color:var(--muted);font-weight:650;margin:0 4px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">${fmtDate(s.date)} <span class="pill ${s.gi==='nogi'?'nogi':'gi'}">${s.gi==='nogi'?'No-Gi':'Gi'}</span>${s.sample?'<span class="pill sample">Sample</span>':''}</div>
-    <div class="kv"><div><b>${s.duration}<small style="font-size:13px;color:var(--muted)"> min</small></b><span>Duration</span></div><div><b>${s.rounds||0}</b><span>Rounds</span></div><div><b>${s.intensity}/5</b><span>${INTENSITY[s.intensity]||''}</span></div></div>
+    <div class="sess-meta">${catDot(c)}${CATS[c].label} · ${fmtDate(s.date)} ${c==='grappling'&&s.discipline==='bjj' ? `<span class="pill ${s.gi==='nogi'?'nogi':'gi'}">${s.gi==='nogi'?'No-Gi':'Gi'}</span>` : ''}${s.sample?'<span class="pill sample">Sample</span>':''}${s.source?`<span class="pill">📎 ${esc(s.source)}</span>`:''}</div>
+    <div class="kv"><div><b>${s.duration}<small style="font-size:13px;color:var(--muted)"> min</small></b><span>Duration</span></div><div><b>${c==='weights'||c==='cardio' ? (INTENSITY[s.intensity]||'') : (s.rounds||0)}</b><span>${c==='weights'||c==='cardio' ? 'Effort' : 'Rounds'}</span></div><div><b>${s.intensity}/5</b><span>Intensity</span></div></div>
+    ${body}${hrBlock(s.hr)}
     ${s.weight ? `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span style="color:var(--muted);font-weight:650">Body weight</span><b style="font-size:20px">${esc(s.weight)} ${unit()}</b></div>` : ''}
-    <div class="card"><h2>Techniques drilled</h2>${(s.techniques||[]).length ? `<div style="display:flex;flex-wrap:wrap;gap:8px">${s.techniques.map(t => `<span class="chip" style="padding:7px 12px">${esc(t)}</span>`).join('')}</div>` : '<div class="empty" style="padding:4px 0">—</div>'}</div>
-    <div class="card"><h2>Rolls <small>${rolls.filter(r=>r.result==='win').length}W · ${rolls.filter(r=>r.result==='loss').length}L · ${rolls.filter(r=>r.result==='draw').length}D</small></h2>${rolls.length ? rolls.map((r,i) => rollCard(r,i,false)).join('') : '<div class="empty" style="padding:4px 0">No rolls logged</div>'}</div>
     ${s.notes ? `<div class="card"><h2>Notes</h2><div style="white-space:pre-wrap">${esc(s.notes)}</div></div>` : ''}
-    <div style="display:flex;gap:10px;margin-top:6px"><a class="btn primary" style="flex:1" href="#/edit/${esc(s.id)}">Edit session</a><button class="btn danger" id="del">Delete</button></div>`;
-  $('#del').onclick = async () => { if (await confirmSheet('Delete this session?', `${fmtDate(s.date)} · ${typeLabel(s.type)}. This can't be undone.`)) { db.sessions = db.sessions.filter(x => x.id !== s.id); save(); toast('Session deleted'); location.hash = '#/history'; } };
+    <div style="display:flex;gap:10px;margin-top:6px"><a class="btn primary" style="flex:1" href="#/edit/${esc(s.id)}">Edit</a><button class="btn danger" id="del">Delete</button></div>`;
+  $('#del').onclick = async () => { if (await confirmSheet('Delete this workout?', `${fmtDate(s.date)} · ${sessTitle(s)}. This can't be undone.`)) { db.sessions = db.sessions.filter(x => x.id !== s.id); save(); toast('Workout deleted'); location.hash = '#/history'; } };
 }
 
 function rollCard(r, i, editable){
@@ -351,122 +472,463 @@ function rollCard(r, i, editable){
     ${editable ? `<button type="button" class="iconbtn" data-edit aria-label="Edit roll"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button>` : ''}</div>${chips ? `<div class="chips">${chips}</div>` : ''}</div>`;
 }
 
-/* ---------------- session form ---------------- */
-let form = null;
-function blankSession(){
-  const last = sorted()[0];
-  return { id:null, date:today(), gi:last?.gi || 'gi', type:'class', duration:last?.duration || 60, rounds:5, intensity:3, techniques:[], rolls:[], weight:'', notes:'' };
+/* PRs: best estimated 1RM / heaviest set per exercise, optionally excluding one session */
+function prMap(excludeId){
+  const m = {};
+  db.sessions.forEach(s => { if (s.id === excludeId) return; (s.exercises||[]).forEach(e => e.sets.forEach(x => {
+    const w = Number(x.weight)||0, r = Number(x.reps)||0, k = e.name.toLowerCase(), v = e1rm(w, r);
+    const cur = m[k] || (m[k] = { name:e.name, e1:0, w:0, r:0, date:'', reps:0 });
+    if (v > cur.e1) Object.assign(cur, { e1:v, w, r, date:s.date });
+    if (!w && r > cur.reps) cur.reps = r;
+  })); });
+  return m;
 }
+
+/* ---------------- session form (quick log + details) ---------------- */
+let form = null;
+function blankSession(cat){
+  cat = cat || catOf(sorted().find(s => enabledCats().includes(catOf(s))) || { category:enabledCats()[0] });
+  const last = lastOf(cat);
+  return { id:null, date:today(), category:cat, discipline:last?.discipline || CATS[cat].disc[0][0], gi:last?.gi || 'gi', type:'class',
+    duration:last?.duration || CATS[cat].dur, rounds:cat==='striking' ? (last?.rounds||6) : cat==='grappling' ? 5 : 0, intensity:3, techniques:[], rolls:[], weight:'', notes:'',
+    strike:{ roundLen:last?.strike?.roundLen || 3, mix:{ shadow:0, pads:0, bag:0, drills:0, sparring:0 }, spar:[] },
+    exercises:[], cardio:{ distance:'', unit:distU(), sec:0 }, hr:{ avg:'', max:'', cal:'', zones:['','','','',''] }, _open:false };
+}
+function hydrate(s){
+  const b = blankSession(catOf(s)), f = JSON.parse(JSON.stringify(s));
+  f.strike = f.strike ? { ...b.strike, ...f.strike, mix:{ ...b.strike.mix, ...(f.strike.mix||{}) }, spar:f.strike.spar||[] } : b.strike;
+  f.exercises = f.exercises || []; f.cardio = f.cardio || b.cardio; f.hr = f.hr ? { ...b.hr, ...f.hr, zones:f.hr.zones||b.hr.zones } : b.hr;
+  f._open = true; return f;
+}
+function toRecord(f){
+  const c = f.category, out = { ...f };
+  delete out._open; delete out._durTouched;
+  if (c !== 'grappling') { out.rolls = []; }
+  if (c !== 'striking') delete out.strike;
+  if (c !== 'weights') delete out.exercises; else out.exercises = f.exercises.map(e => ({ ...e, sets:e.sets.filter(x => x.reps !== '' || x.weight !== '') }));
+  if (c !== 'cardio') delete out.cardio; else if (!f.cardio.distance && !f.cardio.sec) delete out.cardio;
+  if (c === 'striking') out.rounds = Math.max(Number(f.rounds)||0, STRIKE_MIX.reduce((a,[k]) => a + (Number(f.strike.mix[k])||0), 0));
+  if (c === 'grappling') out.rounds = Math.max(Number(f.rounds)||0, f.rolls.length);
+  if (c === 'cardio' && f.cardio.sec) out.duration = Math.max(1, Math.round(f.cardio.sec/60));
+  return out;
+}
+
 function viewForm(id){
   const editing = !!id;
   if (editing) {
     const s = db.sessions.find(x => x.id === id);
     if (!s) { location.hash = '#/history'; return; }
-    if (!form || form.id !== id) form = JSON.parse(JSON.stringify(s));
+    if (!form || form.id !== id) form = hydrate(s);
   } else if (!form || form.id) form = blankSession();
-  setHeader(editing ? 'Edit session' : 'Log session');
+  setHeader(editing ? 'Edit workout' : 'Log workout');
   const v = $('#view'); v.innerHTML = '';
-  const f = form;
+  const f = form, cats = enabledCats();
+  if (!cats.includes(f.category) && !editing) cats.push(f.category);
+  if (editing && !cats.includes(f.category)) cats.push(f.category);
+  const redraw = () => { const y = window.scrollY; viewForm(id); window.scrollTo(0, y); };
 
+  if (!editing) { const rb = repeatButtons(); if (rb) { const r = h(`<div class="field"><label>Log again</label>${rb}</div>`); wireRepeat(r, () => { location.hash = '#/'; }); v.appendChild(r); } }
+
+  // 1. category
+  const catEl = h(`<div class="cats n${cats.length}" role="radiogroup">${cats.map(k => `<button type="button" role="radio" data-c="${k}" class="${f.category===k?'on':''}" aria-checked="${f.category===k}" style="--cat:${CATS[k].color}"><svg viewBox="0 0 24 24">${CATS[k].icon}</svg>${CATS[k].label}</button>`).join('')}</div>`);
+  catEl.querySelectorAll('button').forEach(b => b.onclick = () => {
+    if (f.category === b.dataset.c) return;
+    const nb = blankSession(b.dataset.c);
+    f.category = nb.category; f.discipline = nb.discipline; f.gi = nb.gi;
+    if (!f._durTouched) f.duration = nb.duration;
+    if (f.category === 'striking' && !f.rounds) f.rounds = nb.rounds;
+    redraw();
+  });
+  v.appendChild(field('Workout', catEl));
+  // 2. discipline (+ gi for BJJ)
+  const C = CATS[f.category];
+  if (C.disc.length > 1) v.appendChild(field(f.category === 'cardio' ? 'Activity' : 'Style', seg(C.disc, f.discipline, x => { f.discipline = x; if (f.category === 'grappling') redraw(); }, C.disc.length > 4)));
+  if (f.category === 'grappling' && f.discipline === 'bjj') v.appendChild(field('Uniform', seg([['gi','Gi'],['nogi','No-Gi']], f.gi, x => f.gi = x)));
+  // 3. duration + date
+  const g = h('<div class="grid2"></div>');
+  g.appendChild(field('Duration', stepper(f.duration, { step:f.category==='cardio' ? 5 : 15, min:0, max:600, unitLabel:'min', onChange:x => { f.duration = x; f._durTouched = true; } })));
   const date = h(`<input class="input" type="date" value="${esc(f.date)}" max="${today()}">`);
   date.onchange = () => { f.date = date.value || today(); };
-  v.appendChild(field('Date', date));
-  v.appendChild(field('Uniform', seg([['gi','Gi'],['nogi','No-Gi']], f.gi, x => f.gi = x)));
-  v.appendChild(field('Session type', seg(SESSION_TYPES, f.type, x => f.type = x, true)));
-  const g = h('<div class="grid2"></div>');
-  g.appendChild(field('Duration', stepper(f.duration, { step:15, min:0, max:600, unitLabel:'min', onChange:x => f.duration = x })));
-  const roundsStep = stepper(f.rounds, { min:0, max:50, unitLabel:'rds', onChange:x => f.rounds = x });
-  g.appendChild(field('Rounds', roundsStep));
+  g.appendChild(field('Date', date));
   v.appendChild(g);
 
-  const intens = h(`<div><div class="intensity">${[1,2,3,4,5].map(i => `<button type="button" data-i="${i}" aria-label="Intensity ${i}">${i}</button>`).join('')}</div><div class="hint" id="intLabel"></div></div>`);
-  const syncI = () => { intens.querySelectorAll('button').forEach(b => b.classList.toggle('on', Number(b.dataset.i) === f.intensity)); intens.querySelector('#intLabel').textContent = INTENSITY[f.intensity]; };
-  intens.querySelectorAll('button').forEach(b => b.onclick = () => { f.intensity = Number(b.dataset.i); syncI(); });
-  syncI();
-  v.appendChild(field('Intensity', intens));
-
-  v.appendChild(field('Techniques drilled', tagField({ values:f.techniques, suggestions:() => uniqueMerge(usedTechniques(), TECHNIQUES), placeholder:'Add technique…' })));
-
-  const rollsWrap = h(`<div class="field"><div class="label" style="display:flex;justify-content:space-between;align-items:center">Rolls <span style="text-transform:none;letter-spacing:0;color:var(--dim);font-weight:600" id="rollSum"></span></div><div id="rollList"></div><button type="button" class="btn block" id="addRoll"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add roll</button></div>`);
-  v.appendChild(rollsWrap);
-  const drawRolls = () => {
-    const list = rollsWrap.querySelector('#rollList');
-    list.innerHTML = f.rolls.map((r,i) => rollCard(r,i,true)).join('');
-    list.querySelectorAll('.roll').forEach(el => el.onclick = () => editRoll(Number(el.dataset.i)));
-    rollsWrap.querySelector('#rollSum').textContent = f.rolls.length ? `${f.rolls.filter(r=>r.result==='win').length}W · ${f.rolls.filter(r=>r.result==='loss').length}L · ${f.rolls.filter(r=>r.result==='draw').length}D` : 'Optional';
-    if (f.rolls.length > f.rounds) { f.rounds = f.rolls.length; roundsStep.querySelector('input').value = f.rounds; }
-  };
-  const editRoll = i => {
-    const isNew = i == null;
-    const r = isNew ? { id:uid(), partner:'', result:'draw', subsLanded:[], subsTapped:[], stuck:[] } : JSON.parse(JSON.stringify(f.rolls[i]));
-    const el = h(`<div><h3>${isNew ? `Roll ${f.rolls.length+1}` : `Edit roll ${i+1}`}</h3></div>`);
-    const partner = h(`<input class="input" type="text" autocapitalize="words" autocomplete="off" placeholder="Optional" value="${esc(r.partner)}" list="partners">`);
-    const pw = h('<div></div>'); pw.appendChild(partner); pw.appendChild(h(`<datalist id="partners">${usedPartners().map(p => `<option value="${esc(p)}">`).join('')}</datalist>`));
-    partner.oninput = () => r.partner = partner.value;
-    el.appendChild(field('Partner', pw));
-    el.appendChild(field('Result', seg([['win','Won'],['draw','Draw'],['loss','Lost']], r.result, x => r.result = x)));
-    const subList = () => uniqueMerge(usedSubs(), SUBMISSIONS);
-    el.appendChild(field('Submissions landed', tagField({ values:r.subsLanded, suggestions:subList, placeholder:'e.g. Armbar' })));
-    el.appendChild(field('Tapped to', tagField({ values:r.subsTapped, suggestions:subList, placeholder:'e.g. Triangle', kind:'loss' })));
-    el.appendChild(field('Got stuck in', tagField({ values:r.stuck, suggestions:() => uniqueMerge(usedPositions(), POSITIONS), placeholder:'Position…', kind:'neutral' })));
-    const btns = h(`<div style="display:flex;gap:10px;margin-top:8px">${isNew ? '' : '<button type="button" class="btn danger" data-del>Remove</button>'}<button type="button" class="btn primary" style="flex:1" data-save>${isNew ? 'Add roll' : 'Save roll'}</button></div>`);
-    btns.querySelector('[data-save]').onclick = () => { r.partner = partner.value.trim(); if (isNew) f.rolls.push(r); else f.rolls[i] = r; closeSheet(); drawRolls(); };
-    const del = btns.querySelector('[data-del]'); if (del) del.onclick = () => { f.rolls.splice(i,1); closeSheet(); drawRolls(); };
-    el.appendChild(btns);
-    openSheet(el);
-  };
-  rollsWrap.querySelector('#addRoll').onclick = () => editRoll(null);
-  drawRolls();
-
+  // 4. details expander
+  const det = h(`<details class="details" ${f._open ? 'open' : ''}><summary><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add details <small>optional</small></summary><div class="det-body"></div></details>`);
+  det.addEventListener('toggle', () => f._open = det.open);
+  const D = det.querySelector('.det-body');
+  // file import
+  const imp = h(`<div class="field"><label>Import from a file</label><label class="btn block" for="wkFile"><svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg>GPX · TCX · FIT · CSV</label><input type="file" id="wkFile" accept=".gpx,.tcx,.fit,.csv,application/gpx+xml,application/vnd.garmin.tcx+xml,text/csv" hidden>${f.source ? `<div class="hint">📎 ${esc(f.source)}</div>` : '<div class="hint">Fills in date, time, distance, heart rate and calories from a watch or app export.</div>'}</div>`);
+  imp.querySelector('#wkFile').onchange = async e => { const file = e.target.files[0]; if (!file) return; try { const r = await parseWorkoutFile(file); applyImport(f, r, file.name); toast('Workout file imported'); f._open = true; redraw(); } catch(err) { console.warn(err); toast(`Couldn't read that file`); } };
+  D.appendChild(imp);
+  if (f.category === 'grappling' || f.category === 'striking') {
+    D.appendChild(field('Session type', seg(SESSION_TYPES.filter(t => t[0] !== 'seminar' || f.category === 'grappling'), f.type, x => f.type = x, true)));
+  }
+  if (f.category === 'grappling') {
+    const roundsStep = stepper(f.rounds, { min:0, max:50, unitLabel:'rds', onChange:x => f.rounds = x });
+    D.appendChild(field('Rounds', roundsStep));
+    D.appendChild(field('Techniques drilled', tagField({ values:f.techniques, suggestions:() => uniqueMerge(usedTechniques(), TECHNIQUES), placeholder:'Add technique…' })));
+    const rollsWrap = h(`<div class="field"><div class="label" style="display:flex;justify-content:space-between;align-items:center">Rolls <span style="text-transform:none;letter-spacing:0;color:var(--dim);font-weight:600" id="rollSum"></span></div><div id="rollList"></div><button type="button" class="btn block" id="addRoll"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add roll</button></div>`);
+    D.appendChild(rollsWrap);
+    const drawRolls = () => {
+      const list = rollsWrap.querySelector('#rollList');
+      list.innerHTML = f.rolls.map((r,i) => rollCard(r,i,true)).join('');
+      list.querySelectorAll('.roll').forEach(el => el.onclick = () => editRoll(Number(el.dataset.i)));
+      rollsWrap.querySelector('#rollSum').textContent = f.rolls.length ? `${f.rolls.filter(r=>r.result==='win').length}W · ${f.rolls.filter(r=>r.result==='loss').length}L · ${f.rolls.filter(r=>r.result==='draw').length}D` : 'Optional';
+      if (f.rolls.length > f.rounds) { f.rounds = f.rolls.length; roundsStep.querySelector('input').value = f.rounds; }
+    };
+    const editRoll = i => {
+      const isNew = i == null;
+      const r = isNew ? { id:uid(), partner:'', result:'draw', subsLanded:[], subsTapped:[], stuck:[] } : JSON.parse(JSON.stringify(f.rolls[i]));
+      const el = h(`<div><h3>${isNew ? `Roll ${f.rolls.length+1}` : `Edit roll ${i+1}`}</h3></div>`);
+      const partner = h(`<input class="input" type="text" autocapitalize="words" autocomplete="off" placeholder="Optional" value="${esc(r.partner)}" list="partners">`);
+      const pw = h('<div></div>'); pw.appendChild(partner); pw.appendChild(h(`<datalist id="partners">${usedPartners().map(p => `<option value="${esc(p)}">`).join('')}</datalist>`));
+      partner.oninput = () => r.partner = partner.value;
+      el.appendChild(field('Partner', pw));
+      el.appendChild(field('Result', seg([['win','Won'],['draw','Draw'],['loss','Lost']], r.result, x => r.result = x)));
+      const subList = () => uniqueMerge(usedSubs(), SUBMISSIONS);
+      el.appendChild(field('Submissions landed', tagField({ values:r.subsLanded, suggestions:subList, placeholder:'e.g. Armbar' })));
+      el.appendChild(field('Tapped to', tagField({ values:r.subsTapped, suggestions:subList, placeholder:'e.g. Triangle', kind:'loss' })));
+      el.appendChild(field('Got stuck in', tagField({ values:r.stuck, suggestions:() => uniqueMerge(usedPositions(), POSITIONS), placeholder:'Position…', kind:'neutral' })));
+      const btns = h(`<div style="display:flex;gap:10px;margin-top:8px">${isNew ? '' : '<button type="button" class="btn danger" data-del>Remove</button>'}<button type="button" class="btn primary" style="flex:1" data-save>${isNew ? 'Add roll' : 'Save roll'}</button></div>`);
+      btns.querySelector('[data-save]').onclick = () => { r.partner = partner.value.trim(); if (isNew) f.rolls.push(r); else f.rolls[i] = r; closeSheet(); drawRolls(); };
+      const del = btns.querySelector('[data-del]'); if (del) del.onclick = () => { f.rolls.splice(i,1); closeSheet(); drawRolls(); };
+      el.appendChild(btns);
+      openSheet(el);
+    };
+    rollsWrap.querySelector('#addRoll').onclick = () => editRoll(null);
+    drawRolls();
+  }
+  if (f.category === 'striking') {
+    const g2 = h('<div class="grid2"></div>');
+    const rs = stepper(f.rounds, { min:0, max:60, unitLabel:'rds', onChange:x => f.rounds = x });
+    g2.appendChild(field('Total rounds', rs));
+    g2.appendChild(field('Round length', stepper(f.strike.roundLen, { min:1, max:10, unitLabel:'min', onChange:x => f.strike.roundLen = x })));
+    D.appendChild(g2);
+    const mix = h('<div class="mixgrid"></div>');
+    STRIKE_MIX.forEach(([k,l]) => mix.appendChild(field(l, stepper(f.strike.mix[k]||0, { min:0, max:40, unitLabel:'', onChange:x => { f.strike.mix[k] = x; const sum = STRIKE_MIX.reduce((a,[kk]) => a + (Number(f.strike.mix[kk])||0), 0); if (sum > f.rounds) { f.rounds = sum; rs.querySelector('input').value = sum; } } }))));
+    D.appendChild(field('Rounds by type', mix));
+    const sp = h(`<div class="field"><label>Sparring partners</label><div class="sparlist"></div><button type="button" class="btn block" id="addSpar"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add sparring partner</button></div>`);
+    const drawSpar = () => { const L = sp.querySelector('.sparlist'); L.innerHTML = ''; f.strike.spar.forEach((x,i) => {
+      const row = h(`<div class="spar"><div style="display:flex;gap:8px"><input class="input" type="text" autocapitalize="words" placeholder="Partner" value="${esc(x.partner)}"><button type="button" class="iconbtn big" aria-label="Remove partner"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><textarea class="input" rows="2" placeholder="What worked, what to fix…">${esc(x.notes)}</textarea></div>`);
+      row.querySelector('input').oninput = e => x.partner = e.target.value; row.querySelector('textarea').oninput = e => x.notes = e.target.value;
+      row.querySelector('button').onclick = () => { f.strike.spar.splice(i,1); drawSpar(); }; L.appendChild(row); }); };
+    sp.querySelector('#addSpar').onclick = () => { f.strike.spar.push({ partner:'', notes:'' }); drawSpar(); sp.querySelector('.spar:last-child input').focus(); };
+    drawSpar(); D.appendChild(sp);
+    D.appendChild(field('Worked on', tagField({ values:f.techniques, suggestions:() => uniqueMerge(countBy(db.sessions.filter(s => catOf(s)==='striking').flatMap(s => s.techniques||[])).map(x => x[0]), STRIKE_TECH), placeholder:'Combo, technique…' })));
+  }
+  if (f.category === 'weights') D.appendChild(exerciseEditor(f));
+  if (f.category === 'cardio') {
+    const k = f.cardio;
+    const g3 = h('<div class="grid2"></div>');
+    const dist = h(`<div class="stepper" style="padding-left:14px"><input type="text" inputmode="decimal" placeholder="0.0" value="${esc(k.distance)}" style="text-align:left;font-weight:650" data-k="distance"><span class="unit" style="padding-right:12px"></span></div>`);
+    const di = dist.querySelector('input');
+    g3.appendChild(field('Distance', dist));
+    g3.appendChild(field('Unit', seg([['mi','mi'],['km','km']], k.unit, x => { if (num(k.distance)) { k.distance = r2(toUnit(num(k.distance), k.unit, x)); di.value = k.distance; } k.unit = x; drawPace(); })));
+    D.appendChild(g3);
+    const hh = Math.floor(k.sec/3600), mm = Math.floor(k.sec%3600/60), ss = k.sec%60;
+    const tm = h(`<div class="hms"><input class="input" type="text" inputmode="numeric" aria-label="Hours" placeholder="h" value="${k.sec?hh:''}"><span>:</span><input class="input" type="text" inputmode="numeric" aria-label="Minutes" placeholder="mm" value="${k.sec?pad(mm):''}"><span>:</span><input class="input" type="text" inputmode="numeric" aria-label="Seconds" placeholder="ss" value="${k.sec?pad(ss):''}"></div>`);
+    const paceEl = h('<div class="pace"></div>');
+    const [ih, im, is] = tm.querySelectorAll('input');
+    const readT = () => { k.sec = (num(ih.value)*3600) + (num(im.value)*60) + num(is.value); if (k.sec) f.duration = Math.max(1, Math.round(k.sec/60)); drawPace(); };
+    [ih, im, is].forEach(i => i.oninput = readT);
+    di.oninput = () => { k.distance = di.value.replace(/[^\d.]/g,''); drawPace(); };
+    function drawPace(){ const d = num(k.distance); paceEl.innerHTML = d && k.sec ? `<span>Pace <b>${paceStr(k.sec, d, k.unit)}</b></span><span>Speed <b>${speedStr(k.sec, d, k.unit)}</b></span>` : '<span>Enter distance and time to see your pace</span>'; }
+    D.appendChild(field('Time (h:mm:ss)', tm)); D.appendChild(paceEl); drawPace();
+  }
+  if (f.category === 'grappling' || f.category === 'striking' || f.category === 'weights' || f.category === 'cardio') {
+    const intens = h(`<div><div class="intensity">${[1,2,3,4,5].map(i => `<button type="button" data-i="${i}" aria-label="Intensity ${i}">${i}</button>`).join('')}</div><div class="hint" id="intLabel"></div></div>`);
+    const syncI = () => { intens.querySelectorAll('button').forEach(b => b.classList.toggle('on', Number(b.dataset.i) === f.intensity)); intens.querySelector('#intLabel').textContent = INTENSITY[f.intensity]; };
+    intens.querySelectorAll('button').forEach(b => b.onclick = () => { f.intensity = Number(b.dataset.i); syncI(); });
+    syncI(); D.appendChild(field('Intensity', intens));
+  }
+  // heart rate
+  const hr = f.hr, hrEl = h(`<div class="hrbox"><div class="grid3"></div><div class="label sect" style="margin-top:10px">Minutes in zone</div><div class="zones"></div></div>`);
+  [['avg','Avg HR'],['max','Max HR'],['cal','Calories']].forEach(([k2,l]) => { const i = h(`<input class="input num" type="text" inputmode="numeric" placeholder="—" value="${esc(hr[k2])}" data-hr="${k2}">`); i.oninput = () => hr[k2] = i.value.replace(/[^\d.]/g,''); hrEl.querySelector('.grid3').appendChild(field(l, i)); });
+  hr.zones.forEach((z,i) => { const inp = h(`<input class="input num" type="text" inputmode="decimal" placeholder="—" value="${esc(z)}" aria-label="Zone ${i+1} minutes" data-z="${i}">`); inp.oninput = () => hr.zones[i] = inp.value.replace(/[^\d.]/g,''); const w = h(`<div class="z"><span>Z${i+1}</span></div>`); w.appendChild(inp); hrEl.querySelector('.zones').appendChild(w); });
+  D.appendChild(field('Heart rate', hrEl));
+  // body weight + notes
   const wt = h(`<div class="stepper" style="padding-left:14px"><input type="text" inputmode="decimal" placeholder="Optional" value="${esc(f.weight)}" style="text-align:left;font-weight:600"><span class="unit" style="padding-right:16px">${unit()}</span></div>`);
-  const wi = wt.querySelector('input');
-  wi.oninput = () => { f.weight = wi.value.replace(/[^\d.]/g,''); };
+  const wi = wt.querySelector('input'); wi.oninput = () => { f.weight = wi.value.replace(/[^\d.]/g,''); };
   const lastW = weightSeries().pop();
-  v.appendChild(field('Body weight', wt, lastW ? `Last: ${lastW.w} ${unit()} on ${fmtShort(lastW.date)}` : 'Track your weight alongside training'));
-
+  D.appendChild(field('Body weight', wt, lastW ? `Last: ${lastW.w} ${unit()} on ${fmtShort(lastW.date)}` : 'Track your weight alongside training'));
   const notes = h(`<textarea class="input" placeholder="What clicked? What to work on next time?">${esc(f.notes)}</textarea>`);
   notes.oninput = () => f.notes = notes.value;
-  v.appendChild(field('Notes', notes));
+  D.appendChild(field('Notes', notes));
+  v.appendChild(det);
 
-  const actions = h(`<div class="actions">${editing ? '<button type="button" class="btn danger" data-del style="flex:0 0 auto">Delete</button>' : ''}<button type="button" class="btn primary" data-save>${editing ? 'Save changes' : 'Save session'}</button></div>`);
+  const actions = h(`<div class="actions">${editing ? '<button type="button" class="btn danger" data-del style="flex:0 0 auto">Delete</button>' : ''}<button type="button" class="btn primary" data-save>${editing ? 'Save changes' : 'Save workout'}</button></div>`);
   actions.querySelector('[data-save]').onclick = () => {
     const w = String(f.weight||'').trim();
     if (w && (isNaN(Number(w)) || Number(w) <= 0)) { toast('Weight should be a number'); return; }
-    const rec = { ...f, weight: w ? Math.round(Number(w)*10)/10 : '', rounds: Math.max(f.rounds, f.rolls.length), updatedAt: Date.now() };
+    if (!f.duration && !(f.category==='cardio' && f.cardio.sec)) { toast('Add a duration'); return; }
+    const rec = sanitizeSession({ ...toRecord(f), weight: w ? Math.round(Number(w)*10)/10 : '', updatedAt: Date.now() });
     if (editing) { const i = db.sessions.findIndex(x => x.id === f.id); rec.sample = false; db.sessions[i] = rec; }
     else { rec.id = uid(); rec.createdAt = Date.now(); db.sessions.push(rec); }
     save(); form = null;
-    toast(editing ? 'Session updated' : 'Session saved 🤙');
+    toast(editing ? 'Workout updated' : 'Workout saved 🤙');
     location.hash = editing ? `#/session/${rec.id}` : '#/';
   };
   const d = actions.querySelector('[data-del]');
-  if (d) d.onclick = async () => { if (await confirmSheet('Delete this session?', "This can't be undone.")) { db.sessions = db.sessions.filter(x => x.id !== f.id); save(); form = null; toast('Session deleted'); location.hash = '#/history'; } };
+  if (d) d.onclick = async () => { if (await confirmSheet('Delete this workout?', "This can't be undone.")) { db.sessions = db.sessions.filter(x => x.id !== f.id); save(); form = null; toast('Workout deleted'); location.hash = '#/history'; } };
   v.appendChild(actions);
 }
+const r2 = n => Math.round(n*100)/100;
 
-/* ---------------- subs / analysis ---------------- */
-function viewStats(){
-  setHeader('Submissions');
-  const rolls = allRolls(), v = $('#view');
-  if (!rolls.length) { v.innerHTML = `<div class="empty" style="padding:60px 10px">Log rolls inside a session to see your submission breakdown.</div>`; return; }
+function exerciseEditor(f){
+  const wrap = h(`<div class="field"><div class="label" style="display:flex;justify-content:space-between">Exercises <span style="text-transform:none;letter-spacing:0;color:var(--dim);font-weight:600" id="volSum"></span></div><div class="exlist"></div><button type="button" class="btn block" id="addEx"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add exercise</button></div>`);
+  const list = wrap.querySelector('.exlist');
+  const known = () => uniqueMerge(countBy(db.sessions.flatMap(s => (s.exercises||[]).map(e => e.name))).map(x => x[0]), EXERCISES);
+  const prs = prMap(f.id);
+  const drawSum = () => { const v = f.exercises.reduce((a,e) => a + e.sets.reduce((b,x) => b + num(x.reps)*num(x.weight), 0), 0); wrap.querySelector('#volSum').textContent = v ? `${Math.round(v).toLocaleString()} ${unit()} volume` : 'Optional'; };
+  const draw = () => {
+    list.innerHTML = '';
+    f.exercises.forEach((e, ei) => {
+      const card = h(`<div class="excard"><div class="exhead"><input class="input exname" type="text" autocapitalize="words" autocomplete="off" placeholder="Exercise" value="${esc(e.name)}"><button type="button" class="iconbtn big" aria-label="Remove exercise"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button></div><div class="sugg"></div>
+        <div class="sethead"><span>Set</span><span>Reps</span><span>${unit()}</span><span>RPE</span><span></span></div><div class="sets"></div><div class="exfoot"><button type="button" class="btn sm" data-addset>+ Add set</button><span class="prnote"></span></div></div>`);
+      const name = card.querySelector('.exname'), sugg = card.querySelector('.sugg');
+      const drawSugg = () => { const q = name.value.trim().toLowerCase(); sugg.innerHTML = ''; if (document.activeElement !== name && e.name) return;
+        known().filter(x => !q || x.toLowerCase().includes(q)).filter(x => x.toLowerCase() !== q).slice(0,10).forEach(x => { const b = h(`<button type="button">${esc(x)}</button>`); b.onclick = () => { e.name = x; name.value = x; sugg.innerHTML = ''; drawPR(); }; sugg.appendChild(b); }); };
+      sugg.addEventListener('mousedown', ev => ev.preventDefault());
+      name.oninput = () => { e.name = name.value; drawSugg(); drawPR(); }; name.onfocus = drawSugg; name.onblur = () => setTimeout(() => { sugg.innerHTML = ''; }, 150);
+      card.querySelector('.exhead .iconbtn').onclick = () => { f.exercises.splice(ei,1); draw(); };
+      const setsEl = card.querySelector('.sets');
+      const drawPR = () => { const p = prs[(e.name||'').trim().toLowerCase()]; const best = Math.max(0, ...e.sets.map(x => e1rm(num(x.weight), num(x.reps))));
+        card.querySelector('.prnote').innerHTML = best && (!p || best > p.e1) ? `<span class="pill pr">New PR</span> est. 1RM ${Math.round(best)}` : p ? `PR: ${p.w} × ${p.r} (est. ${Math.round(p.e1)})` : ''; };
+      const drawSets = () => { setsEl.innerHTML = ''; e.sets.forEach((x, si) => {
+        const row = h(`<div class="setrow"><span>${si+1}</span><input class="input" type="text" inputmode="numeric" value="${esc(x.reps)}" aria-label="Reps" data-f="reps"><input class="input" type="text" inputmode="decimal" value="${esc(x.weight)}" aria-label="Weight" data-f="weight"><input class="input" type="text" inputmode="decimal" value="${esc(x.rpe)}" placeholder="—" aria-label="RPE" data-f="rpe"><button type="button" class="iconbtn" aria-label="Remove set"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`);
+        row.querySelectorAll('input').forEach(i => i.oninput = () => { x[i.dataset.f] = i.value.replace(/[^\d.]/g,''); drawSum(); drawPR(); });
+        row.querySelector('button').onclick = () => { e.sets.splice(si,1); drawSets(); drawSum(); drawPR(); };
+        setsEl.appendChild(row); }); };
+      card.querySelector('[data-addset]').onclick = () => { const l = e.sets[e.sets.length-1]; e.sets.push(l ? { ...l } : { reps:'', weight:'', rpe:'' }); drawSets(); drawSum(); const ins = setsEl.querySelectorAll('.setrow:last-child input'); ins[0] && ins[0].focus(); };
+      drawSets(); drawPR(); list.appendChild(card);
+    });
+    drawSum();
+  };
+  wrap.querySelector('#addEx').onclick = () => { f.exercises.push({ name:'', sets:[{ reps:'', weight:'', rpe:'' }] }); draw(); const ins = list.querySelectorAll('.exname'); const last = ins[ins.length-1]; last && last.focus(); };
+  draw();
+  return wrap;
+}
+
+/* ---------------- stats (deeper view) ---------------- */
+function catHours(days){
+  const from = iso(addDays(new Date(), -(days-1))), m = Object.fromEntries(CAT_KEYS.map(k => [k, 0]));
+  db.sessions.forEach(s => { if (s.date >= from && s.date <= today()) m[catOf(s)] += Number(s.duration)||0; });
+  return m;
+}
+function catBreakdown(){
+  const m30 = catHours(30), wk = Object.fromEntries(CAT_KEYS.map(k => [k, 0])), ws = iso(weekStart(new Date()));
+  db.sessions.forEach(s => { if (s.date >= ws && s.date <= today()) wk[catOf(s)] += Number(s.duration)||0; });
+  const tot = Object.values(m30).reduce((a,b) => a+b, 0);
+  const keys = CAT_KEYS.filter(k => m30[k] || wk[k] || enabled(k));
+  return `<div class="card" id="catCard"><h2>Hours by type <small>last 30 days</small></h2>
+    ${tot ? `<div class="split">${keys.map(k => `<i style="width:${m30[k]/tot*100}%;background:${CATS[k].color}"></i>`).join('')}</div>` : '<div class="empty" style="padding:2px 0">No workouts in the last 30 days.</div>'}
+    <div class="catrows">${keys.map(k => `<div class="list-row"><div class="grow">${catDot(k)}<b style="display:inline">${CATS[k].label}</b></div><span class="cv"><b>${hrs(m30[k])}</b> h<small>30 days</small></span><span class="cv"><b>${hrs(wk[k])}</b> h<small>this week</small></span></div>`).join('')}</div></div>`;
+}
+function prCard(){
+  const m = prMap(), list = Object.values(m).filter(p => p.e1).sort((a,b) => b.date.localeCompare(a.date) || b.e1 - a.e1).slice(0,6);
+  if (!list.length) return '';
+  const recent = iso(addDays(new Date(), -14));
+  return `<div class="card" id="prCard"><h2>Weights PRs <small>best set · est. 1RM</small></h2>${list.map(p => `<div class="list-row"><div class="grow"><b>${esc(p.name)}</b><small>${p.w} ${unit()} × ${p.r} · ${fmtShort(p.date)}</small></div>${p.date >= recent ? '<span class="pill pr">New</span>' : ''}<span class="cv"><b>${Math.round(p.e1)}</b><small>est. 1RM</small></span></div>`).join('')}</div>`;
+}
+function cardioCard(){
+  const list = db.sessions.filter(s => catOf(s) === 'cardio' && s.cardio);
+  if (!list.length) return '';
+  const u = distU(), ws = iso(weekStart(new Date())), ms = today().slice(0,7);
+  const dist = l => l.reduce((a,s) => a + toUnit(num(s.cardio.distance), s.cardio.unit, u), 0);
+  const wk = list.filter(s => s.date >= ws), mo = list.filter(s => s.date.startsWith(ms));
+  const runs = list.filter(s => s.discipline === 'run' && num(s.cardio.distance) && s.cardio.sec).slice(-10);
+  const rd = dist(runs), rs = runs.reduce((a,s) => a + s.cardio.sec, 0);
+  return `<div class="card" id="cardioCard"><h2>Cardio</h2><div class="kv" style="margin:0"><div><b>${r1(dist(wk))}<small style="font-size:13px;color:var(--muted)"> ${u}</small></b><span>This week</span></div><div><b>${r1(dist(mo))}<small style="font-size:13px;color:var(--muted)"> ${u}</small></b><span>This month</span></div><div><b>${rd ? fmtDur(rs/rd) : '—'}</b><span>Avg run pace /${u}</span></div></div></div>`;
+}
+function grapplingStats(){
+  const rolls = allRolls();
+  if (!rolls.length) return '';
   const w = rolls.filter(r => r.result==='win').length, l = rolls.filter(r => r.result==='loss').length, d = rolls.length - w - l;
   const landed = countBy(rolls.flatMap(r => r.subsLanded||[])), caught = countBy(rolls.flatMap(r => r.subsTapped||[]));
-  const stuck = countBy(rolls.flatMap(r => r.stuck||[])), tech = countBy(db.sessions.flatMap(s => s.techniques||[]));
+  const stuck = countBy(rolls.flatMap(r => r.stuck||[])), tech = countBy(db.sessions.filter(s => catOf(s)==='grappling').flatMap(s => s.techniques||[]));
   const split = g => { const rs = rolls.filter(r => r.session.gi===g); return { n:rs.length, w:rs.filter(r=>r.result==='win').length, l:rs.filter(r=>r.result==='loss').length,
     sl:rs.reduce((a,r)=>a+(r.subsLanded||[]).length,0), st:rs.reduce((a,r)=>a+(r.subsTapped||[]).length,0) }; };
   const gi = split('gi'), ng = split('nogi');
   const nl = landed.reduce((a,x)=>a+x[1],0), nc = caught.reduce((a,x)=>a+x[1],0);
-  v.innerHTML = `
+  return `<h3 class="sect-h">Grappling</h3>
     <div class="grid3" style="margin-bottom:14px"><div class="stat hero"><div class="v">${w}</div><div class="l">Won</div></div><div class="stat"><div class="v">${d}</div><div class="l">Draw</div></div><div class="stat"><div class="v" style="color:var(--loss)">${l}</div><div class="l">Lost</div></div></div>
     <div class="card"><h2>Sub ratio <small>${nl} landed · ${nc} caught</small></h2>
-      <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--surface2)"><i style="width:${nl+nc ? nl/(nl+nc)*100 : 50}%;background:var(--accent)"></i><i style="flex:1;background:var(--loss)"></i></div>
+      <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--surface2)"><i style="width:${nl+nc ? nl/(nl+nc)*100 : 50}%;background:var(--brand)"></i><i style="flex:1;background:var(--loss)"></i></div>
       <div class="hint" style="display:flex;justify-content:space-between"><span>${rolls.length} rolls logged</span><span>${nl+nc ? Math.round(nl/(nl+nc)*100) : 0}% finishes yours</span></div></div>
-    <div class="card"><h2>Landed</h2>${hbars(landed.slice(0,10),'win')}</div>
-    <div class="card"><h2>Caught by</h2>${hbars(caught.slice(0,10),'loss')}</div>
+    <div class="card"><h2>Submissions</h2><div class="subcols"><div><h3 class="win">Landed</h3>${hbars(landed.slice(0,6),'win')}</div><div><h3 class="loss">Caught by</h3>${hbars(caught.slice(0,6),'loss')}</div></div></div>
     <div class="card"><h2>Where I get stuck</h2>${hbars(stuck.slice(0,8),'loss')}</div>
     <div class="card"><h2>Gi vs No-Gi</h2>
       ${[['Gi',gi],['No-Gi',ng]].map(([n,x]) => `<div class="list-row"><div class="grow"><b>${n}</b><small>${x.n} rolls · ${x.w}W ${x.l}L</small></div><span class="chip" style="padding:5px 10px">✓ ${x.sl}</span><span class="chip loss" style="padding:5px 10px">✕ ${x.st}</span></div>`).join('')}</div>
     <div class="card"><h2>Most drilled</h2>${hbars(tech.slice(0,8),'win')}</div>`;
+}
+function viewStats(){
+  setHeader('Stats');
+  const v = $('#view');
+  if (!db.sessions.length) { v.innerHTML = `<div class="empty" style="padding:60px 10px">Log a few workouts to see your stats.<br><br><a class="btn primary" href="#/log">Log a workout</a></div>`; return; }
+  const st = periodStats(), weeks = weeklyHours(12), ws = weightSeries();
+  const avg = weeks.slice(0,-1).reduce((a,w) => a+w.min, 0) / 60 / Math.max(1, weeks.length-1);
+  const avgS = weeks.slice(0,-1).reduce((a,w) => a+w.n, 0) / Math.max(1, weeks.length-1);
+  let weightHtml = `<div class="empty">Add your body weight when you log a workout to see the trend.</div>`;
+  if (ws.length) {
+    const first = ws[0].w, last = ws[ws.length-1].w, diff = Math.round((last-first)*10)/10, goal = Number(db.profile.goalWeight) || null;
+    weightHtml = `<div style="display:flex;align-items:baseline;gap:10px;margin:-4px 0 6px"><span style="font-size:30px;font-weight:760;letter-spacing:-.03em">${last}<small style="font-size:15px;color:var(--muted)"> ${unit()}</small></span>
+      <span style="font-weight:700;color:${diff<=0?'var(--accent)':'var(--danger)'}">${diff>0?'+':''}${diff} ${unit()}</span><span style="color:var(--dim);font-size:13px">since ${fmtShort(ws[0].date)}</span></div>
+      ${ws.length > 1 ? lineChart(ws, goal) : ''}${goal ? `<div class="hint">${Math.max(0, Math.round((last-goal)*10)/10)} ${unit()} to goal</div>` : ''}`;
+  }
+  const usedCats = CAT_KEYS.filter(k => db.sessions.some(s => catOf(s) === k));
+  v.innerHTML = `
+    <div class="statrow">
+      <div class="stat"><div class="v">${st.month}</div><div class="l">Sessions in ${MONTHS[new Date().getMonth()]}</div></div>
+      <div class="stat"><div class="v">${hrs(st.monthMin)}<small>h</small></div><div class="l">Hours this month</div></div>
+      <div class="stat"><div class="v">${hrs(st.totalMin)}<small>h</small></div><div class="l">Total hours</div></div>
+      <div class="stat"><div class="v">${st.total}</div><div class="l">Total sessions</div></div>
+    </div>
+    <div class="card"><h2>Weekly hours <small>avg ${Math.round(avg*10)/10} h · ${Math.round(avgS*10)/10} sessions/wk</small></h2>${barChart(weeks)}<div class="wkcounts">${weeks.map(w => `<span title="${w.key}">${w.n}</span>`).join('')}</div><div class="hint" style="text-align:center;margin-top:2px">Sessions per week (last 12 weeks)</div>
+      ${usedCats.length > 1 ? `<div class="split-l legend">${usedCats.map(k => `<span><i style="background:${CATS[k].color}"></i>${CATS[k].label}</span>`).join('')}</div>` : ''}</div>
+    ${catBreakdown()}
+    ${prCard()}
+    ${cardioCard()}
+    <div class="card"><h2>Weight trend</h2>${weightHtml}</div>
+    ${enabled('food') ? nutritionCard() : ''}
+    ${grapplingStats()}
+    <div class="card"><h2>Recent <a href="#/history" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">History ›</a></h2>${sorted().slice(0,3).map(sessRow).join('')}</div>
+    <div class="foot">${st.total} sessions · ${hrs(st.totalMin)} total hours</div>`;
+}
+
+/* ---------------- workout file import (GPX / TCX / FIT / CSV), fully client-side ---------------- */
+const haversine = (a, b) => { const R = 6371008.8, t = Math.PI/180, dLat = (b.lat-a.lat)*t, dLon = (b.lon-a.lon)*t;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*t)*Math.cos(b.lat*t)*Math.sin(dLon/2)**2; return 2*R*Math.asin(Math.sqrt(x)); };
+function sportToActivity(s){
+  s = String(s||'').toLowerCase();
+  if (/run|jog|trail/.test(s)) return 'run'; if (/bik|cycl|ride/.test(s)) return 'bike'; if (/row/.test(s)) return 'row';
+  if (/swim/.test(s)) return 'swim'; if (/rope|jump/.test(s)) return 'rope'; return s ? 'other' : '';
+}
+function hrZones(samples, maxHr){ // samples: [{t(ms), hr}] -> minutes in zones 1-5 (50-60-70-80-90% of max)
+  const mx = Number(db.profile.maxHR) || maxHr || 190, z = [0,0,0,0,0];
+  for (let i = 1; i < samples.length; i++) { const a = samples[i-1]; if (!a.hr || !samples[i].t || !a.t) continue; const dt = Math.min(30, (samples[i].t - a.t)/1000); if (dt <= 0) continue;
+    const p = a.hr / mx; if (p < .5) continue; z[Math.min(4, Math.floor((p - .5) / .1))] += dt; }
+  return z.some(x => x > 0) ? z.map(s => r1(s/60)) : null;
+}
+function summarize({ start, sec, distM, hrs, cal, sport, samples }){
+  const valid = hrs.filter(x => x > 0);
+  return { date: start ? iso(new Date(start)) : '', sec: Math.round(sec||0), distM: distM || 0,
+    avgHr: valid.length ? Math.round(valid.reduce((a,b) => a+b, 0) / valid.length) : null, maxHr: valid.length ? Math.max(...valid) : null,
+    cal: cal ? Math.round(cal) : null, activity: sportToActivity(sport), zones: samples && samples.length > 1 ? hrZones(samples, valid.length ? Math.max(...valid) : 0) : null };
+}
+const byLocal = (el, name) => [...el.getElementsByTagNameNS('*', name)];
+const kid = (el, name) => [...el.children].find(c => c.localName === name);
+function parseGPX(text){
+  const doc = new DOMParser().parseFromString(text, 'application/xml'); if (doc.getElementsByTagName('parsererror').length) throw new Error('Bad GPX');
+  const pts = byLocal(doc, 'trkpt').map(p => ({ lat:+p.getAttribute('lat'), lon:+p.getAttribute('lon'), t:Date.parse(kid(p,'time')?.textContent||''), hr:Number(byLocal(p,'hr')[0]?.textContent)||0 }));
+  if (!pts.length) throw new Error('No track points');
+  let d = 0; for (let i = 1; i < pts.length; i++) d += haversine(pts[i-1], pts[i]);
+  const ts = pts.map(p => p.t).filter(Boolean), start = ts.length ? Math.min(...ts) : Date.parse(byLocal(doc,'time')[0]?.textContent||'');
+  return summarize({ start, sec: ts.length ? (Math.max(...ts) - Math.min(...ts))/1000 : 0, distM:d, hrs:pts.map(p => p.hr), cal:null, sport:byLocal(doc,'type')[0]?.textContent, samples:pts });
+}
+function parseTCX(text){
+  const doc = new DOMParser().parseFromString(text, 'application/xml'); if (doc.getElementsByTagName('parsererror').length) throw new Error('Bad TCX');
+  const act = byLocal(doc, 'Activity')[0]; if (!act) throw new Error('No activity');
+  const laps = byLocal(act, 'Lap'); let sec = 0, dist = 0, cal = 0, maxHr = 0, hrW = 0, hrSum = 0;
+  laps.forEach(l => { const s = +(kid(l,'TotalTimeSeconds')?.textContent||0); sec += s; dist += +(kid(l,'DistanceMeters')?.textContent||0); cal += +(kid(l,'Calories')?.textContent||0);
+    const a = +(kid(l,'AverageHeartRateBpm') && kid(kid(l,'AverageHeartRateBpm'),'Value')?.textContent || 0); if (a) { hrSum += a*s; hrW += s; }
+    const m = +(kid(l,'MaximumHeartRateBpm') && kid(kid(l,'MaximumHeartRateBpm'),'Value')?.textContent || 0); maxHr = Math.max(maxHr, m); });
+  const tps = byLocal(act, 'Trackpoint').map(tp => ({ t:Date.parse(kid(tp,'Time')?.textContent||''), hr:Number(kid(tp,'HeartRateBpm') && kid(kid(tp,'HeartRateBpm'),'Value')?.textContent)||0 }));
+  const start = Date.parse(kid(act,'Id')?.textContent || laps[0]?.getAttribute('StartTime') || '');
+  const r = summarize({ start, sec, distM:dist, hrs:tps.map(t => t.hr), cal, sport:act.getAttribute('Sport'), samples:tps });
+  if (hrW) r.avgHr = Math.round(hrSum / hrW); if (maxHr) r.maxHr = maxHr;
+  return r;
+}
+/* Minimal FIT decoder: definition/data messages, compressed timestamps, developer fields skipped. Reads session(18) + record(20). */
+function parseFIT(buf){
+  const dv = new DataView(buf), hs = dv.getUint8(0);
+  if (buf.byteLength < 14 || String.fromCharCode(dv.getUint8(8), dv.getUint8(9), dv.getUint8(10), dv.getUint8(11)) !== '.FIT') throw new Error('Not a FIT file');
+  const end = Math.min(buf.byteLength, hs + dv.getUint32(4, true)); let p = hs, lastTs = 0; const defs = {}, recs = []; let session = null; const FIT_EPOCH = 631065600;
+  const SIZES = { 0:1,1:1,2:1,3:2,4:2,5:4,6:4,7:1,8:4,9:8,10:1,11:2,12:4,13:1,14:8,15:8,16:8 };
+  const INVALID = { 0:0xFF,1:0x7F,2:0xFF,3:0x7FFF,4:0xFFFF,5:0x7FFFFFFF,6:0xFFFFFFFF,10:0,11:0,12:0 };
+  const read = (f, le, at) => { const bt = f.type & 0x1F; if (SIZES[bt] !== f.size) return null; let v;
+    switch (bt) { case 0: case 2: case 10: case 13: v = dv.getUint8(at); break; case 1: v = dv.getInt8(at); break; case 3: v = dv.getInt16(at, le); break; case 4: case 11: v = dv.getUint16(at, le); break;
+      case 5: v = dv.getInt32(at, le); break; case 6: case 12: v = dv.getUint32(at, le); break; case 8: v = dv.getFloat32(at, le); break; case 9: v = dv.getFloat64(at, le); break; default: return null; }
+    return v === INVALID[bt] ? null : v; };
+  const msg = def => { const m = {}; let at = p; def.fields.forEach(f => { m[f.num] = read(f, def.le, at); at += f.size; }); p = at + def.dev; return m; };
+  const handle = (num, m) => { if (num === 20) recs.push({ t:m[253] != null ? (m[253]+FIT_EPOCH)*1000 : 0, hr:m[3]||0, dist:m[5] }); if (num === 18 && !session) session = m; };
+  while (p < end) {
+    const hdr = dv.getUint8(p++);
+    if (hdr & 0x80) { const def = defs[(hdr >> 5) & 3]; if (!def) break; const off = hdr & 0x1F; let ts = (lastTs & ~0x1F) | off; if (ts < lastTs) ts += 0x20; lastTs = ts; const m = msg(def); m[253] = ts; handle(def.num, m); continue; }
+    const lt = hdr & 0x0F;
+    if (hdr & 0x40) { p++; const le = dv.getUint8(p++) === 0; const num = dv.getUint16(p, le); p += 2; const nf = dv.getUint8(p++); const fields = [];
+      for (let i = 0; i < nf; i++) { fields.push({ num:dv.getUint8(p), size:dv.getUint8(p+1), type:dv.getUint8(p+2) }); p += 3; }
+      let dev = 0; if (hdr & 0x20) { const nd = dv.getUint8(p++); for (let i = 0; i < nd; i++) { dev += dv.getUint8(p+1); p += 3; } }
+      defs[lt] = { num, le, fields, dev };
+    } else { const def = defs[lt]; if (!def) break; const m = msg(def); if (m[253] != null) lastTs = m[253]; handle(def.num, m); }
+  }
+  const SPORT = { 1:'running', 2:'cycling', 5:'swimming', 15:'rowing', 11:'walking', 17:'hiking' };
+  const ts = recs.map(r => r.t).filter(Boolean);
+  if (session) { const r = summarize({ start: session[2] != null ? (session[2]+FIT_EPOCH)*1000 : ts[0], sec:(session[8] ?? session[7] ?? 0)/1000, distM:(session[9]||0)/100,
+      hrs:recs.map(r => r.hr), cal:session[11], sport:SPORT[session[5]] || (session[5] != null ? 'other' : ''), samples:recs });
+    if (session[16]) r.avgHr = session[16]; if (session[17]) r.maxHr = session[17]; return r; }
+  if (!recs.length) throw new Error('No FIT data');
+  const dists = recs.map(r => r.dist).filter(x => x != null);
+  return summarize({ start:ts[0], sec: ts.length ? (Math.max(...ts) - Math.min(...ts))/1000 : 0, distM: dists.length ? Math.max(...dists)/100 : 0, hrs:recs.map(r => r.hr), cal:null, sport:'', samples:recs });
+}
+function parseCSV(text){
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) { const c = text[i];
+    if (q) { if (c === '"' && text[i+1] === '"') { cell += '"'; i++; } else if (c === '"') q = false; else cell += c; }
+    else if (c === '"') q = true; else if (c === ',' || c === ';' && !text.slice(0, 200).includes(',')) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i+1] === '\n') i++; row.push(cell); cell = ''; if (row.some(x => x.trim())) rows.push(row); row = []; } else cell += c; }
+  row.push(cell); if (row.some(x => x.trim())) rows.push(row);
+  if (rows.length < 2) throw new Error('CSV needs a header row and data');
+  const head = rows[0].map(x => x.trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''));
+  return rows.slice(1).map(r => Object.fromEntries(head.map((k,i) => [k, (r[i]||'').trim()])));
+}
+const pickF = (o, ...keys) => { for (const k of keys) if (o[k] != null && o[k] !== '') return o[k]; return ''; };
+const hmsToSec = v => { v = String(v||'').trim(); if (!v) return 0; if (/^\d+(\.\d+)?$/.test(v)) return Number(v)*60; const p = v.split(':').map(Number); return p.length === 3 ? p[0]*3600+p[1]*60+p[2] : p.length === 2 ? p[0]*60+p[1] : 0; };
+function normDate(v){ v = String(v||'').trim(); let m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${m[1]}-${pad(+m[2])}-${pad(+m[3])}`; m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if (m) return `${m[3].length===2?'20'+m[3]:m[3]}-${pad(+m[1])}-${pad(+m[2])}`; const t = Date.parse(v); return isNaN(t) ? '' : iso(new Date(t)); }
+function csvRowToSession(o){
+  const date = normDate(pickF(o, 'date', 'day', 'start_time', 'start', 'activity_date')); if (!date) return null;
+  const rawCat = pickF(o, 'category', 'workout', 'type', 'workout_type').toLowerCase(), rawDisc = pickF(o, 'discipline', 'activity', 'activity_type', 'sport', 'style').toLowerCase();
+  let cat = CAT_KEYS.find(k => rawCat.startsWith(k.slice(0,5)) || CATS[k].label.toLowerCase() === rawCat) || '';
+  const findDisc = c => CATS[c].disc.find(d => rawDisc && (d[0] === rawDisc || d[1].toLowerCase() === rawDisc || rawDisc.includes(d[1].toLowerCase())));
+  if (!cat) cat = CAT_KEYS.find(k => findDisc(k)) || (sportToActivity(rawDisc || rawCat) && sportToActivity(rawDisc || rawCat) !== 'other' ? 'cardio' : /lift|weight|strength|gym/.test(rawCat+rawDisc) ? 'weights' : 'grappling');
+  const disc = findDisc(cat)?.[0] || (cat === 'cardio' ? sportToActivity(rawDisc || rawCat) || 'other' : '');
+  const sec = hmsToSec(pickF(o, 'time', 'moving_time', 'elapsed_time', 'duration_hms')) || Number(pickF(o, 'duration_sec', 'seconds'))||0;
+  const dur = Number(pickF(o, 'duration_min', 'duration', 'minutes', 'mins')) || (sec ? Math.round(sec/60) : 0);
+  let dist = Number(pickF(o, 'distance', 'distance_mi', 'distance_km', 'dist')) || 0, du = pickF(o, 'unit', 'distance_unit').toLowerCase() || (o.distance_km ? 'km' : o.distance_mi ? 'mi' : distU());
+  if (du.startsWith('m') && du !== 'mi') { dist = dist / 1000; du = 'km'; } // meters
+  const hr = { avg:pickF(o, 'avg_hr', 'average_heart_rate', 'avg_heart_rate', 'hr_avg'), max:pickF(o, 'max_hr', 'max_heart_rate', 'hr_max'), cal:pickF(o, 'calories', 'kcal', 'calories_burned', 'cal'), zones:[1,2,3,4,5].map(i => pickF(o, `z${i}`, `zone_${i}`, `zone${i}`)) };
+  return sanitizeSession({ date, category:cat, discipline:disc, duration:dur || (sec ? Math.round(sec/60) : CATS[cat].dur), rounds:pickF(o, 'rounds'), intensity:pickF(o, 'intensity', 'rpe') || 3, notes:pickF(o, 'notes', 'description', 'title', 'name'),
+    gi:/no.?gi/.test(pickF(o,'gi','uniform').toLowerCase()) ? 'nogi' : 'gi', type:pickF(o,'session_type').toLowerCase() || 'class',
+    ...(cat === 'cardio' && (dist || sec) ? { cardio:{ distance:dist ? r2(dist) : '', unit:du === 'km' ? 'km' : 'mi', sec:sec || dur*60 } } : {}), hr, source:'CSV import' });
+}
+async function parseWorkoutFile(file){
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.fit')) return parseFIT(await file.arrayBuffer());
+  const text = await file.text();
+  if (name.endsWith('.gpx') || /<gpx[\s>]/i.test(text.slice(0, 500))) return parseGPX(text);
+  if (name.endsWith('.tcx') || /TrainingCenterDatabase/.test(text.slice(0, 800))) return parseTCX(text);
+  if (name.endsWith('.csv')) { const s = parseCSV(text).map(csvRowToSession).filter(Boolean)[0]; if (!s) throw new Error('No rows'); return { csv:s }; }
+  throw new Error('Unsupported file type');
+}
+function applyImport(f, r, fileName){
+  if (r.csv) { const s = r.csv; Object.assign(f, { date:s.date, category:s.category, discipline:s.discipline, duration:s.duration, intensity:s.intensity, notes:s.notes || f.notes });
+    if (s.cardio) f.cardio = { ...s.cardio }; if (s.hr) f.hr = { ...f.hr, ...s.hr }; f.source = fileName; f._durTouched = true; return; }
+  if (r.date) f.date = r.date > today() ? today() : r.date;
+  if (r.activity || r.distM > 0) { if (f.category !== 'cardio' && r.distM > 0) { f.category = 'cardio'; f.discipline = r.activity || 'other'; } else if (f.category === 'cardio' && r.activity) f.discipline = r.activity; }
+  if (r.sec) { f.duration = Math.max(1, Math.round(r.sec/60)); f._durTouched = true; }
+  if (f.category === 'cardio') { const u = f.cardio.unit || distU(); f.cardio = { unit:u, distance: r.distM ? r2(toUnit(r.distM/1000, 'km', u)) : f.cardio.distance, sec: r.sec || f.cardio.sec }; }
+  f.hr = { ...f.hr, ...(r.avgHr ? { avg:r.avgHr } : {}), ...(r.maxHr ? { max:r.maxHr } : {}), ...(r.cal ? { cal:r.cal } : {}), ...(r.zones ? { zones:r.zones } : {}) };
+  f.source = fileName;
+}
+async function importCSVWorkouts(file){
+  if (!file) return;
+  try {
+    const list = parseCSV(await file.text()).map(csvRowToSession).filter(Boolean);
+    if (!list.length) throw new Error('No valid rows');
+    if (await confirmSheet(`Add ${list.length} workout${list.length>1?'s':''}?`, 'They are added to your history; nothing is replaced. Rows need at least a date column.', 'Add workouts', false)) {
+      db.sessions.push(...list); list.forEach(s => { if (!enabled(s.category)) db.profile.enabled = { ...(db.profile.enabled||{}), [s.category]:true }; }); save(); toast(`Added ${list.length} workouts`); route();
+    }
+  } catch(e) { console.warn(e); toast(`Couldn't read that CSV`); }
+  finally { const f = $('#csvFile'); if (f) f.value = ''; }
 }
 
 /* ---------------- nutrition ---------------- */
@@ -550,13 +1012,14 @@ function viewFood(d){
   if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) foodDate = d;
   if (!foodDate) foodDate = today();
   const day = foodDate, isToday = day === today();
-  setHeader('Fuel', `<button class="btn sm" id="savedFoods">My foods</button>`);
+  setHeader('Food', `<button class="btn sm" id="savedFoods">My foods</button>`);
   const list = entriesOn(day), t = totals(list), tg = targets(), wk = weekSummary(day);
   const v = $('#view');
   v.innerHTML = `${fuelSwitch('food')}
     <div class="daynav"><a class="iconbtn big" href="#/food/${iso(addDays(parse(day),-1))}" aria-label="Previous day"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></a>
       <div class="dn-t"><b>${isToday ? 'Today' : fmtDate(day).replace(/, \d{4}$/,'')}</b>${isToday ? `<span>${fmtShort(day)}</span>` : `<a href="#/food/${today()}">Jump to today</a>`}</div>
       ${isToday ? '<span class="iconbtn big" style="opacity:.25"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>' : `<a class="iconbtn big" href="#/food/${iso(addDays(parse(day),1))}" aria-label="Next day"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></a>`}</div>
+    ${quickFoods().length ? `<div class="card quickfood"><h2>Quick add <small>tap = 1 serving</small></h2><div class="qf">${quickFoods().map((f,i) => `<button type="button" class="qfb" data-qf="${i}"><b>${esc(f.name)}</b><small>${Math.round(num(f.cal))} kcal · ${r1(num(f.p))} g P</small></button>`).join('')}</div></div>` : ''}
     <div class="card nutri-top">
       <div class="ringwrap">${ring(t.cal, tg.cal, 'Calories', `of ${tg.cal} kcal`)}<div class="left">${t.cal <= tg.cal ? `<b>${Math.round(tg.cal - t.cal)}</b> kcal left` : `<b class="over">${Math.round(t.cal - tg.cal)}</b> kcal over`}</div></div>
       <div class="mbars">${macroBar('Protein', t.p, tg.p, 'g', 'pro')}${macroBar('Carbs', t.c, tg.c, 'g', 'carb')}${macroBar('Fat', t.f, tg.f, 'g', 'fat')}</div>
@@ -570,6 +1033,15 @@ function viewFood(d){
       <div class="kv" style="margin-bottom:8px"><div><b>${Math.round(wk.cal)}</b><span>Avg kcal</span></div><div><b>${Math.round(wk.p)}<small style="font-size:13px;color:var(--muted)"> g</small></b><span>Avg protein</span></div><div><b>${wk.days.filter(x => x.logged && x.p >= tg.p*0.95).length}/7</b><span>Protein goal hit</span></div></div>
       ${calChart(wk.days, tg.cal)}<div class="hint">Avg carbs ${Math.round(wk.c)} g · fat ${Math.round(wk.f)} g (days with food logged)</div></div>`;
   v.querySelectorAll('[data-add]').forEach(b => b.onclick = () => foodForm({ meal:b.dataset.add }));
+  const qf = quickFoods();
+  v.querySelectorAll('[data-qf]').forEach(b => b.onclick = () => {
+    const f = qf[Number(b.dataset.qf)], hr = new Date().getHours();
+    const meal = day !== today() ? 'snack' : hr < 11 ? 'breakfast' : hr < 15 ? 'lunch' : hr < 21 ? 'dinner' : 'snack';
+    const rec = { id:uid(), date:day, meal, name:f.name, serving:f.serving||'1 serving', qty:1, cal:num(f.cal), p:num(f.p), c:num(f.c), f:num(f.f), fiber:f.fiber??'', sugar:f.sugar??'', sodium:f.sodium??'', createdAt:Date.now() };
+    db.nutrition.entries.push(rec); save();
+    undoToast(`Added ${f.name} to ${MEALS.find(m => m[0]===meal)[1].toLowerCase()}`, () => { db.nutrition.entries = db.nutrition.entries.filter(e => e.id !== rec.id); save(); route(); });
+    const y = window.scrollY; route(); window.scrollTo(0, y);
+  });
   v.querySelectorAll('.food-row').forEach(b => b.onclick = () => foodForm({ id:b.dataset.id }));
   $('#savedFoods').onclick = savedFoodsSheet;
 }
@@ -654,6 +1126,12 @@ function foodForm({ id=null, meal=null, preset=null }){
   if (!existing && !preset) name.focus({ preventScroll:true }); // synchronous, inside the tap gesture (iOS only shows the keyboard then)
 }
 
+function quickFoods(){ // most recent distinct logged foods first, then saved foods
+  const seen = new Set(), out = [];
+  [...db.nutrition.entries].sort((a,b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt)).forEach(e => { const k = e.name.toLowerCase(); if (!seen.has(k) && out.length < 8) { seen.add(k); out.push(e); } });
+  db.nutrition.foods.forEach(f => { const k = f.name.toLowerCase(); if (!seen.has(k) && out.length < 10) { seen.add(k); out.push(f); } });
+  return out;
+}
 function savedFoodsSheet(){
   const el = h(`<div><h3>My foods</h3><p class="hint" style="margin:-8px 0 12px">Tap + to add a serving to ${foodDate === today() ? 'today' : fmtShort(foodDate)}. Foods you save while logging appear here.</p><div class="search" style="margin-bottom:10px"><input class="input" type="search" placeholder="Search my foods…"></div><div class="flist"></div></div>`);
   const q = el.querySelector('input'), listEl = el.querySelector('.flist');
@@ -771,6 +1249,7 @@ function suppCard(){
     ${st.items.length && st.taken < st.items.length ? `<div class="hint">Next: ${esc(st.items.filter(i => !takenRec(i.id, today())).slice(0,3).map(i => i.name).join(', '))}</div>` : st.items.length ? '<div class="hint">All done for today ✓</div>' : '<div class="hint">Nothing scheduled today.</div>'}</div>`;
 }
 function fuelSwitch(which){
+  if (!(enabled('food') && enabled('supps'))) return '';
   return `<div class="seg fuelseg" role="tablist"><a role="tab" href="#/food" class="${which==='food'?'on':''}">Food</a><a role="tab" href="#/supps" class="${which==='supps'?'on':''}">Supplements</a></div>`;
 }
 
@@ -779,7 +1258,7 @@ function viewSupps(d){
   if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) suppDate = d;
   if (!suppDate || suppDate > today()) suppDate = today();
   const day = suppDate, isToday = day === today();
-  setHeader('Fuel', `<button class="btn sm" id="manageStack">My stack</button>`);
+  setHeader('Supplements', `<button class="btn sm" id="manageStack">My stack</button>`);
   const v = $('#view');
   const items = activeSupps().filter(i => suppScheduledOn(i, day));
   const taken = items.filter(i => takenRec(i.id, day)).length;
@@ -791,7 +1270,7 @@ function viewSupps(d){
       ${isToday ? '<span class="iconbtn big" style="opacity:.25"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>' : `<a class="iconbtn big" href="#/supps/${iso(addDays(parse(day),1))}" aria-label="Next day"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></a>`}</div>
     ${!db.supps.items.length ? `<div class="welcome" style="padding-top:10px"><h2>Build your stack</h2><p>Add each supplement with its dose, time of day and schedule. You'll get a one-tap daily checklist and adherence stats.</p><button class="btn primary" id="firstSupp">Add a supplement</button></div>` : `
     <div class="card supp-head"><div><b id="suppCount">${taken}<small>/${items.length}</small></b><span>taken ${isToday ? 'today' : 'this day'}</span></div><div class="mbar" style="flex:1"><div class="b"><i style="width:${items.length ? taken/items.length*100 : 0}%"></i></div></div></div>
-    ${groups.length ? groups.map(([k,l,list]) => `<div class="supp-group"><div class="month">${l}</div>${list.map(it => { const r = takenRec(it.id, day); return `<button type="button" class="supp-item ${r?'done':''}" data-id="${esc(it.id)}" aria-pressed="${!!r}">
+    ${groups.length ? groups.map(([k,l,list]) => `<div class="supp-group"><div class="month grp">${l}${list.some(it => !takenRec(it.id, day)) ? `<button type="button" class="btn sm allbtn" data-all="${k}">Mark all taken</button>` : '<span class="alldone">All taken ✓</span>'}</div>${list.map(it => { const r = takenRec(it.id, day); return `<button type="button" class="supp-item ${r?'done':''}" data-id="${esc(it.id)}" aria-pressed="${!!r}">
         <span class="tick">${r ? '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : ''}</span>
         <span class="grow"><b>${esc(it.name)}</b><small>${esc(it.dose)} ${esc(it.unit)} · ${esc(schedLabel(it))}</small></span>
         <span class="when">${r ? `Taken<br>${fmtTime(r.takenAt)}` : 'Tap to<br>mark taken'}</span></button>`; }).join('')}</div>`).join('') : '<div class="empty">Nothing scheduled for this day.</div>'}
@@ -800,6 +1279,14 @@ function viewSupps(d){
       ${activeSupps().map(it => { const w = itemAdherence(it, 7), m = itemAdherence(it, 30), s = itemStreak(it); return `<div class="list-row adh"><div class="grow"><b>${esc(it.name)}</b><small>${esc(schedLabel(it))} · streak ${s}</small></div><span class="pct ${w.pct!=null&&w.pct<70?'low':''}">${w.pct==null?'—':w.pct+'%'}<small>7d</small></span><span class="pct ${m.pct!=null&&m.pct<70?'low':''}">${m.pct==null?'—':m.pct+'%'}<small>30d</small></span></div>`; }).join('')}
       <div class="hint">Streak = consecutive scheduled doses taken. Today's pending doses don't count as missed.</div></div>`}`;
   v.querySelectorAll('.supp-item').forEach(b => b.onclick = () => toggleSupp(b.dataset.id, day));
+  v.querySelectorAll('[data-all]').forEach(b => b.onclick = () => {
+    const pend = items.filter(it => (it.time||'any') === b.dataset.all && !takenRec(it.id, day)), now = Date.now();
+    const ts = day === today() ? now : (() => { const d = parse(day); d.setHours(12,0,0,0); return d.getTime(); })();
+    const recs = pend.map(it => ({ id:uid(), itemId:it.id, date:day, takenAt:ts })); db.supps.log.push(...recs); save();
+    const ids = new Set(recs.map(r => r.id));
+    undoToast(`${recs.length} marked taken ✓`, () => { db.supps.log = db.supps.log.filter(l => !ids.has(l.id)); save(); route(); });
+    const y = window.scrollY; route(); window.scrollTo(0, y);
+  });
   $('#manageStack').onclick = stackSheet;
   const fs = $('#firstSupp'); if (fs) fs.onclick = () => suppForm(null);
 }
@@ -908,6 +1395,15 @@ function sanitizeSupps(s){
 function viewSettings(){
   setHeader('Profile');
   const p = db.profile, v = $('#view'); v.innerHTML = '';
+  const sec = h(`<div class="card" id="sectionsCard"><h2>What I track</h2><div class="toggles"></div><div class="hint">Hidden sections disappear from the app. Your data is kept.</div></div>`);
+  [...CAT_KEYS.map(k => [k, CATS[k].label, CATS[k].disc.map(d => d[1]).join(', ')]), ['food','Food','Calories, protein, meals'], ['supps','Supplements','Daily checklist']].forEach(([k,l,sub]) => {
+    const row = h(`<label class="toggle"><span><b>${l}</b><small>${esc(sub)}</small></span><input type="checkbox" role="switch" data-sec="${k}" ${enabled(k)?'checked':''}><i></i></label>`);
+    row.querySelector('input').onchange = e => { const en = { ...(p.enabled||{}) }; CAT_KEYS.concat(['food','supps']).forEach(x => { if (!(x in en)) en[x] = enabled(x); }); en[k] = e.target.checked;
+      if (!CAT_KEYS.some(x => en[x])) { e.target.checked = true; toast('Keep at least one workout type'); return; }
+      p.enabled = en; save(); updateNav(); toast(`${l} ${e.target.checked ? 'shown' : 'hidden'}`); };
+    sec.querySelector('.toggles').appendChild(row);
+  });
+  v.appendChild(sec);
   const card = h('<div class="card"><h2>Rank</h2></div>');
   const belt = h(`<select class="input">${BELTS.map(([k,l]) => `<option value="${k}" ${p.belt===k?'selected':''}>${l} belt</option>`).join('')}</select>`);
   belt.onchange = () => { p.belt = belt.value; p.sampleProfile = false; save(); toast('Belt updated'); };
@@ -916,13 +1412,18 @@ function viewSettings(){
   const promo = h(`<input class="input" type="date" value="${esc(p.promotedOn)}" max="${today()}">`);
   promo.onchange = () => { p.promotedOn = promo.value; p.sampleProfile = false; save(); toast('Promotion date saved'); };
   card.appendChild(field('Promotion date', promo));
-  v.appendChild(card);
+  if (enabled('grappling')) v.appendChild(card);
 
   const wcard = h('<div class="card"><h2>Weight</h2></div>');
   wcard.appendChild(field('Units', seg([['lb','lb'],['kg','kg']], unit(), x => { p.unit = x; save(); })));
   const goal = h(`<input class="input" type="text" inputmode="decimal" placeholder="Optional" value="${esc(p.goalWeight)}">`);
   goal.onchange = () => { p.goalWeight = goal.value.replace(/[^\d.]/g,''); save(); toast('Goal saved'); };
   wcard.appendChild(field('Goal weight', goal));
+  if (enabled('cardio')) wcard.appendChild(field('Distance', seg([['mi','Miles'],['km','Kilometers']], distU(), x => { p.distUnit = x; save(); })));
+  const mhr = h(`<input class="input" type="text" inputmode="numeric" placeholder="e.g. 190" value="${esc(p.maxHR||'')}">`);
+  mhr.onchange = () => { p.maxHR = mhr.value.replace(/\D/g,''); save(); toast('Max heart rate saved'); };
+  wcard.appendChild(field('Max heart rate', mhr, 'Used to work out heart-rate zones from imported workout files.'));
+  wcard.querySelector('h2').textContent = 'Body & units';
   v.appendChild(wcard);
 
   const tcard = h('<div class="card" id="targetsCard"><h2>Daily nutrition targets</h2><div class="grid2"></div></div>');
@@ -933,7 +1434,7 @@ function viewSettings(){
     tgrid.appendChild(field(`${l} (${u})`, i));
   });
   tcard.appendChild(h('<div class="hint">Shown as progress on the Food tab and the dashboard. Rough guide: protein ≈ 0.8–1 g per lb of body weight.</div>'));
-  v.appendChild(tcard);
+  if (enabled('food')) v.appendChild(tcard);
 
   const hasSample = db.sessions.some(s => s.sample) || db.nutrition.entries.some(e => e.sample) || db.supps.items.some(i => i.sample);
   const data = h(`<div class="card"><h2>Your data</h2>
@@ -942,6 +1443,8 @@ function viewSettings(){
       <button class="btn block" id="exp"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Export backup (JSON)</button>
       <label class="btn block" for="impFile"><svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg>Import backup</label>
       <input type="file" id="impFile" accept="application/json,.json" hidden>
+      <label class="btn block" for="csvFile"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 10h16M10 4v16"/></svg>Import workouts from CSV</label>
+      <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
       <button class="btn block" id="ldS">Load sample data (demo)</button>
       ${hasSample ? '<button class="btn block" id="rmS">Remove sample data</button>' : ''}
       <button class="btn block danger" id="clr">Clear all data</button>
@@ -952,20 +1455,21 @@ function viewSettings(){
 
   $('#exp').onclick = exportData;
   $('#impFile').onchange = e => importData(e.target.files[0]);
+  $('#csvFile').onchange = e => importCSVWorkouts(e.target.files[0]);
   const ld = $('#ldS'); if (ld) ld.onclick = loadSample;
   const rm = $('#rmS'); if (rm) rm.onclick = removeSample;
   $('#clr').onclick = async () => {
     if (await confirmSheet('Clear all data?', `This permanently deletes ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries, saved foods, ${db.supps.items.length} supplements with their history and your profile from this device. Export a backup first if you want to keep them.`, 'Clear everything')) {
-      db = { sessions:[], profile:defaultProfile(), nutrition:defaultNutrition(), supps:defaultSupps() }; save(); form = null; foodDate = null; suppDate = null; toast('All data cleared'); route();
+      db = emptyDb(); save(); form = null; foodDate = null; suppDate = null; toast('All data cleared'); route();
     }
   };
 }
 
 function exportData(){
-  const payload = { app:'discipline-motivation-bjj', version:1, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition, supps:db.supps };
+  const payload = { app:'discipline-motivation', version:2, schema:SCHEMA, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition, supps:db.supps };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = `dm-bjj-backup-${today()}.json`;
+  a.href = URL.createObjectURL(blob); a.download = `dm-backup-${today()}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   toast('Backup exported');
@@ -975,22 +1479,47 @@ async function importData(file){
   try {
     const d = JSON.parse(await file.text());
     if (!d || !Array.isArray(d.sessions)) throw new Error('No sessions found');
-    const valid = d.sessions.filter(s => s && typeof s.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.date)).map(s => ({
-      id:String(s.id||uid()), date:s.date, gi:s.gi==='nogi'?'nogi':'gi', type:SESSION_TYPES.some(t=>t[0]===s.type)?s.type:'class',
-      duration:Number(s.duration)||0, rounds:Number(s.rounds)||0, intensity:Math.min(5,Math.max(1,Number(s.intensity)||3)),
-      techniques:Array.isArray(s.techniques)?s.techniques.map(String):[], notes:String(s.notes||''), weight:s.weight===''||s.weight==null?'':Number(s.weight)||'',
-      rolls:Array.isArray(s.rolls)?s.rolls.map(r => ({ id:String(r.id||uid()), partner:String(r.partner||''), result:['win','loss','draw'].includes(r.result)?r.result:'draw',
-        subsLanded:(r.subsLanded||[]).map(String), subsTapped:(r.subsTapped||[]).map(String), stuck:(r.stuck||[]).map(String) })):[],
-      sample:!!s.sample, createdAt:s.createdAt||Date.now(), ...(s.updatedAt ? { updatedAt:s.updatedAt } : {}) }));
+    const src = migrate(JSON.parse(JSON.stringify(d)));
+    const valid = src.sessions.filter(s => s && typeof s.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.date)).map(sanitizeSession);
     const nut = sanitizeNutrition(d.nutrition), sup = sanitizeSupps(d.supps);
     if (await confirmSheet(`Import ${valid.length} sessions, ${nut.entries.length} food entries and ${sup.items.length} supplements?`, `This replaces the ${db.sessions.length} sessions and ${db.nutrition.entries.length} food entries currently on this device.`, 'Replace & import', false)) {
-      db = { sessions:valid, profile:{ ...defaultProfile(), ...(d.profile||{}) }, nutrition:nut, supps:sup }; save(); toast(`Imported ${valid.length} sessions`); route();
+      db = { schema:SCHEMA, sessions:valid, profile:{ ...defaultProfile(), ...(src.profile||{}), setupDone:true }, nutrition:nut, supps:sup }; save(); toast(`Imported ${valid.length} sessions`); route();
     }
   } catch(e) { console.warn(e); toast('That file isn\'t a valid backup'); }
   finally { const f = $('#impFile'); if (f) f.value = ''; }
 }
 
 /* ---------------- sample data ---------------- */
+function sampleOtherWorkouts(){
+  let seed = 31; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const pick = a => a[Math.floor(rnd()*a.length)], out = [], start = addDays(new Date(), -84), total = 84;
+  const sparNotes = ['Kept my hands up better. Still dropping the right after the jab.','Got caught with low kicks — check earlier.','Good pressure, cut off the ring well.','Clinch work felt strong, need sharper knees.'];
+  const partners = ['Mo','Sam','Coach Lee','Tasha','Vince'];
+  const lifts = [['Back squat', 245, 275, 5], ['Bench press', 185, 205, 5], ['Deadlift', 315, 355, 3], ['Overhead press', 115, 130, 5], ['Pull-up', 0, 0, 8], ['Barbell row', 155, 175, 8]];
+  for (let d = new Date(start), i = 0; d <= new Date(); d = addDays(d, 1), i++) {
+    const dow = d.getDay(), prog = i / total, date = iso(d), created = d.getTime() + 3600e3;
+    if (dow === 2 && rnd() < .85) { // Tuesday: Muay Thai
+      const mix = { shadow:2, pads:3 + Math.floor(rnd()*2), bag:2 + Math.floor(rnd()*2), drills:1, sparring: rnd() < .6 ? 2 + Math.floor(rnd()*2) : 0 };
+      const rounds = Object.values(mix).reduce((a,b) => a+b, 0);
+      out.push({ id:uid(), date, category:'striking', discipline: rnd() < .8 ? 'muaythai' : 'boxing', type:'class', duration:60, rounds, intensity:3 + Math.round(rnd()*1.4),
+        strike:{ roundLen:3, mix, spar: mix.sparring ? [{ partner:pick(partners), notes:pick(sparNotes) }] : [] }, techniques:[pick(STRIKE_TECH), pick(STRIKE_TECH)].filter((x,j,a) => a.indexOf(x)===j),
+        hr: rnd() < .6 ? { avg:148 + Math.round(rnd()*12), max:178 + Math.round(rnd()*10), cal:620 + Math.round(rnd()*150), zones:[4,10,18,20,8] } : undefined, sample:true, createdAt:created });
+    }
+    if ((dow === 4 || dow === 0) && rnd() < .85) { // Thu/Sun: lifting, A/B split with slow progression
+      const A = dow === 4, pickL = A ? [lifts[0], lifts[1], lifts[4]] : [lifts[2], lifts[3], lifts[5]];
+      const exercises = pickL.map(([name, lo, hi, reps]) => { const top = lo ? Math.round((lo + (hi - lo) * prog + (rnd()-.5)*5) / 5) * 5 : 0;
+        return { name, sets: [0,1,2].map(k => ({ reps: lo ? reps : reps + Math.round(prog*4) - (k===2?1:0), weight: lo ? top - (k===0?20:0) : '', rpe: k===2 ? 8 + (rnd()<.5?.5:0) : '' })) }; });
+      out.push({ id:uid(), date, category:'weights', discipline:'strength', duration:55 + Math.round(rnd()*2)*5, intensity:3 + (rnd()<.4?1:0), exercises, sample:true, createdAt:created });
+    }
+    if ((dow === 5 && rnd() < .7) || (dow === 0 && rnd() < .5)) { // Fri run / Sun ride
+      const bike = dow === 0, dist = bike ? 14 + Math.round(rnd()*8) : 3 + Math.round(rnd()*30)/10, pace = bike ? 3600/16.5 : (540 - prog*30 + (rnd()-.5)*30);
+      const sec = Math.round(dist * pace);
+      out.push({ id:uid(), date, category:'cardio', discipline: bike ? 'bike' : 'run', duration:Math.round(sec/60), intensity: 3, cardio:{ distance:dist, unit:'mi', sec },
+        hr: { avg: bike ? 132 : 151 + Math.round(rnd()*8), max: bike ? 158 : 172 + Math.round(rnd()*8), cal: Math.round(sec/60 * (bike ? 9 : 12)), zones: bike ? [10, 30, 20, 4, 0].map(x => Math.round(x * sec/3840)) : [2, 6, 12, 8, 2].map(x => Math.round(x * sec/1800)) }, sample:true, createdAt:created });
+    }
+  }
+  return out;
+}
 function loadSample(){
   let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd()*a.length)];
@@ -1015,13 +1544,15 @@ function loadSample(){
         subsTapped: result==='loss' ? [pick(subsLoss)] : [],
         stuck: rnd() < .4 ? [pick(stuckP)] : [] };
     }).map(r => ({...r, subsLanded:[...new Set(r.subsLanded)]}));
-    sessions.push({ id:uid(), date:iso(d), gi: dow === 3 || (dow === 6 && rnd() < .5) ? 'nogi' : 'gi', type,
+    sessions.push({ id:uid(), date:iso(d), category:'grappling', discipline:'bjj', gi: dow === 3 || (dow === 6 && rnd() < .5) ? 'nogi' : 'gi', type,
       duration: type==='open' ? 90 : type==='private' ? 60 : rnd() < .6 ? 75 : 60,
       rounds: Math.max(rolls.length, nRolls), intensity: Math.min(5, Math.max(1, Math.round(2.6 + rnd()*2.2))),
       techniques: [pick(TECHNIQUES), pick(TECHNIQUES)].filter((x,i,a) => a.indexOf(x)===i).concat(rnd()<.4?[pick(TECHNIQUES)]:[]),
       rolls, weight: rnd() < .7 ? Math.round(w*10)/10 : '', notes: rnd() < .55 ? pick(notes) : '', sample:true, createdAt:d.getTime() });
   }
-  db.sessions = db.sessions.filter(s => !s.sample).concat(sessions);
+  sessions.push(...sampleOtherWorkouts(w));
+  db.sessions = db.sessions.filter(s => !s.sample).concat(sessions.map(sanitizeSession));
+  db.profile = { ...db.profile, setupDone:true, enabled:{ grappling:true, striking:true, weights:true, cardio:true, food:true, supps:true } };
   const nut = sampleNutrition(), names = new Set(db.nutrition.foods.map(f => f.name.toLowerCase()));
   const sup = sampleSupps(); db.supps = { items: db.supps.items.filter(i => !i.sample).concat(sup.items), log: db.supps.log.filter(l => !l.sample).concat(sup.log) };
   db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample).concat(nut.entries), foods: db.nutrition.foods.filter(f => !f.sample).concat(nut.foods.filter(f => !names.has(f.name.toLowerCase()))) };
@@ -1042,9 +1573,10 @@ function removeSample(){
 /* ---------------- router ---------------- */
 function route(){
   if (!$('#sheet').hidden) closeSheet();
+  updateNav();
   const hash = location.hash.replace(/^#/, '') || '/';
   const [, a, b] = hash.split('/');
-  const tab = { '':'home', history:'history', session:'history', log:'log', edit:'history', stats:'history', settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
+  const tab = { '':'home', history:'history', session:'history', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
   document.querySelectorAll('.tabbar a').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   if (a !== 'log' && a !== 'edit') form = (a === 'session' ? null : form && !form.id ? form : null);
   switch (a || '') {

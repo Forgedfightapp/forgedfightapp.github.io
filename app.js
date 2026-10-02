@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.1.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -18,9 +18,9 @@ const defaultProfile = () => ({ name:'', belt:'white', stripes:0, promotedOn:'',
 function load(){
   try{
     const d = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (d && Array.isArray(d.sessions)) return { sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})} };
+    if (d && Array.isArray(d.sessions)) return { sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[] } };
   }catch(e){ console.warn('Could not read saved data', e); }
-  return { sessions:[], profile:defaultProfile() };
+  return { sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[] } };
 }
 let db = load();
 function save(){
@@ -253,7 +253,7 @@ function viewHome(){
   const st = periodStats(), streak = weekStreak(), weeks = weeklyHours(12), ws = weightSeries();
   const landed = countBy(allRolls().flatMap(r => r.subsLanded||[])).slice(0,5);
   const caught = countBy(allRolls().flatMap(r => r.subsTapped||[])).slice(0,5);
-  const hasSample = db.sessions.some(s => s.sample);
+  const hasSample = db.sessions.some(s => s.sample) || db.nutrition.entries.some(e => e.sample);
   const avg = weeks.slice(0,-1).reduce((a,w) => a+w.min, 0) / 60 / Math.max(1, weeks.length-1);
   const avgS = weeks.slice(0,-1).reduce((a,w) => a+w.n, 0) / Math.max(1, weeks.length-1);
   let weightHtml = `<div class="empty">Add your body weight when you log a session to see the trend.</div>`;
@@ -280,6 +280,7 @@ function viewHome(){
     ${beltCard()}
     <div class="card"><h2>Submissions <a href="#/stats" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">See all ›</a></h2>
       <div class="subcols"><div><h3 class="win">Landed</h3>${hbars(landed,'win')}</div><div><h3 class="loss">Caught by</h3>${hbars(caught,'loss')}</div></div></div>
+    ${nutritionCard()}
     <div class="card"><h2>Weight trend</h2>${weightHtml}</div>
     <div class="card"><h2>Recent <a href="#/history" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">History ›</a></h2>
       ${recent.map(sessRow).join('')}</div>
@@ -300,7 +301,7 @@ function sessRow(s){
 
 let histFilter = 'all', histQuery = '';
 function viewHistory(){
-  setHeader('History');
+  setHeader('History', `<a class="btn sm" href="#/stats">Subs</a>`);
   const v = $('#view');
   if (!db.sessions.length) { v.innerHTML = `<div class="empty" style="padding:60px 10px">No sessions yet.<br><br><a class="btn primary" href="#/log">Log a session</a></div>`; return; }
   v.innerHTML = `<div class="search"><input class="input" type="search" placeholder="Search techniques, partners, notes…" value="${esc(histQuery)}" id="q"></div>
@@ -466,6 +467,243 @@ function viewStats(){
     <div class="card"><h2>Most drilled</h2>${hbars(tech.slice(0,8),'win')}</div>`;
 }
 
+/* ---------------- nutrition ---------------- */
+const MEALS = [['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['snack','Snacks']];
+const MACROS = [['cal','Calories','kcal'],['p','Protein','g'],['c','Carbs','g'],['f','Fat','g']];
+const EXTRAS = [['fiber','Fiber','g'],['sugar','Sugar','g'],['sodium','Sodium','mg']];
+const defaultTargets = () => ({ cal:2400, p:180, c:250, f:75 });
+const defaultNutrition = () => ({ entries:[], foods:[] });
+const num = v => { const n = Number(v); return isFinite(n) && n > 0 ? n : 0; };
+const r1 = n => Math.round(n*10)/10;
+const targets = () => ({ ...defaultTargets(), ...(db.profile.targets||{}) });
+const entriesOn = d => db.nutrition.entries.filter(e => e.date === d);
+function totals(list){
+  const t = { cal:0, p:0, c:0, f:0, fiber:0, sugar:0, sodium:0 };
+  list.forEach(e => { const q = num(e.qty) || 1; Object.keys(t).forEach(k => { t[k] += num(e[k]) * q; }); });
+  return t;
+}
+function knownFoods(){
+  // saved foods first, then distinct previously-logged foods (most recent wins)
+  const seen = new Map();
+  db.nutrition.foods.forEach(f => seen.set(f.name.toLowerCase(), { ...f, saved:true }));
+  [...db.nutrition.entries].sort((a,b) => b.date.localeCompare(a.date)).forEach(e => { const k = e.name.toLowerCase(); if (!seen.has(k)) seen.set(k, { name:e.name, serving:e.serving, cal:e.cal, p:e.p, c:e.c, f:e.f, fiber:e.fiber, sugar:e.sugar, sodium:e.sodium, saved:false }); });
+  return [...seen.values()];
+}
+function dailyTotals(n=7, end=today()){
+  const e = parse(end);
+  return Array.from({length:n}, (_,i) => { const d = iso(addDays(e, -(n-1-i))); const list = entriesOn(d); return { date:d, logged:list.length>0, ...totals(list) }; });
+}
+function weekSummary(end=today()){
+  const days = dailyTotals(7, end), logged = days.filter(d => d.logged);
+  const avg = k => logged.length ? logged.reduce((a,d) => a+d[k], 0) / logged.length : 0;
+  return { days, n:logged.length, cal:avg('cal'), p:avg('p'), c:avg('c'), f:avg('f') };
+}
+function ring(value, target, label, sub){
+  const R = 52, C = 2*Math.PI*R, pct = target ? value/target : 0, over = pct > 1.05;
+  const dash = Math.min(1, pct) * C;
+  return `<svg class="ring" viewBox="0 0 128 128" role="img" aria-label="${esc(label)} ${Math.round(value)} of ${target}">
+    <circle cx="64" cy="64" r="${R}" class="ring-bg"/><circle cx="64" cy="64" r="${R}" class="ring-fg ${over?'over':''}" stroke-dasharray="${dash.toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 64 64)"/>
+    <text x="64" y="62" text-anchor="middle" class="ring-v">${Math.round(value)}</text><text x="64" y="82" text-anchor="middle" class="ring-l">${esc(sub)}</text></svg>`;
+}
+function macroBar(label, value, target, u, cls=''){
+  const pct = target ? Math.min(100, value/target*100) : 0, over = target && value > target*1.05;
+  return `<div class="mbar ${cls}"><div class="t"><span>${esc(label)}</span><span><b>${r1(value)}</b> / ${target} ${u}</span></div><div class="b"><i class="${over?'over':''}" style="width:${pct}%"></i></div></div>`;
+}
+function macroSplit(t){
+  const pc = t.p*4, cc = t.c*4, fc = t.f*9, sum = pc+cc+fc;
+  if (!sum) return `<div class="empty" style="padding:4px 0">Log food to see your macro split.</div>`;
+  const P = Math.round(pc/sum*100), Cc = Math.round(cc/sum*100), F = 100 - P - Cc;
+  return `<div class="split"><i class="sp" style="width:${P}%"></i><i class="sc" style="width:${Cc}%"></i><i class="sf" style="width:${F}%"></i></div>
+    <div class="split-l"><span><i class="sp"></i>Protein ${P}%</span><span><i class="sc"></i>Carbs ${Cc}%</span><span><i class="sf"></i>Fat ${F}%</span></div>`;
+}
+function calChart(days, target){
+  const W = 340, H = 140, pt = 16, pb = 22, pl = 4, pr = 4;
+  const max = Math.max(target*1.15, ...days.map(d => d.cal), 1);
+  const bw = (W-pl-pr)/days.length, Y = v => H - pb - (H-pt-pb) * v/max;
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Calories per day, last ${days.length} days">`;
+  days.forEach((d,i) => {
+    const x = pl + i*bw + bw*0.2, y = Y(d.cal), cur = d.date === today();
+    s += `<rect class="bar ${d.cal?'':'dim'} ${d.cal > target*1.05 ? 'over' : ''}" x="${x.toFixed(1)}" y="${(d.cal?y:H-pb-3).toFixed(1)}" width="${(bw*0.6).toFixed(1)}" height="${(d.cal?H-pb-y:3).toFixed(1)}" rx="4" ${cur?'':'opacity=".6"'}/>`;
+    if (d.cal) s += `<text x="${(x+bw*0.3).toFixed(1)}" y="${(y-4).toFixed(1)}" text-anchor="middle" style="fill:${cur?'var(--accent)':'var(--muted)'}">${Math.round(d.cal)}</text>`;
+    s += `<text x="${(x+bw*0.3).toFixed(1)}" y="${H-6}" text-anchor="middle">${cur ? 'Today' : DOW[parse(d.date).getDay()]}</text>`;
+  });
+  const ty = Y(target); s += `<line class="goal" x1="0" x2="${W}" y1="${ty}" y2="${ty}"/><text x="${W-pr}" y="${ty-4}" text-anchor="end" style="fill:#ffc43d">Target ${target}</text>`;
+  return s + '</svg>';
+}
+function nutritionCard(){
+  const t = totals(entriesOn(today())), tg = targets(), wk = weekSummary();
+  const ws = weightSeries(); let wnote = '';
+  if (ws.length > 1) {
+    const recent = ws.filter(p => p.date >= iso(addDays(new Date(), -28)));
+    if (recent.length > 1) { const span = Math.max(1, (parse(recent[recent.length-1].date) - parse(recent[0].date)) / 864e5 / 7); const rate = r1((recent[recent.length-1].w - recent[0].w) / span); wnote = ` · weight ${rate>0?'+':''}${rate} ${unit()}/wk (4 wk)`; }
+  }
+  return `<div class="card" id="nutriCard"><h2>Nutrition today <a href="#/food" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">Food log ›</a></h2>
+    ${macroBar('Calories', t.cal, tg.cal, 'kcal', 'cal')}${macroBar('Protein', t.p, tg.p, 'g', 'pro')}
+    <div class="hint">${wk.n ? `7-day avg ${Math.round(wk.cal)} kcal · ${Math.round(wk.p)} g protein${wnote}` : 'No food logged this week yet.'}</div>
+    <a class="btn block" style="margin-top:12px" href="#/food">Log food</a></div>`;
+}
+
+let foodDate = null;
+function viewFood(d){
+  if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) foodDate = d;
+  if (!foodDate) foodDate = today();
+  const day = foodDate, isToday = day === today();
+  setHeader('Food', `<button class="btn sm" id="savedFoods">My foods</button>`);
+  const list = entriesOn(day), t = totals(list), tg = targets(), wk = weekSummary(day);
+  const v = $('#view');
+  v.innerHTML = `
+    <div class="daynav"><a class="iconbtn big" href="#/food/${iso(addDays(parse(day),-1))}" aria-label="Previous day"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></a>
+      <div class="dn-t"><b>${isToday ? 'Today' : fmtDate(day).replace(/, \d{4}$/,'')}</b>${isToday ? `<span>${fmtShort(day)}</span>` : `<a href="#/food/${today()}">Jump to today</a>`}</div>
+      ${isToday ? '<span class="iconbtn big" style="opacity:.25"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>' : `<a class="iconbtn big" href="#/food/${iso(addDays(parse(day),1))}" aria-label="Next day"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></a>`}</div>
+    <div class="card nutri-top">
+      <div class="ringwrap">${ring(t.cal, tg.cal, 'Calories', `of ${tg.cal} kcal`)}<div class="left">${t.cal <= tg.cal ? `<b>${Math.round(tg.cal - t.cal)}</b> kcal left` : `<b class="over">${Math.round(t.cal - tg.cal)}</b> kcal over`}</div></div>
+      <div class="mbars">${macroBar('Protein', t.p, tg.p, 'g', 'pro')}${macroBar('Carbs', t.c, tg.c, 'g', 'carb')}${macroBar('Fat', t.f, tg.f, 'g', 'fat')}</div>
+    </div>
+    <div class="card"><h2>Macro split</h2>${macroSplit(t)}
+      <div class="extras">${EXTRAS.map(([k,l,u]) => `<div><b>${r1(t[k])}<small> ${u}</small></b><span>${l}</span></div>`).join('')}</div></div>
+    ${MEALS.map(([k,l]) => { const items = list.filter(e => e.meal === k), mt = totals(items); return `<div class="card meal" data-meal="${k}"><h2>${l} <small>${Math.round(mt.cal)} kcal · ${r1(mt.p)} g P</small></h2>
+      ${items.map(e => `<button type="button" class="food-row" data-id="${esc(e.id)}"><div class="grow"><b>${esc(e.name)}</b><small>${r1(num(e.qty)||1)} × ${esc(e.serving||'serving')} · P ${r1(num(e.p)*(num(e.qty)||1))} · C ${r1(num(e.c)*(num(e.qty)||1))} · F ${r1(num(e.f)*(num(e.qty)||1))}</small></div><span class="kcal">${Math.round(num(e.cal)*(num(e.qty)||1))}</span></button>`).join('')}
+      <button type="button" class="btn block addfood" data-add="${k}"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add ${l === 'Snacks' ? 'snack' : l.toLowerCase()}</button></div>`; }).join('')}
+    <div class="card"><h2>Last 7 days <small>${wk.n} day${wk.n===1?'':'s'} logged</small></h2>
+      <div class="kv" style="margin-bottom:8px"><div><b>${Math.round(wk.cal)}</b><span>Avg kcal</span></div><div><b>${Math.round(wk.p)}<small style="font-size:13px;color:var(--muted)"> g</small></b><span>Avg protein</span></div><div><b>${wk.days.filter(x => x.logged && x.p >= tg.p*0.95).length}/7</b><span>Protein goal hit</span></div></div>
+      ${calChart(wk.days, tg.cal)}<div class="hint">Avg carbs ${Math.round(wk.c)} g · fat ${Math.round(wk.f)} g (days with food logged)</div></div>`;
+  v.querySelectorAll('[data-add]').forEach(b => b.onclick = () => foodForm({ meal:b.dataset.add }));
+  v.querySelectorAll('.food-row').forEach(b => b.onclick = () => foodForm({ id:b.dataset.id }));
+  $('#savedFoods').onclick = savedFoodsSheet;
+}
+
+function foodForm({ id=null, meal=null, preset=null }){
+  const existing = id ? db.nutrition.entries.find(e => e.id === id) : null;
+  const guessMeal = () => { const hr = new Date().getHours(); return hr < 11 ? 'breakfast' : hr < 15 ? 'lunch' : hr < 21 ? 'dinner' : 'snack'; };
+  const e = existing ? { ...existing } : { id:null, date:foodDate || today(), meal:meal || guessMeal(), name:'', serving:'1 serving', qty:1, cal:'', p:'', c:'', f:'', fiber:'', sugar:'', sodium:'', ...(preset||{}) };
+  const el = h(`<div class="foodform"><h3>${existing ? 'Edit food' : 'Add food'}</h3></div>`);
+  const name = h(`<input class="input" type="text" autocapitalize="sentences" autocomplete="off" placeholder="e.g. Chicken breast" value="${esc(e.name)}">`);
+  const sugg = h('<div class="sugg"></div>');
+  const nameWrap = h('<div></div>'); nameWrap.appendChild(name); nameWrap.appendChild(sugg);
+  el.appendChild(field('Food', nameWrap));
+  el.appendChild(field('Meal', seg(MEALS, e.meal, x => e.meal = x)));
+  const numIn = (k, ph, mode='decimal') => { const i = h(`<input class="input num" type="text" inputmode="${mode}" placeholder="${ph}" value="${esc(e[k])}" data-k="${k}">`); i.oninput = () => { e[k] = i.value.replace(/[^\d.]/g,''); if (i.value !== e[k]) i.value = e[k]; drawTotal(); }; return i; };
+  const g1 = h('<div class="grid2"></div>');
+  const serving = h(`<input class="input" type="text" placeholder="e.g. 100 g, 1 cup" value="${esc(e.serving)}">`); serving.oninput = () => e.serving = serving.value;
+  g1.appendChild(field('Serving size', serving));
+  const qty = h(`<div class="stepper"><button type="button" aria-label="Fewer servings">−</button><input type="text" inputmode="decimal" value="${esc(e.qty)}" data-k="qty"><span class="unit">×</span><button type="button" aria-label="More servings">+</button></div>`);
+  const qi = qty.querySelector('input'), [qd, qu] = qty.querySelectorAll('button');
+  const setQ = v => { v = Math.max(0.25, Math.min(50, Math.round(v*4)/4)); e.qty = v; qi.value = v; drawTotal(); };
+  qd.onclick = () => setQ((num(qi.value)||1) - 0.5); qu.onclick = () => setQ((num(qi.value)||1) + 0.5);
+  qi.oninput = () => { e.qty = qi.value.replace(/[^\d.]/g,''); drawTotal(); }; qi.onchange = () => setQ(num(qi.value)||1);
+  g1.appendChild(field('Servings', qty));
+  el.appendChild(g1);
+  el.appendChild(h('<div class="label sect">Per serving</div>'));
+  const g2 = h('<div class="grid2"></div>');
+  g2.appendChild(field('Calories (kcal)', numIn('cal','0','numeric')));
+  g2.appendChild(field('Protein (g)', numIn('p','0')));
+  g2.appendChild(field('Carbs (g)', numIn('c','0')));
+  g2.appendChild(field('Fat (g)', numIn('f','0')));
+  el.appendChild(g2);
+  const more = h(`<details class="more" ${num(e.fiber)||num(e.sugar)||num(e.sodium)?'open':''}><summary>Fiber, sugar, sodium (optional)</summary></details>`);
+  const g3 = h('<div class="grid3"></div>');
+  g3.appendChild(field('Fiber g', numIn('fiber','—'))); g3.appendChild(field('Sugar g', numIn('sugar','—'))); g3.appendChild(field('Sodium mg', numIn('sodium','—','numeric')));
+  more.appendChild(g3); el.appendChild(more);
+  const totalEl = h('<div class="foodtotal"></div>'); el.appendChild(totalEl);
+  const isSaved = () => db.nutrition.foods.some(f => f.name.toLowerCase() === (e.name||'').trim().toLowerCase());
+  const saveChk = h(`<label class="check"><input type="checkbox" ${existing ? '' : 'checked'}><span>Save to My foods for quick re-adding</span></label>`);
+  el.appendChild(saveChk);
+  function drawTotal(){
+    const q = num(e.qty) || 1, c = num(e.cal)*q;
+    totalEl.innerHTML = `<span>Total</span><b>${Math.round(c)} kcal</b><span>P ${r1(num(e.p)*q)} · C ${r1(num(e.c)*q)} · F ${r1(num(e.f)*q)} g</span>`;
+  }
+  const fill = f => {
+    e.name = f.name; name.value = f.name; e.serving = f.serving || '1 serving'; serving.value = e.serving;
+    ['cal','p','c','f','fiber','sugar','sodium'].forEach(k => { e[k] = f[k] === '' || f[k] == null ? '' : String(f[k]); const i = el.querySelector(`input[data-k="${k}"]`); if (i) i.value = e[k]; });
+    if (num(e.fiber)||num(e.sugar)||num(e.sodium)) more.open = true;
+    saveChk.querySelector('input').checked = !f.saved; drawSugg(); drawTotal();
+  };
+  function drawSugg(){
+    const q = name.value.trim().toLowerCase();
+    const list = knownFoods().filter(f => !q || f.name.toLowerCase().includes(q)).filter(f => f.name.toLowerCase() !== q)
+      .sort((a,b) => q ? (a.name.toLowerCase().startsWith(q)?0:1) - (b.name.toLowerCase().startsWith(q)?0:1) : 0).slice(0,12);
+    sugg.innerHTML = '';
+    list.forEach(f => { const b = h(`<button type="button">${f.saved?'★ ':''}${esc(f.name)} <small>${Math.round(num(f.cal))}</small></button>`); b.onclick = () => fill(f); sugg.appendChild(b); });
+  }
+  sugg.addEventListener('mousedown', ev => ev.preventDefault());
+  name.oninput = () => { e.name = name.value; drawSugg(); };
+  const btns = h(`<div style="display:flex;gap:10px;margin-top:14px">${existing ? '<button type="button" class="btn danger" data-del>Delete</button>' : ''}<button type="button" class="btn primary" style="flex:1" data-save>${existing ? 'Save changes' : 'Add food'}</button></div>`);
+  btns.querySelector('[data-save]').onclick = () => {
+    const nm = (name.value||'').trim().replace(/\s+/g,' ');
+    if (!nm) { toast('Enter a food name'); name.focus(); return; }
+    if (!num(e.cal) && !num(e.p) && !num(e.c) && !num(e.f)) { toast('Enter calories or macros'); return; }
+    const clean = k => e[k] === '' || e[k] == null || isNaN(Number(e[k])) ? '' : r1(Number(e[k]));
+    const rec = { id: existing ? existing.id : uid(), date:e.date, meal:e.meal, name:nm, serving:(e.serving||'').trim() || '1 serving', qty: num(e.qty) || 1,
+      cal:clean('cal')||0, p:clean('p')||0, c:clean('c')||0, f:clean('f')||0, fiber:clean('fiber'), sugar:clean('sugar'), sodium:clean('sodium'), createdAt: existing?.createdAt || Date.now() };
+    if (existing) { const i = db.nutrition.entries.findIndex(x => x.id === existing.id); db.nutrition.entries[i] = rec; }
+    else db.nutrition.entries.push(rec);
+    if (saveChk.querySelector('input').checked) {
+      const food = { name:nm, serving:rec.serving, cal:rec.cal, p:rec.p, c:rec.c, f:rec.f, fiber:rec.fiber, sugar:rec.sugar, sodium:rec.sodium };
+      const i = db.nutrition.foods.findIndex(f => f.name.toLowerCase() === nm.toLowerCase());
+      if (i >= 0) { const nf = { ...db.nutrition.foods[i], ...food }; delete nf.sample; db.nutrition.foods[i] = nf; } else db.nutrition.foods.push({ id:uid(), ...food });
+    }
+    save(); closeSheet(); toast(existing ? 'Food updated' : `Added ${nm}`); route();
+  };
+  const del = btns.querySelector('[data-del]');
+  if (del) del.onclick = () => { db.nutrition.entries = db.nutrition.entries.filter(x => x.id !== existing.id); save(); closeSheet(); toast('Food removed'); route(); };
+  el.appendChild(btns);
+  drawSugg(); drawTotal();
+  openSheet(el);
+  if (!existing && !preset) setTimeout(() => name.focus({ preventScroll:true }), 50);
+}
+
+function savedFoodsSheet(){
+  const el = h(`<div><h3>My foods</h3><p class="hint" style="margin:-8px 0 12px">Tap + to add a serving to ${foodDate === today() ? 'today' : fmtShort(foodDate)}. Foods you save while logging appear here.</p><div class="search" style="margin-bottom:10px"><input class="input" type="search" placeholder="Search my foods…"></div><div class="flist"></div></div>`);
+  const q = el.querySelector('input'), listEl = el.querySelector('.flist');
+  const draw = () => {
+    const s = q.value.trim().toLowerCase();
+    const foods = [...db.nutrition.foods].sort((a,b) => a.name.localeCompare(b.name)).filter(f => !s || f.name.toLowerCase().includes(s));
+    listEl.innerHTML = foods.length ? foods.map(f => `<div class="list-row" data-id="${esc(f.id)}"><div class="grow"><b>${esc(f.name)}</b><small>${esc(f.serving||'serving')} · ${Math.round(num(f.cal))} kcal · P ${r1(num(f.p))} C ${r1(num(f.c))} F ${r1(num(f.f))}</small></div>
+      <button type="button" class="iconbtn big" data-rm aria-label="Remove ${esc(f.name)} from My foods"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/></svg></button>
+      <button type="button" class="iconbtn big accent" data-quick aria-label="Add ${esc(f.name)}"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div>`).join('') : '<div class="empty">No saved foods yet.</div>';
+    listEl.querySelectorAll('.list-row').forEach(row => {
+      const f = db.nutrition.foods.find(x => x.id === row.dataset.id);
+      row.querySelector('[data-quick]').onclick = () => { closeSheet(); foodForm({ preset:{ ...f, id:null, qty:1 } }); };
+      row.querySelector('[data-rm]').onclick = async () => { if (await confirmSheet(`Remove ${f.name}?`, 'It is removed from My foods only; logged entries stay.', 'Remove')) { db.nutrition.foods = db.nutrition.foods.filter(x => x.id !== f.id); save(); toast('Removed from My foods'); } savedFoodsSheet(); };
+    });
+  };
+  q.oninput = draw; draw(); openSheet(el);
+}
+
+function sampleNutrition(){
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const F = (name, serving, cal, p, c, f, fiber='', sugar='', sodium='') => ({ id:uid(), name, serving, cal, p, c, f, fiber, sugar, sodium, sample:true });
+  const foods = {
+    breakfast:[F('Greek yogurt','1 cup (227 g)',150,23,9,0,0,7,85), F('Oatmeal','1 cup cooked',166,6,28,3.6,4,0.6,9), F('Eggs, scrambled','2 large',182,12,2,14,0,1.4,340), F('Banana','1 medium',105,1.3,27,0.4,3.1,14,1), F('Protein shake','1 scoop + milk',250,32,14,6,1,12,220)],
+    lunch:[F('Chicken breast','6 oz grilled',280,53,0,6,0,0,125), F('White rice','1 cup cooked',205,4.3,45,0.4,0.6,0,2), F('Burrito bowl','1 bowl',720,42,78,24,14,6,1650), F('Turkey sandwich','1 sandwich',430,30,44,14,4,6,1100), F('Mixed salad','1 large bowl',120,4,12,7,5,5,180)],
+    dinner:[F('Salmon fillet','6 oz',350,34,0,22,0,0,100), F('Sweet potato','1 medium',112,2,26,0.1,3.9,5.4,72), F('Lean ground beef','6 oz',340,42,0,18,0,0,120), F('Pasta','2 cups cooked',400,15,80,2.4,5,1.6,4), F('Steamed broccoli','1 cup',55,3.7,11,0.6,5.1,2.2,64)],
+    snack:[F('Almonds','1 oz',164,6,6,14,3.5,1.2,0), F('Apple','1 medium',95,0.5,25,0.3,4.4,19,2), F('Protein bar','1 bar',210,20,23,7,10,1,200), F('Cottage cheese','1/2 cup',110,12,5,5,0,4,400)]
+  };
+  const entries = [], end = new Date();
+  for (let i = 13; i >= 0; i--) {
+    const d = iso(addDays(end, -i));
+    if (i > 0 && rnd() < .12) continue; // a few unlogged days
+    MEALS.forEach(([m]) => {
+      if (i === 0 && (m === 'dinner' || m === 'snack')) return; // today: partially logged
+      const n = m === 'snack' ? (rnd() < .7 ? 1 : 0) : m === 'breakfast' ? 2 : 2 + (rnd() < .4 ? 1 : 0);
+      const pool = [...foods[m]];
+      for (let k = 0; k < n && pool.length; k++) {
+        const f = pool.splice(Math.floor(rnd()*pool.length), 1)[0];
+        entries.push({ id:uid(), date:d, meal:m, name:f.name, serving:f.serving, qty: rnd() < .2 ? 1.5 : 1, cal:f.cal, p:f.p, c:f.c, f:f.f, fiber:f.fiber, sugar:f.sugar, sodium:f.sodium, sample:true, createdAt:Date.now() });
+      }
+    });
+  }
+  return { entries, foods:Object.values(foods).flat() };
+}
+function sanitizeNutrition(n){
+  const nz = v => v === '' || v == null || isNaN(Number(v)) ? '' : Number(v);
+  const food = x => ({ name:String(x.name||'').trim(), serving:String(x.serving||'1 serving'), cal:Number(x.cal)||0, p:Number(x.p)||0, c:Number(x.c)||0, f:Number(x.f)||0, fiber:nz(x.fiber), sugar:nz(x.sugar), sodium:nz(x.sodium), ...(x.sample ? { sample:true } : {}) });
+  const entries = Array.isArray(n?.entries) ? n.entries.filter(e => e && typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && e.name)
+    .map(e => ({ id:String(e.id||uid()), date:e.date, meal:MEALS.some(m => m[0]===e.meal) ? e.meal : 'snack', qty:Number(e.qty)||1, ...food(e), createdAt:e.createdAt||Date.now() })) : [];
+  const foods = Array.isArray(n?.foods) ? n.foods.filter(f => f && f.name).map(f => ({ id:String(f.id||uid()), ...food(f) })) : [];
+  return { entries, foods };
+}
+
 /* ---------------- settings ---------------- */
 function viewSettings(){
   setHeader('Profile');
@@ -487,7 +725,17 @@ function viewSettings(){
   wcard.appendChild(field('Goal weight', goal));
   v.appendChild(wcard);
 
-  const hasSample = db.sessions.some(s => s.sample);
+  const tcard = h('<div class="card" id="targetsCard"><h2>Daily nutrition targets</h2><div class="grid2"></div></div>');
+  const tg = targets(), tgrid = tcard.querySelector('.grid2');
+  MACROS.forEach(([k,l,u]) => {
+    const i = h(`<input class="input" type="text" inputmode="numeric" value="${esc(tg[k])}" data-target="${k}">`);
+    i.onchange = () => { const n = Math.round(num(i.value.replace(/[^\d.]/g,''))); if (!n) { i.value = targets()[k]; toast('Enter a number'); return; } i.value = n; p.targets = { ...targets(), [k]:n }; save(); toast(`${l} target saved`); };
+    tgrid.appendChild(field(`${l} (${u})`, i));
+  });
+  tcard.appendChild(h('<div class="hint">Shown as progress on the Food tab and the dashboard. Rough guide: protein ≈ 0.8–1 g per lb of body weight.</div>'));
+  v.appendChild(tcard);
+
+  const hasSample = db.sessions.some(s => s.sample) || db.nutrition.entries.some(e => e.sample);
   const data = h(`<div class="card"><h2>Your data</h2>
     <p class="hint" style="margin:-4px 0 14px;font-size:13px">Stored only on this device. Export a backup regularly, especially before clearing Safari data.</p>
     <div style="display:flex;flex-direction:column;gap:10px">
@@ -500,21 +748,21 @@ function viewSettings(){
     </div></div>`);
   v.appendChild(data);
   v.appendChild(h(`<div class="card"><h2>Install on iPhone</h2><div style="color:var(--muted);font-size:14px">In Safari, tap <b style="color:var(--text)">Share</b> → <b style="color:var(--text)">Add to Home Screen</b>. It opens full-screen and works offline.</div></div>`));
-  v.appendChild(h(`<div class="foot">Discipline &gt; Motivation · v${APP_VERSION} · ${db.sessions.length} sessions stored</div>`));
+  v.appendChild(h(`<div class="foot">Discipline &gt; Motivation · v${APP_VERSION} · ${db.sessions.length} sessions · ${db.nutrition.entries.length} food entries stored</div>`));
 
   $('#exp').onclick = exportData;
   $('#impFile').onchange = e => importData(e.target.files[0]);
   const ld = $('#ldS'); if (ld) ld.onclick = loadSample;
   const rm = $('#rmS'); if (rm) rm.onclick = removeSample;
   $('#clr').onclick = async () => {
-    if (await confirmSheet('Clear all data?', `This permanently deletes ${db.sessions.length} sessions and your profile from this device. Export a backup first if you want to keep them.`, 'Clear everything')) {
-      db = { sessions:[], profile:defaultProfile() }; save(); form = null; toast('All data cleared'); route();
+    if (await confirmSheet('Clear all data?', `This permanently deletes ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries, saved foods and your profile from this device. Export a backup first if you want to keep them.`, 'Clear everything')) {
+      db = { sessions:[], profile:defaultProfile(), nutrition:defaultNutrition() }; save(); form = null; foodDate = null; toast('All data cleared'); route();
     }
   };
 }
 
 function exportData(){
-  const payload = { app:'discipline-motivation-bjj', version:1, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions };
+  const payload = { app:'discipline-motivation-bjj', version:1, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = `dm-bjj-backup-${today()}.json`;
@@ -534,8 +782,9 @@ async function importData(file){
       rolls:Array.isArray(s.rolls)?s.rolls.map(r => ({ id:String(r.id||uid()), partner:String(r.partner||''), result:['win','loss','draw'].includes(r.result)?r.result:'draw',
         subsLanded:(r.subsLanded||[]).map(String), subsTapped:(r.subsTapped||[]).map(String), stuck:(r.stuck||[]).map(String) })):[],
       sample:!!s.sample, createdAt:s.createdAt||Date.now(), ...(s.updatedAt ? { updatedAt:s.updatedAt } : {}) }));
-    if (await confirmSheet(`Import ${valid.length} sessions?`, `This replaces the ${db.sessions.length} sessions currently on this device.`, 'Replace & import', false)) {
-      db = { sessions:valid, profile:{ ...defaultProfile(), ...(d.profile||{}) } }; save(); toast(`Imported ${valid.length} sessions`); route();
+    const nut = sanitizeNutrition(d.nutrition);
+    if (await confirmSheet(`Import ${valid.length} sessions and ${nut.entries.length} food entries?`, `This replaces the ${db.sessions.length} sessions and ${db.nutrition.entries.length} food entries currently on this device.`, 'Replace & import', false)) {
+      db = { sessions:valid, profile:{ ...defaultProfile(), ...(d.profile||{}) }, nutrition:nut }; save(); toast(`Imported ${valid.length} sessions`); route();
     }
   } catch(e) { console.warn(e); toast('That file isn\'t a valid backup'); }
   finally { const f = $('#impFile'); if (f) f.value = ''; }
@@ -573,12 +822,16 @@ function loadSample(){
       rolls, weight: rnd() < .7 ? Math.round(w*10)/10 : '', notes: rnd() < .55 ? pick(notes) : '', sample:true, createdAt:d.getTime() });
   }
   db.sessions = db.sessions.filter(s => !s.sample).concat(sessions);
+  const nut = sampleNutrition(), names = new Set(db.nutrition.foods.map(f => f.name.toLowerCase()));
+  db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample).concat(nut.entries), foods: db.nutrition.foods.filter(f => !f.sample).concat(nut.foods.filter(f => !names.has(f.name.toLowerCase()))) };
+  if (!db.profile.targets) db.profile = { ...db.profile, targets:{ cal:2300, p:190, c:220, f:75 } };
   if (!db.profile.promotedOn) { db.profile = { ...db.profile, belt:'blue', stripes:2, promotedOn:iso(addDays(new Date(), -152)), goalWeight: db.profile.goalWeight || '195', sampleProfile:true }; }
   save(); toast(`Loaded ${sessions.length} sample sessions`); route();
 }
 function removeSample(){
   const n = db.sessions.filter(s => s.sample).length;
   db.sessions = db.sessions.filter(s => !s.sample);
+  db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample), foods: db.nutrition.foods.filter(f => !f.sample) };
   if (db.profile.sampleProfile) db.profile = { ...defaultProfile(), unit:db.profile.unit };
   save(); toast(`Removed ${n} sample sessions`); route();
 }
@@ -588,7 +841,7 @@ function route(){
   if (!$('#sheet').hidden) closeSheet();
   const hash = location.hash.replace(/^#/, '') || '/';
   const [, a, b] = hash.split('/');
-  const tab = { '':'home', history:'history', session:'history', log:'log', edit:'history', stats:'stats', settings:'settings' }[a||''] || 'home';
+  const tab = { '':'home', history:'history', session:'history', log:'log', edit:'history', stats:'history', settings:'settings', food:'food' }[a||''] || 'home';
   document.querySelectorAll('.tabbar a').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   if (a !== 'log' && a !== 'edit') form = (a === 'session' ? null : form && !form.id ? form : null);
   switch (a || '') {
@@ -597,6 +850,7 @@ function route(){
     case 'log': viewForm(null); break;
     case 'edit': viewForm(b); break;
     case 'stats': viewStats(); break;
+    case 'food': viewFood(b); break;
     case 'settings': viewSettings(); break;
     default: viewHome();
   }

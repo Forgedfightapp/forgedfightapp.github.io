@@ -194,3 +194,63 @@ input[type=date].input{display:block}
 .sheet .panel,.field,.card,.grid2>*,.grid3>*,main{min-width:0}
 html,body{overflow-x:hidden}
 .sugg{max-width:100%}
+/* ---- nutrition ---- */
+.daynav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px}
+.daynav .dn-t{text-align:center;display:flex;flex-direction:column}
+.daynav .dn-t b{font-size:18px}
+.daynav .dn-t span,.daynav .dn-t a{font-size:13px;color:var(--muted)}
+.daynav .dn-t a{color:var(--accent);text-decoration:none}
+.iconbtn.big{width:48px;height:48px;min-width:48px;display:inline-flex;align-items:center;justify-content:center;border-radius:14px;background:var(--surface);border:1px solid var(--line);color:var(--text)}
+.iconbtn.big svg{width:22px;height:22px}
+.iconbtn.big.accent{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.nutri-top{display:flex;gap:16px;align-items:center}
+.ringwrap{flex:none;width:128px;text-align:center}
+.ringwrap .left{font-size:13px;color:var(--muted);margin-top:4px}
+.ringwrap .left b{color:var(--text);font-size:15px}
+.ringwrap .left b.over{color:var(--danger)}
+.ring{width:128px;height:128px;display:block}
+.ring-bg{fill:none;stroke:var(--surface2);stroke-width:12}
+.ring-fg{fill:none;stroke:var(--accent);stroke-width:12;stroke-linecap:round;transition:stroke-dasharray .4s}
+.ring-fg.over{stroke:var(--danger)}
+.ring-v{fill:var(--text);font-size:28px;font-weight:780}
+.ring-l{fill:var(--muted);font-size:11px;font-weight:600}
+.mbars{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
+.mbar .t{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-weight:600;margin-bottom:5px}
+.mbar .t b{color:var(--text)}
+.mbar .b{height:9px;border-radius:5px;background:var(--surface2);overflow:hidden}
+.mbar .b i{display:block;height:100%;border-radius:5px;background:var(--accent)}
+.mbar.carb .b i{background:#8fb8ff}.mbar.fat .b i{background:#ffc43d}
+.mbar .b i.over{background:var(--danger)}
+#nutriCard .mbar{margin-bottom:12px}
+.split{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--surface2)}
+.split i{display:block;height:100%}
+.sp{background:var(--accent)}.sc{background:#8fb8ff}.sf{background:#ffc43d}
+.split-l{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-weight:600;margin-top:8px}
+.split-l i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px}
+.extras{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;text-align:center}
+.extras div{background:var(--surface2);border-radius:12px;padding:10px 4px}
+.extras b{display:block;font-size:17px}.extras small{font-size:11px;color:var(--muted)}
+.extras span{font-size:12px;color:var(--muted)}
+.food-row{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:8px 0;background:none;border:0;border-bottom:1px solid var(--line);text-align:left;cursor:pointer}
+.food-row .grow{flex:1;min-width:0}
+.food-row b{display:block;font-weight:650}
+.food-row small{display:block;color:var(--muted);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.food-row .kcal{font-weight:750;font-size:16px}
+.food-row .kcal::after{content:' kcal';font-size:11px;color:var(--muted);font-weight:600}
+.meal .addfood{margin-top:10px;min-height:48px}
+.chart .bar.over{fill:var(--danger)}
+.label.sect{margin:6px 0 10px;font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.input.num{text-align:left;font-weight:650}
+details.more{margin:0 0 12px;border:1px solid var(--line);border-radius:14px;padding:0 12px}
+details.more summary{min-height:48px;display:flex;align-items:center;color:var(--muted);font-weight:650;cursor:pointer}
+details.more .grid3{padding-bottom:4px}
+.foodtotal{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;background:var(--accent-soft);border:1px solid rgba(62,232,181,.35);border-radius:14px;padding:12px 14px;margin-bottom:12px}
+.foodtotal b{font-size:20px;color:var(--accent)}
+.foodtotal span{color:var(--muted);font-size:13px;font-weight:600}
+.check{display:flex;align-items:center;gap:12px;min-height:48px;font-weight:600;color:var(--muted)}
+.check input{width:24px;height:24px;accent-color:var(--accent)}
+.sugg button small{color:var(--dim);margin-left:4px}
+.flist .list-row{gap:10px}
+.flist .list-row b{display:block}
+.flist small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.flist .grow{min-width:0}

@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '2.2.1';
+const APP_VERSION = '2.2.2';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -881,13 +881,18 @@ function viewForm(id){
   // file import
   const imp = h(`<div class="field"><label>Import from device</label><label class="btn block" for="wkFile"><svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg>GPX · TCX · FIT · CSV</label><input type="file" id="wkFile" accept=".gpx,.tcx,.fit,.csv,application/gpx+xml,application/vnd.garmin.tcx+xml,text/csv" hidden>${f.source ? `<div class="hint">📎 ${esc(f.source)}</div>` : '<div class="hint">Fills in date, time, distance, heart rate and calories from a watch or app export.</div>'}</div>`);
   imp.querySelector('#wkFile').onchange = async e => { const file = e.target.files[0]; if (!file) return; try { const r = await parseWorkoutFile(file); applyImport(f, r, file.name); toast('Workout file imported'); redraw(); } catch(err) { console.warn(err); toast(`Couldn't read that file`); } };
+  const notes = h(`<textarea class="input" placeholder="What clicked? What to work on next time?">${esc(f.notes)}</textarea>`);
+  notes.oninput = () => f.notes = notes.value;
+  const notesF = field('Notes', notes); let notesPlaced = false;
+  const placeNotes = () => { if (!notesPlaced) { D.appendChild(notesF); notesPlaced = true; } };
   if (f.category === 'grappling' || f.category === 'striking') {
     D.appendChild(field('Session type', seg(SESSION_TYPES.filter(t => t[0] !== 'seminar' || f.category === 'grappling'), f.type, x => f.type = x, true)));
   }
   if (f.category === 'grappling') {
+    D.appendChild(field('Techniques drilled', tagField({ values:f.techniques, suggestions:() => uniqueMerge(usedTechniques(), TECHNIQUES), placeholder:'Add technique…' })));
+    placeNotes();
     const roundsStep = stepper(f.rounds, { min:0, max:50, unitLabel:'rds', onChange:x => f.rounds = x });
     D.appendChild(field('Rounds', roundsStep));
-    D.appendChild(field('Techniques drilled', tagField({ values:f.techniques, suggestions:() => uniqueMerge(usedTechniques(), TECHNIQUES), placeholder:'Add technique…' })));
     const rollsWrap = h(`<div class="field"><div class="label" style="display:flex;justify-content:space-between;align-items:center">Rolls <span style="text-transform:none;letter-spacing:0;color:var(--dim);font-weight:600" id="rollSum"></span></div><div id="rollList"></div><button type="button" class="btn block" id="addRoll"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add roll</button></div>`);
     D.appendChild(rollsWrap);
     const drawRolls = () => {
@@ -920,6 +925,8 @@ function viewForm(id){
     drawRolls();
   }
   if (f.category === 'striking') {
+    D.appendChild(field('Worked on', tagField({ values:f.techniques, suggestions:() => uniqueMerge(countBy(db.sessions.filter(s => catOf(s)==='striking').flatMap(s => s.techniques||[])).map(x => x[0]), STRIKE_TECH), placeholder:'Combo, technique…' })));
+    placeNotes();
     const g2 = h('<div class="grid2"></div>');
     const rs = stepper(f.rounds, { min:0, max:60, unitLabel:'rds', onChange:x => f.rounds = x });
     g2.appendChild(field('Total rounds', rs));
@@ -935,9 +942,8 @@ function viewForm(id){
       row.querySelector('button').onclick = () => { f.strike.spar.splice(i,1); drawSpar(); }; L.appendChild(row); }); };
     sp.querySelector('#addSpar').onclick = () => { f.strike.spar.push({ partner:'', notes:'' }); drawSpar(); sp.querySelector('.spar:last-child input').focus(); };
     drawSpar(); D.appendChild(sp);
-    D.appendChild(field('Worked on', tagField({ values:f.techniques, suggestions:() => uniqueMerge(countBy(db.sessions.filter(s => catOf(s)==='striking').flatMap(s => s.techniques||[])).map(x => x[0]), STRIKE_TECH), placeholder:'Combo, technique…' })));
   }
-  if (f.category === 'weights') D.appendChild(exerciseEditor(f));
+  if (f.category === 'weights') { D.appendChild(exerciseEditor(f)); placeNotes(); }
   if (f.category === 'cardio') {
     const k = f.cardio;
     const g3 = h('<div class="grid2"></div>');
@@ -954,8 +960,9 @@ function viewForm(id){
     [ih, im, is].forEach(i => i.oninput = readT);
     di.oninput = () => { k.distance = di.value.replace(/[^\d.]/g,''); drawPace(); };
     function drawPace(){ const d = num(k.distance); paceEl.innerHTML = d && k.sec ? `<span>Pace <b>${paceStr(k.sec, d, k.unit)}</b></span><span>Speed <b>${speedStr(k.sec, d, k.unit)}</b></span>` : '<span>Enter distance and time to see your pace</span>'; }
-    D.appendChild(field('Time (h:mm:ss)', tm)); D.appendChild(paceEl); drawPace();
+    D.appendChild(field('Time (h:mm:ss)', tm)); D.appendChild(paceEl); drawPace(); placeNotes();
   }
+  placeNotes();
   if (f.category === 'grappling' || f.category === 'striking' || f.category === 'weights' || f.category === 'cardio') {
     const intens = h(`<div><div class="intensity">${[1,2,3,4,5].map(i => `<button type="button" data-i="${i}" aria-label="Intensity ${i}">${i}</button>`).join('')}</div><div class="hint" id="intLabel"></div></div>`);
     const syncI = () => { intens.querySelectorAll('button').forEach(b => b.classList.toggle('on', Number(b.dataset.i) === f.intensity)); intens.querySelector('#intLabel').textContent = INTENSITY[f.intensity]; };
@@ -973,9 +980,6 @@ function viewForm(id){
   [['avg','Avg HR'],['max','Max HR'],['cal','Calories']].forEach(([k2,l]) => { const i = h(`<input class="input num" type="text" inputmode="numeric" placeholder="—" value="${esc(hr[k2])}" data-hr="${k2}">`); i.oninput = () => hr[k2] = i.value.replace(/[^\d.]/g,''); hrEl.querySelector('.grid3').appendChild(field(l, i)); });
   hr.zones.forEach((z,i) => { const inp = h(`<input class="input num" type="text" inputmode="decimal" placeholder="—" value="${esc(z)}" aria-label="Zone ${i+1} minutes" data-z="${i}">`); inp.oninput = () => hr.zones[i] = inp.value.replace(/[^\d.]/g,''); const w = h(`<div class="z"><span>Z${i+1}</span></div>`); w.appendChild(inp); hrEl.querySelector('.zones').appendChild(w); });
   D.appendChild(field('Heart rate', hrEl));
-  const notes = h(`<textarea class="input" placeholder="What clicked? What to work on next time?">${esc(f.notes)}</textarea>`);
-  notes.oninput = () => f.notes = notes.value;
-  D.appendChild(field('Notes', notes));
   v.appendChild(det);
 
   const actions = h(`<div class="actions">${editing ? '<button type="button" class="btn danger" data-del style="flex:0 0 auto">Delete</button>' : ''}<button type="button" class="btn primary" data-save>${editing ? 'Save changes' : 'Save workout'}</button></div>`);

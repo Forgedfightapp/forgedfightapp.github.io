@@ -547,3 +547,6 @@ body.setup-mode .tabbar{display:none}
 /* header scrolls away (it is tall on phones); only the Save bar is pinned */
 .topbar{position:relative}
 .actions.stick{position:sticky;bottom:calc(var(--navh) + 6px);z-index:4;padding:14px 0 8px;background:linear-gradient(to bottom,rgba(17,17,17,0),var(--bg) 16px);box-shadow:0 14px 0 var(--bg)}
+/* suggestion chips wrap onto at most 2 rows (no cut-off chip at the right edge) */
+.sugg{flex-wrap:wrap;overflow:hidden;max-height:calc(8px + 2 * 37px + 8px + 2px)}
+.sugg button{line-height:19px;max-width:100%;overflow:hidden;text-overflow:ellipsis}

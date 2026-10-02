@@ -16,9 +16,21 @@ for (const w of [390, 375]) {
     await page.locator(`.cats button[data-c="${c}"]`).tap(); await settle(200);
     const t = `${w}px ${c}:`;
     ok(`${t} no expander / no "Add details" toggle; details always shown`, await page.locator('#view details.details').count() === 0 && !(await page.locator('#view').innerText()).includes('Add details') && await page.locator('#detailsSec').isVisible() && (await page.locator('#detailsSec .sect-title').textContent()).startsWith('Details'));
-    const order = await page.evaluate(() => { const y = txt => { const l = [...document.querySelectorAll('#view .field>label, #view .field>.label')].find(x => x.textContent.trim().startsWith(txt)); return l ? l.getBoundingClientRect().top + scrollY : null; };
-      return ['Intensity','Body weight','Import from device','Heart rate','Notes'].map(y); });
-    ok(`${t} order Intensity → Body weight → Import from device → Heart rate → Notes`, order.every(x => x != null) && order.every((x,i) => !i || x > order[i-1]), JSON.stringify(order));
+    const EXP = { grappling:['Session type','Techniques drilled','Notes','Rounds','Rolls','Intensity','Body weight','Import from device','Heart rate'],
+      striking:['Session type','Worked on','Notes','Total rounds','Rounds by type','Sparring partners','Intensity','Body weight','Import from device','Heart rate'],
+      weights:['Notes','Intensity','Body weight','Import from device','Heart rate'], cardio:['Distance','Time (h:mm:ss)','Notes','Intensity','Body weight','Import from device','Heart rate'] }[c];
+    const order = await page.evaluate(names => { const y = txt => { const l = [...document.querySelectorAll('#view .field>label, #view .field>.label')].find(x => x.textContent.trim().startsWith(txt)); return l ? l.getBoundingClientRect().top + scrollY : null; };
+      return names.map(y); }, EXP);
+    ok(`${t} order ${EXP.join(' → ')}`, order.every(x => x != null) && order.every((x,i) => !i || x > order[i-1]), JSON.stringify(order));
+    if (c === 'weights') { const ex = await page.evaluate(() => { const n = [...document.querySelectorAll('#view .field>label')].find(x => x.textContent.trim() === 'Notes'); const e = document.querySelector('#view .exlist, #view [id*="ex"], #view .exercises'); return { n:n.getBoundingClientRect().top, e:e ? e.getBoundingClientRect().top : null }; }); ok(`${t} notes right after the exercise editor`, ex.e != null && ex.n > ex.e, JSON.stringify(ex)); }
+    if (c === 'grappling') {
+      const ti = page.locator('.field', { has:page.locator('label', { hasText:'Techniques drilled' }) }).locator('.tags input'); await ti.tap(); await settle(200); if (w === 390) await page.locator('.field', { has:page.locator('label', { hasText:'Techniques drilled' }) }).screenshot({ path:'/tmp/chips.png' });
+      const ch = await page.evaluate(() => { const sg = [...document.querySelectorAll('#view .sugg')].find(x => x.checkVisibility() && x.children.length); const r = sg.getBoundingClientRect();
+        const kids = [...sg.children].map(b => b.getBoundingClientRect()); const vis = kids.filter(b => b.bottom <= r.bottom + .5);
+        return { n:kids.length, rows:new Set(vis.map(b => Math.round(b.top))).size, cut:vis.filter(b => b.right > r.right + .5 || b.left < r.left - .5).length, partial:kids.filter(b => b.top < r.bottom - .5 && b.bottom > r.bottom + .5).length }; });
+      ok(`${t} technique chips wrap (≤2 rows, none cut off at the edge)`, ch.n > 4 && ch.rows >= 1 && ch.rows <= 2 && ch.cut === 0 && ch.partial === 0, JSON.stringify(ch));
+      await page.locator('#detailsSec').click({ position:{ x:5, y:5 } }).catch(() => {});
+    }
     ok(`${t} import keeps GPX/TCX/FIT/CSV + helper text`, (await page.locator('.field', { has:page.locator('label', { hasText:'Import from device' }) }).innerText()).includes('GPX · TCX · FIT · CSV') && await page.locator('.field', { has:page.locator('label', { hasText:'Import from device' }) }).locator('.hint').count() === 1);
     // duration digits never clipped
     const di = page.locator('.field', { has:page.locator('label', { hasText:/^Duration$/ }) }).locator('input');
@@ -31,7 +43,7 @@ for (const w of [390, 375]) {
     ok(`${t} all steppers fit 3 digits`, clipped.length === 0, JSON.stringify(clipped));
     if (w === 390 && c === 'grappling') {
       await page.locator('.field', { has:page.locator('label', { hasText:/^Duration$/ }) }).screenshot({ path:'/tmp/duration.png' });
-      await page.evaluate(() => { const t = document.querySelector('#toast'); if (t) t.style.display = 'none'; const l = [...document.querySelectorAll('#view .field>label')].find(x => x.textContent.trim() === 'Intensity'); window.scrollTo(0, l.getBoundingClientRect().top + scrollY - 24); }); await settle();
+      await page.evaluate(() => { const t = document.querySelector('#toast'); if (t) t.style.display = 'none'; const l = document.querySelector('#detailsSec'); window.scrollTo(0, l.getBoundingClientRect().top + scrollY - 60); }); await settle();
       await page.screenshot({ path:`${SHOTS}/30-log-form-order.png` });
     }
   }

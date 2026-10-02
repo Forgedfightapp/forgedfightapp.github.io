@@ -4,7 +4,7 @@ Offline-first, iPhone-first training tracker. Vanilla JS, no build step, no CDNs
 `localStorage` (key `dm.bjj.v1`, schema 4; older data auto-migrates and backups are kept at `dm.bjj.v1.backup.v1` / `.backup.v2` / `.backup.v3`; an unreadable store is copied to `dm.bjj.v1.unreadable` before starting fresh).
 
 ## Design priority: simple first
-- **Quick log**: Home → `+` → Save = 3 taps (category + last-used duration + today pre-filled). The Save button stays pinned above the nav. All other fields are always visible under a **Details (optional)** heading, in this order (after the category-specific fields): Intensity → Body weight → Import from device (GPX/TCX/FIT/CSV) → Heart rate → Notes.
+- **Quick log**: Home → `+` → Save = 3 taps (category + last-used duration + today pre-filled). The Save button stays pinned above the nav. All other fields are always visible under a **Details (optional)** heading, with Notes right after the main type/technique fields, then the rest, ending with Intensity → Body weight → Import from device (GPX/TCX/FIT/CSV) → Heart rate.
 - **Log again**: one tap on Home repeats a recent workout per category (with Undo).
 - **Food quick add** (1 tap from recent/saved foods) and **Mark all taken** per supplement time block.
 - Home shows essentials only; deeper charts are under **See all stats** (`#/stats`).
@@ -20,6 +20,10 @@ Start weight (defaults to first weigh-in), goal weight, optional goal date, lb/k
 Weigh-ins and workout body weight merge into one history (latest entry per day). Home card: current, goal, lost/gained so far, left to go,
 progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
 projected goal date.
+
+## 2.2.2
+- Log form order: notes come right after the main type and technique/exercise fields. Grappling: Session type → Techniques drilled → Notes → Rounds → Rolls → Intensity → Body weight → Import from device → Heart rate. Striking: Session type → Worked on → Notes → rounds/sparring → …. Weights: exercises → Notes → …. Cardio: distance/time → Notes → ….
+- Suggestion chips wrap onto at most 2 rows; no chip is cut off at the edge.
 
 ## 2.2.1
 - Paired fields everywhere (Profile goals, Goal weight/date, first-run, workout, food and supplement forms) line up: each row's labels take the same height and the inputs sit at the bottom, all 54 px tall. Checked at 390/375/320 px, also with larger label text.

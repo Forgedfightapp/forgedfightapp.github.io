@@ -1,7 +1,7 @@
 # Discipline > Motivation — Training Log (PWA)
 
 Offline-first, iPhone-first training tracker. Vanilla JS, no build step, no CDNs. All data stays in
-`localStorage` (key `dm.bjj.v1`, schema 2; v1 data auto-migrates and a backup is kept at `dm.bjj.v1.backup.v1`).
+`localStorage` (key `dm.bjj.v1`, schema 3; older data auto-migrates and backups are kept at `dm.bjj.v1.backup.v1` / `.backup.v2`).
 
 ## Design priority: simple first
 - **Quick log**: Home → `+` → Save = 3 taps (category + last-used duration + today pre-filled). Everything else lives under **Add details**.
@@ -9,6 +9,17 @@ Offline-first, iPhone-first training tracker. Vanilla JS, no build step, no CDNs
 - **Food quick add** (1 tap from recent/saved foods) and **Mark all taken** per supplement time block.
 - Home shows essentials only; deeper charts are under **See all stats** (`#/stats`).
 - First-run screen picks what you train; Profile → *What I track* hides unused sections. Bottom nav: Home · History · + · Food/Supplements/Nutrition · Profile.
+
+## Navigation
+Every non-tab screen has a big Back/Cancel button top-left (below the iOS safe area); every sheet has Close/Cancel, closes on swipe-down,
+backdrop tap, Esc, and the iOS/browser back gesture (sheets push a history entry; popstate closes them). Bottom-nav taps always close what is
+open and go to that screen; sheets stop above the nav so it is never covered. Leaving a filled-in workout asks "Discard this workout?".
+
+## Weight goal
+Start weight (defaults to first weigh-in), goal weight, optional goal date, lb/kg. Home → Log weight (prefilled with last value) → Save = 2 taps.
+Weigh-ins and workout body weight merge into one history (latest entry per day). Home card: current, goal, lost/gained so far, left to go,
+progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
+projected goal date.
 
 ## Features
 Grappling (BJJ/Wrestling/Judo, rolls, subs, belt), Striking (round mix, sparring), Weights (sets × reps × weight, RPE, PRs/e1RM, volume),
@@ -19,7 +30,7 @@ Cardio (distance/time, pace/speed), heart rate + zones on all, GPX/TCX/FIT/CSV i
     ./restart-preview.sh                            # server + Cloudflare quick tunnel (prints public URL)
 
 ## Tests (Playwright, iPhone 13 emulation)
-`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/supplements.test.mjs`, `tests/multi.test.mjs` (run with `node`, needs
+`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/supplements.test.mjs`, `tests/nav-weight.test.mjs`, `tests/multi.test.mjs` (run with `node`, needs
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 

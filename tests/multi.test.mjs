@@ -131,7 +131,9 @@ await importInto('workouts.csv', 'weights');
 ok('CSV (form): first row prefills', await page.locator('.cats button.on').getAttribute('data-c') === 'cardio' && await page.locator('[data-hr="avg"]').inputValue() === '152');
 // bulk CSV in settings
 const before = (await db()).sessions.length;
-await page.goto(BASE + '#/settings'); await page.waitForSelector('#csvFile', { state:'attached' });
+await page.goto(BASE + '#/settings'); await page.waitForTimeout(150);
+ok('leaving a filled-in form asks to discard', await page.locator('.sheet h3', { hasText:'Discard this workout?' }).count() === 1);
+await page.locator('.sheet [data-ok]').tap(); await page.waitForSelector('#csvFile', { state:'attached' });
 await page.setInputFiles('#csvFile', `${FIX}/workouts.csv`); await page.locator('.sheet [data-ok]').tap(); await page.waitForTimeout(250);
 d = await db(); const added = d.sessions.filter(s => s.source === 'CSV import');
 ok('CSV bulk import adds 4 workouts', d.sessions.length === before + 4 && added.some(s => s.category === 'striking' && s.discipline === 'muaythai' && s.hr.max === 180) && added.some(s => s.discipline === 'swim' && s.cardio.distance === 1.5 && s.cardio.unit === 'km') && added.some(s => s.date === '2026-09-21'), JSON.stringify(added.map(s => [s.date, s.category, s.discipline])));
@@ -180,7 +182,7 @@ const af = await db();
 const canon = v => Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => [k, canon(v[k])])) : v;
 const S = x => JSON.stringify(canon([...x.sessions].sort((a,b) => a.id.localeCompare(b.id))));
 if (S(af) !== S(b4)) { const A = canon(af.sessions), B = canon(b4.sessions); const bad = A.find(e => JSON.stringify(e) !== JSON.stringify(B.find(x => x.id === e.id))); console.log('DIFF', JSON.stringify(bad), JSON.stringify(B.find(x => x.id === bad?.id))); }
-ok('export/import round-trips all workout types', S(af) === S(b4) && af.schema === 2, `${af.sessions.length}/${b4.sessions.length}`);
+ok('export/import round-trips all workout types', S(af) === S(b4) && af.schema === 3 && JSON.stringify(af.weights) === JSON.stringify(b4.weights), `${af.sessions.length}/${b4.sessions.length}`);
 await ctx.close();
 
 /* 10. schema v1 -> v2 migration (existing BJJ-only user) */
@@ -189,7 +191,7 @@ await page.goto(BASE);
 await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ sessions:[{ id:'old1', date:'2026-09-01', gi:'nogi', type:'open', duration:90, rounds:6, intensity:4, techniques:['Leg drag'], rolls:[{ id:'r1', partner:'Jake', result:'win', subsLanded:['Armbar'], subsTapped:[], stuck:[] }], weight:200, notes:'old', createdAt:1 }], profile:{ belt:'blue', stripes:1, unit:'lb' }, nutrition:{ entries:[], foods:[] } })); });
 await page.reload(); await page.waitForSelector('.statrow, .welcome'); await page.waitForTimeout(200);
 const m = await page.evaluate(() => ({ d:JSON.parse(localStorage.getItem('dm.bjj.v1')), b:localStorage.getItem('dm.bjj.v1.backup.v1') }));
-ok('v1 data migrates to schema 2 as Grappling/BJJ', m.d.schema === 2 && m.d.sessions[0].category === 'grappling' && m.d.sessions[0].discipline === 'bjj' && m.d.sessions[0].rolls[0].subsLanded[0] === 'Armbar' && m.d.profile.belt === 'blue');
+ok('v1 data migrates to schema 3 as Grappling/BJJ', m.d.schema === 3 && Array.isArray(m.d.weights) && m.d.sessions[0].category === 'grappling' && m.d.sessions[0].discipline === 'bjj' && m.d.sessions[0].rolls[0].subsLanded[0] === 'Armbar' && m.d.profile.belt === 'blue');
 ok('pre-migration backup kept', !!m.b && JSON.parse(m.b).sessions[0].id === 'old1' && !JSON.parse(m.b).schema);
 ok('migrated user skips first-run', await page.locator('.welcome.setup').count() === 0 && await page.locator('.statrow').count() === 1);
 await page.goto(BASE + '#/session/old1'); await page.waitForSelector('#del');

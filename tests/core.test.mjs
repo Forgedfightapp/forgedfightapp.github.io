@@ -88,7 +88,7 @@ ok('roll saved', mine?.rolls.length === 1 && mine.rolls[0].partner === 'Edited P
 ok('dashboard week count +1', Number(await stat('Sessions this week')) === week0 + 1, `${week0} -> ${await stat('Sessions this week')}`);
 await page.goto(BASE + '#/stats'); await page.waitForSelector('#catCard');
 ok('stats month count +1', Number(await stat('Sessions in')) === month0 + 1);
-ok('weight trend shows latest weight', (await page.locator('.card', { hasText: 'Weight trend' }).innerText()).includes('201.4'));
+ok('weight trend shows latest weight', (await page.locator('#weightStats').innerText()).includes('201.4'));
 await page.goto(BASE); await page.waitForSelector('.statrow');
 
 // autocomplete includes custom tag from history

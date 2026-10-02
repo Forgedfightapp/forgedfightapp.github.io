@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -14,10 +14,10 @@ const BELTS = [['white','White','#f1f1f1'],['blue','Blue','#2563eb'],['purple','
 const INTENSITY = ['', 'Light','Easy','Moderate','Hard','All-out'];
 
 /* ---------------- storage ---------------- */
-const SCHEMA = 2;
-const defaultProfile = () => ({ name:'', belt:'white', stripes:0, promotedOn:'', goalWeight:'', unit:'lb', distUnit:'mi', maxHR:'', sampleProfile:false, setupDone:false,
+const SCHEMA = 3;
+const defaultProfile = () => ({ name:'', belt:'white', stripes:0, promotedOn:'', goalWeight:'', startWeight:'', goalDate:'', unit:'lb', distUnit:'mi', maxHR:'', sampleProfile:false, setupDone:false,
   enabled:{ grappling:true, striking:false, weights:false, cardio:false, food:true, supps:true } });
-const emptyDb = () => ({ schema:SCHEMA, sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] } });
+const emptyDb = () => ({ schema:SCHEMA, sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] }, weights:[] });
 /* Versioned schema. v1 (BJJ-only) -> v2 (multi-discipline): sessions gain category/discipline; a copy of the
    pre-migration data is kept under STORE_KEY + '.backup.v1' so nothing can be lost. */
 function migrate(d){
@@ -29,13 +29,20 @@ function migrate(d){
     d.profile = { ...(d.profile||{}), setupDone: d.profile?.setupDone ?? !!had, enabled:{ grappling:true, striking:false, weights:false, cardio:false, food:true, supps:true, ...(d.profile?.enabled||{}) } };
     v = 2;
   }
+  if (v < 3) { // v3: dated weigh-ins + weight goal (start/goal/date). Nothing existing changes.
+    if (v === 2) { try { if (!localStorage.getItem(STORE_KEY + '.backup.v2')) localStorage.setItem(STORE_KEY + '.backup.v2', JSON.stringify(d)); } catch(e) { console.warn('backup failed', e); } }
+    d.weights = Array.isArray(d.weights) ? d.weights : [];
+    const hadW = !!d.profile?.goalWeight || (d.sessions||[]).some(s => s.weight !== '' && s.weight != null);
+    d.profile = { ...(d.profile||{}), enabled:{ ...(d.profile?.enabled||{}), weight: d.profile?.enabled?.weight ?? hadW } };
+    v = 3;
+  }
   d.schema = v; return d;
 }
 function load(){
   try{
     let d = JSON.parse(localStorage.getItem(STORE_KEY));
     if (d && Array.isArray(d.sessions)) { const before = d.schema; d = migrate(d); if (before !== d.schema) setTimeout(() => { try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch(e){} }, 0);
-      return { schema:d.schema, sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[] }, supps:{ items:d.supps?.items||[], log:d.supps?.log||[] } }; }
+      return { schema:d.schema, sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[] }, supps:{ items:d.supps?.items||[], log:d.supps?.log||[] }, weights:sanitizeWeights(d.weights) }; }
   }catch(e){ console.warn('Could not read saved data', e); }
   return emptyDb();
 }
@@ -76,23 +83,53 @@ function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.rem
 
 function h(html){ const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }
 
-/* ---------------- bottom sheet ---------------- */
-function openSheet(content, onClose){
+/* ---------------- bottom sheet + in-app history ----------------
+   Opening a sheet pushes a history entry so the iOS/browser back gesture closes it (popstate).
+   Closing it in-app pops that entry again; navigation requested meanwhile waits for the pop. */
+let sheetHist = false, popPending = false;
+const afterPop = [];
+function whenSettled(fn){ if (popPending) afterPop.push(fn); else fn(); }
+function openSheet(content, onClose, opts={}){
   const sheet = $('#sheet');
+  const wasOpen = !sheet.hidden;
   sheet.innerHTML = '';
-  const panel = h('<div class="panel" role="dialog" aria-modal="true"><div class="grab"></div></div>');
+  const lbl = opts.closeLabel || 'Close';
+  const panel = h(`<div class="panel" role="dialog" aria-modal="true"><div class="sheethead">${opts.noClose ? '<span></span>' : `<button type="button" class="backbtn" data-close aria-label="${esc(lbl)}"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span>${esc(lbl)}</span></button>`}<div class="grab"></div><span></span></div></div>`);
   panel.appendChild(content);
   sheet.appendChild(panel);
   sheet.hidden = false;
-  document.body.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden'; document.body.classList.add('sheet-open');
   sheet.onclick = e => { if (e.target === sheet) closeSheet(); };
+  const cb = panel.querySelector('[data-close]'); if (cb) cb.onclick = () => closeSheet();
   sheet._onClose = onClose;
+  swipeToClose(panel);
+  if (!wasOpen && !sheetHist && !popPending) { history.pushState({ ...(history.state||{}), sheet:true }, ''); sheetHist = true; }
 }
-function closeSheet(){
+function closeSheet(opts={}){
   const sheet = $('#sheet');
-  sheet.hidden = true; sheet.innerHTML = ''; document.body.style.overflow = '';
+  if (sheet.hidden) return;
+  sheet.hidden = true; sheet.innerHTML = ''; document.body.style.overflow = ''; document.body.classList.remove('sheet-open');
+  if (sheetHist) { sheetHist = false; if (!opts.fromPop && !opts.noHistory) { popPending = true; history.back(); } }
   const cb = sheet._onClose; sheet._onClose = null; cb && cb();
 }
+function swipeToClose(panel){
+  let y0 = null, dy = 0;
+  panel.addEventListener('touchstart', e => { if (panel.scrollTop > 0 || e.target.closest('input,textarea,select')) { y0 = null; return; } y0 = e.touches[0].clientY; dy = 0; }, { passive:true });
+  panel.addEventListener('touchmove', e => { if (y0 == null) return; dy = e.touches[0].clientY - y0; if (dy > 0) { panel.style.transition = 'none'; panel.style.transform = `translateY(${dy}px)`; } }, { passive:true });
+  panel.addEventListener('touchend', () => { if (y0 == null) return; y0 = null; panel.style.transition = 'transform .18s'; if (dy > 110) closeSheet(); else panel.style.transform = ''; });
+}
+window.addEventListener('popstate', () => {
+  if (popPending) {
+    popPending = false;
+    if (!$('#sheet').hidden && !sheetHist) { history.pushState({ ...(history.state||{}), sheet:true }, ''); sheetHist = true; }
+    afterPop.splice(0).forEach(fn => fn());
+    return;
+  }
+  if (!$('#sheet').hidden) closeSheet({ fromPop:true });
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
+/* navigate to a hash (re-renders when it is already the current one) */
+function go(hash){ whenSettled(() => { const cur = location.hash || '#/'; if (cur === hash || (hash === '#/' && cur === '#')) route(); else location.hash = hash; }); }
 function confirmSheet(title, body, okLabel='Delete', danger=true){
   return new Promise(resolve => {
     let result = false;
@@ -102,7 +139,7 @@ function confirmSheet(title, body, okLabel='Delete', danger=true){
       <button class="btn block ghost" data-cancel>Cancel</button></div></div>`);
     el.querySelector('[data-ok]').onclick = () => { result = true; closeSheet(); };
     el.querySelector('[data-cancel]').onclick = () => closeSheet();
-    openSheet(el, () => resolve(result));
+    openSheet(el, () => resolve(result), { noClose:true });
   });
 }
 
@@ -191,9 +228,137 @@ function weeklyHours(n=12){
   db.sessions.forEach(s => { const k = iso(weekStart(parse(s.date))); if (idx.has(k)) { const w = weeks[idx.get(k)], c = CATS[s.category] ? s.category : 'grappling'; w.min += Number(s.duration)||0; w.n++; w.cat[c] = (w.cat[c]||0) + (Number(s.duration)||0); } });
   return weeks;
 }
+/* ---------------- weight: weigh-ins + workout body weight, merged ---------------- */
+const KG_PER_LB = 0.45359237;
+const convW = (v, from, to) => from === to ? v : to === 'kg' ? v * KG_PER_LB : v / KG_PER_LB;
+function sanitizeWeights(list){
+  return (Array.isArray(list) ? list : []).filter(x => x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.date)) && Number(x.w) > 0)
+    .map(x => ({ id:String(x.id || ('w' + Date.now().toString(36) + Math.random().toString(36).slice(2,8))), date:String(x.date), w:Math.round(Number(x.w)*10)/10, u:x.u === 'kg' ? 'kg' : 'lb', createdAt:Number(x.createdAt)||0, ...(x.sample ? { sample:true } : {}) }));
+}
+/* One point per day in the current unit: the most recently entered value that day, from a weigh-in or a workout. */
 function weightSeries(){
-  return db.sessions.filter(s => s.weight !== '' && s.weight != null && !isNaN(Number(s.weight)))
-    .map(s => ({ date:s.date, w:Number(s.weight) })).sort((a,b) => a.date.localeCompare(b.date));
+  const m = new Map(), u = unit();
+  db.sessions.forEach(s => { const w = Number(s.weight); if (s.weight === '' || s.weight == null || !(w > 0)) return;
+    const cur = m.get(s.date); if (!cur || (s.createdAt||0) >= cur.t) m.set(s.date, { date:s.date, w, src:'workout', t:s.createdAt||0 }); });
+  (db.weights||[]).forEach(x => { const cur = m.get(x.date); if (!cur || (x.createdAt||0) >= cur.t) m.set(x.date, { date:x.date, w:Math.round(convW(x.w, x.u||u, u)*10)/10, src:'weigh', t:x.createdAt||0, id:x.id }); });
+  return [...m.values()].sort((a,b) => a.date.localeCompare(b.date));
+}
+/* Least-squares slope over the last `days` days of data, per week. Needs 3+ points over 6+ days. */
+function weightTrend(ws, days=28){
+  if (!ws.length) return null;
+  const last = parse(ws[ws.length-1].date), from = iso(addDays(last, -days));
+  const pts = ws.filter(p => p.date >= from); if (pts.length < 3) return null;
+  const xs = pts.map(p => (parse(p.date) - last) / 864e5), ys = pts.map(p => p.w);
+  const span = Math.max(...xs) - Math.min(...xs); if (span < 6) return null;
+  const mx = xs.reduce((a,b) => a+b, 0)/xs.length, my = ys.reduce((a,b) => a+b, 0)/ys.length;
+  const sxx = xs.reduce((a,x) => a + (x-mx)**2, 0), sxy = xs.reduce((a,x,i) => a + (x-mx)*(ys[i]-my), 0);
+  return { perWeek: Math.round(sxy/sxx*7*100)/100, n: pts.length, days: Math.round(span) };
+}
+/* Goal progress; direction (lose/gain) is inferred from start vs goal. */
+function weightGoal(){
+  const p = db.profile, ws = weightSeries(), r = x => Math.round(x*10)/10;
+  const nz = v => { const n = Number(v); return n > 0 ? n : null; };
+  const cur = ws.length ? ws[ws.length-1].w : nz(p.startWeight);
+  const start = nz(p.startWeight) ?? (ws.length ? ws[0].w : null);
+  const goal = nz(p.goalWeight);
+  const out = { ws, cur, start, goal, dir:0, change:null, done:0, total:0, left:null, pct:0, reached:false, trend:weightTrend(ws), eta:null, goalDate:p.goalDate || '' };
+  if (cur == null) return out;
+  if (start != null) out.change = r(cur - start);
+  if (goal != null && start != null) {
+    out.dir = goal < start ? -1 : goal > start ? 1 : 0;
+    if (!out.dir) out.dir = cur > goal ? -1 : cur < goal ? 1 : 0;
+    out.total = r(Math.abs(goal - start));
+    out.done = r((cur - start) * out.dir);
+    out.left = r(Math.max(0, (goal - cur) * out.dir));
+    out.reached = out.dir ? (goal - cur) * out.dir <= 0 : true;
+    out.pct = out.reached ? 100 : out.total ? Math.max(0, Math.min(100, Math.round(out.done / out.total * 100))) : 0;
+    const t = out.trend;
+    if (!out.reached && t && t.perWeek * out.dir > 0.05) { const weeks = Math.abs(goal - cur) / Math.abs(t.perWeek); if (weeks <= 260) out.eta = iso(addDays(new Date(), Math.round(weeks*7))); }
+  }
+  return out;
+}
+function sparkline(ws){
+  const pts = ws.slice(-20); if (pts.length < 2) return '';
+  const W = 120, H = 40, vals = pts.map(p => p.w), lo = Math.min(...vals), hi = Math.max(...vals), rg = Math.max(0.5, hi-lo);
+  const xy = pts.map((p,i) => [2 + (W-4) * i/(pts.length-1), 4 + (H-8) * (1 - (p.w-lo)/rg)]);
+  const d = xy.map((q,i) => `${i?'L':'M'}${q[0].toFixed(1)},${q[1].toFixed(1)}`).join('');
+  const l = xy[xy.length-1];
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-label="Weight trend, last ${pts.length} weigh-ins" role="img"><path d="${d}"/><circle cx="${l[0].toFixed(1)}" cy="${l[1].toFixed(1)}" r="3.5"/></svg>`;
+}
+const signed = n => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)}`;
+function weightCard(){
+  const g = weightGoal(), u = unit();
+  const logBtn = `<button type="button" class="btn primary block" id="logWeight" style="margin-top:12px"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Log weight</button>`;
+  if (g.cur == null) return `<div class="card" id="weightCard"><h2>Weight goal</h2><div class="empty" style="padding:2px 0 6px">Log your weight to track progress toward a goal.</div>${logBtn}</div>`;
+  const doneLbl = g.dir > 0 ? 'Gained so far' : g.dir < 0 ? 'Lost so far' : 'Change';
+  const doneVal = g.dir ? Math.max(0, g.done) : (g.change ?? 0);
+  const rate = g.trend ? `${signed(g.trend.perWeek)} ${u}/wk` : '';
+  let hint;
+  if (g.goal == null) hint = `<a href="#/settings" class="lnk">Set a goal weight</a> to see progress.`;
+  else if (g.reached) hint = 'Goal reached 🎉';
+  else hint = `${g.pct}% of the way${rate ? ` · ${rate}` : ''}${g.dir && g.done < 0 ? ` · ${signed(-g.done*g.dir)} ${u} from start` : ''}`;
+  return `<div class="card" id="weightCard"><h2>Weight goal <a href="#/stats" class="lnk" id="weightMore">Trend ›</a></h2>
+    <div class="wtop"><div class="wnow"><b data-w="current">${g.cur}<small> ${u}</small></b><span>Current</span></div>${sparkline(g.ws)}</div>
+    ${g.goal != null ? `<div class="wgrid">
+      <div><b data-w="goal">${g.goal}</b><span>Goal (${u})</span></div>
+      <div><b data-w="done">${doneVal}</b><span>${doneLbl}</span></div>
+      <div><b data-w="left">${g.left}</b><span>Left to go</span></div></div>
+      <div class="mbar"><div class="b"><i data-w="pct" style="width:${g.pct}%"></i></div></div>` : ''}
+    <div class="hint" id="weightHint">${hint}</div>${logBtn}</div>`;
+}
+/* Log weight: one tap opens it prefilled with the last value, one tap saves. */
+function logWeightSheet(){
+  const u = unit(), g = weightGoal(), step = u === 'kg' ? 0.1 : 0.2;
+  let val = g.cur ?? '';
+  const el = h(`<div><h3>Log weight</h3>
+    <div class="wstep"><button type="button" class="iconbtn big" aria-label="Decrease" data-dec>−</button><input class="input" id="wIn" type="text" inputmode="decimal" placeholder="${u === 'kg' ? '80.0' : '180.0'}" value="${esc(val)}" aria-label="Weight in ${u}"><span class="unit">${u}</span><button type="button" class="iconbtn big" aria-label="Increase" data-inc>+</button></div>
+    <div class="field" style="margin-top:12px"><label>Date</label><input class="input" type="date" id="wDate" value="${today()}" max="${today()}"></div>
+    <button type="button" class="btn primary block" id="wSave" style="margin-top:6px">Save weight</button></div>`);
+  const inp = el.querySelector('#wIn'), dt = el.querySelector('#wDate');
+  const bump = d => { const n = Number(inp.value) || Number(g.cur) || (u === 'kg' ? 80 : 180); inp.value = (Math.round((n + d)*10)/10).toFixed(1); };
+  el.querySelector('[data-dec]').onclick = () => bump(-step); el.querySelector('[data-inc]').onclick = () => bump(step);
+  el.querySelector('#wSave').onclick = () => {
+    const w = Number(String(inp.value).replace(',', '.'));
+    const lo = u === 'kg' ? 20 : 45, hi = u === 'kg' ? 400 : 900;
+    if (!(w >= lo && w <= hi)) { toast(`Enter your weight in ${u}`); inp.focus(); return; }
+    const date = dt.value || today(), prev = db.weights.find(x => x.date === date && !x.sample);
+    const rec = { id:prev?.id || uid(), date, w:Math.round(w*10)/10, u, createdAt:Date.now() };
+    const before = JSON.parse(JSON.stringify(db.weights));
+    db.weights = db.weights.filter(x => x.date !== date || x.sample).concat(rec);
+    if (!db.profile.enabled?.weight) db.profile.enabled = { ...(db.profile.enabled||{}), weight:true };
+    save(); closeSheet();
+    undoToast(`Logged ${rec.w} ${u}`, () => { db.weights = before; save(); route(); });
+    whenSettled(route);
+  };
+  openSheet(el, null, { closeLabel:'Cancel' });
+}
+function weightStatsCard(){
+  const g = weightGoal(), u = unit(), ws = g.ws;
+  if (!ws.length) return `<div class="card" id="weightStats"><h2>Weight</h2><div class="empty">Log your weight (Home → Log weight) or add body weight to a workout to see the trend.</div></div>`;
+  const recent = ws.filter(p => p.date >= iso(addDays(new Date(), -180)));
+  const series = recent.length > 1 ? recent : ws;
+  const t = g.trend;
+  let proj = '';
+  if (g.goal != null) {
+    if (g.reached) proj = 'Goal reached 🎉';
+    else if (g.eta) proj = `Projected goal date: <b id="eta">${fmtShort(g.eta)}</b>${g.goalDate ? (g.eta <= g.goalDate ? ' · on track for your target' : ` · target ${fmtShort(g.goalDate)}`) : ''}`;
+    else if (t && t.perWeek * g.dir <= 0.05) proj = 'Trend isn’t moving toward your goal yet.';
+    else proj = 'Log a few more weigh-ins over a week or two to project a goal date.';
+  }
+  const log = (db.weights||[]).slice().sort((a,b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt).slice(0, 5);
+  return `<div class="card" id="weightStats"><h2>Weight <small>${ws.length} entries</small></h2>
+    <div style="display:flex;align-items:baseline;gap:10px;margin:-4px 0 6px;flex-wrap:wrap"><span style="font-size:30px;font-weight:760;letter-spacing:-.03em">${g.cur}<small style="font-size:15px;color:var(--muted)"> ${u}</small></span>
+      ${g.change != null ? `<span style="font-weight:700;color:${g.change * (g.dir || -1) >= 0 ? 'var(--accent)' : 'var(--danger)'}">${signed(g.change)} ${u}</span><span style="color:var(--dim);font-size:13px">since start (${g.start} ${u})</span>` : ''}</div>
+    ${series.length > 1 ? lineChart(series, g.goal) : ''}
+    <div class="wfacts"><div><span>Weekly average</span><b id="wRate">${t ? `${signed(t.perWeek)} ${u}/wk` : '—'}</b><small>${t ? `last ${t.days} days` : 'needs 3+ entries over a week'}</small></div>
+      <div><span>Goal</span><b>${g.goal != null ? `${g.goal} ${u}` : '—'}</b><small>${g.goal != null ? (g.reached ? 'reached' : `${g.left} ${u} to go · ${g.pct}%`) : '<a class="lnk" href="#/settings">Set a goal</a>'}</small></div></div>
+    ${proj ? `<div class="hint" id="wProj" style="margin-top:8px">${proj}</div>` : ''}
+    ${log.length ? `<div class="month" style="margin-top:12px">Recent weigh-ins</div>${log.map(x => `<div class="list-row wrow"><div class="grow"><b>${Math.round(convW(x.w, x.u, u)*10)/10} ${u}</b><small>${fmtShort(x.date)}${x.sample ? ' · sample' : ''}</small></div><button type="button" class="iconbtn" data-wdel="${esc(x.id)}" aria-label="Delete weigh-in"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`).join('')}` : ''}
+    <button type="button" class="btn block" id="logWeight2" style="margin-top:12px">Log weight</button></div>`;
+}
+function wireWeight(root){
+  root.querySelectorAll('#logWeight,#logWeight2').forEach(b => b.onclick = logWeightSheet);
+  root.querySelectorAll('[data-wdel]').forEach(b => b.onclick = () => { const before = JSON.parse(JSON.stringify(db.weights)); db.weights = db.weights.filter(x => x.id !== b.dataset.wdel); save(); route(); undoToast('Weigh-in deleted', () => { db.weights = before; save(); route(); }); });
 }
 
 /* ---------------- charts (inline SVG) ---------------- */
@@ -269,6 +434,7 @@ const STRIKE_MIX = [['shadow','Shadow'],['pads','Pads'],['bag','Bag'],['drills',
 const catOf = s => CATS[s.category] ? s.category : 'grappling';
 const discLabel = s => { const c = CATS[catOf(s)]; return (c.disc.find(d => d[0]===s.discipline) || c.disc[0])[1]; };
 const enabled = k => { const e = db.profile.enabled || {}; return k in e ? !!e[k] : (k === 'grappling' || k === 'food' || k === 'supps'); };
+const SECTION_KEYS = () => CAT_KEYS.concat(['weight','food','supps']);
 const enabledCats = () => { const l = CAT_KEYS.filter(enabled); return l.length ? l : ['grappling']; };
 const distU = () => db.profile.distUnit === 'km' ? 'km' : 'mi';
 const toUnit = (d, from, to) => from === to ? d : (to === 'km' ? d * 1.609344 : d / 1.609344);
@@ -303,8 +469,10 @@ function sanitizeSession(s){
 }
 
 /* ---------------- views ---------------- */
-function setHeader(title, action=''){
-  const t = $('#title'), tg = $('#tagline');
+function setHeader(title, action='', back=null){
+  const t = $('#title'), tg = $('#tagline'), br = $('#backRow');
+  br.hidden = !back;
+  if (back) { br.querySelector('span').textContent = back.label || 'Back'; br.querySelector('button').setAttribute('aria-label', back.label || 'Back'); br.querySelector('button').onclick = () => goBack(back.parent || '#/'); }
   if (title) { t.textContent = title; tg.innerHTML = 'Discipline <span style="color:var(--accent)">&gt;</span> Motivation'; }
   else { t.innerHTML = '<img class="banner-logo" src="brand/banner-logo.svg" alt="Discipline &gt; Motivation" width="1200" height="180">'; tg.innerHTML = '<b>Training Log</b><span>Track your progress</span>'; }
   document.querySelector('.topbar').classList.toggle('home', !title);
@@ -320,24 +488,33 @@ function updateNav(){
 /* first-run */
 function viewSetup(){
   setHeader('');
-  const v = $('#view'), pick = { grappling:true, striking:false, weights:false, cardio:false, food:true, supps:false };
+  const v = $('#view'), pick = { grappling:true, striking:false, weights:false, cardio:false, food:true, supps:false, weight:false };
   v.innerHTML = `<div class="welcome setup"><img class="dm-logo" src="brand/dm-logo.svg" alt="D &gt; M · Discipline &gt; Motivation">
     <h2>What do you train?</h2><p>Pick all that apply. You can change this any time in Profile.</p>
     <div class="tiles" id="catTiles">${CAT_KEYS.map(k => `<button type="button" class="tile" data-k="${k}" aria-pressed="false"><svg viewBox="0 0 24 24">${CATS[k].icon}</svg><b>${CATS[k].label}</b><small>${CATS[k].disc.map(d=>d[1]).slice(0,3).join(', ')}</small></button>`).join('')}</div>
     <h3>Also track</h3>
-    <div class="tiles two" id="extraTiles"><button type="button" class="tile" data-k="food"><b>Food</b><small>Calories &amp; protein</small></button><button type="button" class="tile" data-k="supps"><b>Supplements</b><small>Daily checklist</small></button></div>
+    <div class="tiles two" id="extraTiles"><button type="button" class="tile" data-k="food"><b>Food</b><small>Calories &amp; protein</small></button><button type="button" class="tile" data-k="supps"><b>Supplements</b><small>Daily checklist</small></button><button type="button" class="tile" data-k="weight"><b>Weight goal</b><small>Lose or gain</small></button></div>
     <div id="tgtWrap" class="grid2" style="text-align:left;margin-top:14px"></div>
+    <div id="wtWrap" style="text-align:left;margin-top:6px"></div>
     <button class="btn primary block" id="go" style="margin-top:18px">Get started</button>
     <button class="btn block ghost" id="loadSample" style="margin-top:10px">Load sample data (demo)</button></div>`;
   const tgt = $('#tgtWrap');
   const cal = h(`<input class="input" type="text" inputmode="numeric" placeholder="e.g. 2400" id="setupCal">`), pro = h(`<input class="input" type="text" inputmode="numeric" placeholder="e.g. 180" id="setupPro">`);
   tgt.appendChild(field('Daily calories (optional)', cal)); tgt.appendChild(field('Protein g (optional)', pro));
-  const sync = () => { v.querySelectorAll('.tile').forEach(b => { b.classList.toggle('on', !!pick[b.dataset.k]); b.setAttribute('aria-pressed', !!pick[b.dataset.k]); }); tgt.hidden = !pick.food; };
+  const wt = $('#wtWrap'); let wu = unit();
+  const wNow = h(`<input class="input" type="text" inputmode="decimal" placeholder="Today" id="setupW">`), wGoal = h(`<input class="input" type="text" inputmode="decimal" placeholder="Target" id="setupGoal">`), wDate = h(`<input class="input" type="date" id="setupGoalDate" min="${today()}">`);
+  wt.appendChild(field('Units', seg([['lb','lb'],['kg','kg']], wu, x => { wu = x; })));
+  const wg = h('<div class="grid2"></div>'); wg.appendChild(field('Current weight', wNow)); wg.appendChild(field('Goal weight', wGoal)); wt.appendChild(wg);
+  wt.appendChild(field('Goal date (optional)', wDate));
+  const sync = () => { v.querySelectorAll('.tile').forEach(b => { b.classList.toggle('on', !!pick[b.dataset.k]); b.setAttribute('aria-pressed', !!pick[b.dataset.k]); }); tgt.hidden = !pick.food; wt.hidden = !pick.weight; };
   v.querySelectorAll('.tile').forEach(b => b.onclick = () => { pick[b.dataset.k] = !pick[b.dataset.k]; if (!CAT_KEYS.some(k => pick[k])) pick.grappling = true; sync(); });
   sync();
   $('#go').onclick = () => {
     const t = { ...targets() }; if (num(cal.value)) t.cal = Math.round(num(cal.value)); if (num(pro.value)) t.p = Math.round(num(pro.value));
     db.profile = { ...db.profile, enabled:{ ...pick }, setupDone:true, ...(num(cal.value)||num(pro.value) ? { targets:t } : {}) };
+    if (pick.weight) { const now = num(wNow.value), gw = num(wGoal.value); db.profile.unit = wu;
+      if (now) { db.weights.push({ id:uid(), date:today(), w:r1(now), u:wu, createdAt:Date.now() }); db.profile.startWeight = String(r1(now)); }
+      if (gw) db.profile.goalWeight = String(r1(gw)); if (wDate.value) db.profile.goalDate = wDate.value; }
     save(); toast('All set. Tap + to log a workout'); route();
   };
   $('#loadSample').onclick = loadSample;
@@ -376,11 +553,12 @@ function viewHome(){
     </div>
     <div class="card quick"><h2>Quick log</h2>${repeatButtons() || '<div class="empty" style="padding:2px 0 10px">Your recent workouts will show here for one-tap logging.</div>'}
       <a class="btn primary block" href="#/log" id="homeLog"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Log a workout</a></div>
+    ${enabled('weight') ? weightCard() : ''}
     ${enabled('food') ? nutritionCard() : ''}
     ${enabled('supps') ? suppCard() : ''}
     ${enabled('grappling') ? beltCard() : ''}
     <a class="btn block" href="#/stats" id="seeStats">See all stats ›</a>`;
-  wireRepeat(v);
+  wireRepeat(v); wireWeight(v);
   const rm = $('#rmSample'); if (rm) rm.onclick = removeSample;
 }
 
@@ -443,9 +621,9 @@ function hrBlock(hr){
 }
 function viewSession(id){
   const s = db.sessions.find(x => x.id === id);
-  if (!s) { location.hash = '#/history'; return; }
+  if (!s) { go('#/history'); return; }
   const c = catOf(s);
-  setHeader(sessTitle(s), `<a class="btn sm" href="#/edit/${esc(s.id)}">Edit</a>`);
+  setHeader(sessTitle(s), `<a class="btn sm" href="#/edit/${esc(s.id)}">Edit</a>`, { parent:'#/history' });
   const rolls = s.rolls||[];
   let body = '';
   if (c === 'grappling') body = `<div class="card"><h2>Techniques drilled</h2>${(s.techniques||[]).length ? `<div class="chips">${s.techniques.map(t => `<span class="chip" style="padding:7px 12px">${esc(t)}</span>`).join('')}</div>` : '<div class="empty" style="padding:4px 0">—</div>'}</div>
@@ -462,7 +640,7 @@ function viewSession(id){
     ${s.weight ? `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span style="color:var(--muted);font-weight:650">Body weight</span><b style="font-size:20px">${esc(s.weight)} ${unit()}</b></div>` : ''}
     ${s.notes ? `<div class="card"><h2>Notes</h2><div style="white-space:pre-wrap">${esc(s.notes)}</div></div>` : ''}
     <div style="display:flex;gap:10px;margin-top:6px"><a class="btn primary" style="flex:1" href="#/edit/${esc(s.id)}">Edit</a><button class="btn danger" id="del">Delete</button></div>`;
-  $('#del').onclick = async () => { if (await confirmSheet('Delete this workout?', `${fmtDate(s.date)} · ${sessTitle(s)}. This can't be undone.`)) { db.sessions = db.sessions.filter(x => x.id !== s.id); save(); toast('Workout deleted'); location.hash = '#/history'; } };
+  $('#del').onclick = async () => { if (await confirmSheet('Delete this workout?', `${fmtDate(s.date)} · ${sessTitle(s)}. This can't be undone.`)) { db.sessions = db.sessions.filter(x => x.id !== s.id); save(); toast('Workout deleted'); go('#/history'); } };
 }
 
 function rollCard(r, i, editable){
@@ -517,17 +695,17 @@ function viewForm(id){
   const editing = !!id;
   if (editing) {
     const s = db.sessions.find(x => x.id === id);
-    if (!s) { location.hash = '#/history'; return; }
-    if (!form || form.id !== id) form = hydrate(s);
-  } else if (!form || form.id) form = blankSession();
-  setHeader(editing ? 'Edit workout' : 'Log workout');
+    if (!s) { go('#/history'); return; }
+    if (!form || form.id !== id) { form = hydrate(s); formBase = null; }
+  } else if (!form || form.id) { form = blankSession(); formBase = null; }
+  setHeader(editing ? 'Edit workout' : 'Log workout', '', { label:'Cancel', parent: editing ? `#/session/${id}` : '#/' });
   const v = $('#view'); v.innerHTML = '';
   const f = form, cats = enabledCats();
   if (!cats.includes(f.category) && !editing) cats.push(f.category);
   if (editing && !cats.includes(f.category)) cats.push(f.category);
   const redraw = () => { const y = window.scrollY; viewForm(id); window.scrollTo(0, y); };
 
-  if (!editing) { const rb = repeatButtons(true); if (rb) { const r = h(`<div class="field"><label>One tap: log again</label>${rb}</div>`); wireRepeat(r, () => { location.hash = '#/'; }); v.appendChild(r); } }
+  if (!editing) { const rb = repeatButtons(true); if (rb) { const r = h(`<div class="field"><label>One tap: log again</label>${rb}</div>`); wireRepeat(r, () => { go('#/'); }); v.appendChild(r); } }
 
   // 1. category
   const catEl = h(`<div class="cats n${cats.length}" role="radiogroup">${cats.map(k => `<button type="button" role="radio" data-c="${k}" class="${f.category===k?'on':''}" aria-checked="${f.category===k}" style="--cat:${CATS[k].color}"><svg viewBox="0 0 24 24">${CATS[k].icon}</svg>${CATS[k].label}</button>`).join('')}</div>`);
@@ -593,7 +771,7 @@ function viewForm(id){
       btns.querySelector('[data-save]').onclick = () => { r.partner = partner.value.trim(); if (isNew) f.rolls.push(r); else f.rolls[i] = r; closeSheet(); drawRolls(); };
       const del = btns.querySelector('[data-del]'); if (del) del.onclick = () => { f.rolls.splice(i,1); closeSheet(); drawRolls(); };
       el.appendChild(btns);
-      openSheet(el);
+      openSheet(el, null, { closeLabel:'Cancel' });
     };
     rollsWrap.querySelector('#addRoll').onclick = () => editRoll(null);
     drawRolls();
@@ -666,10 +844,11 @@ function viewForm(id){
     else { rec.id = uid(); rec.createdAt = Date.now(); db.sessions.push(rec); }
     save(); form = null;
     toast(editing ? 'Workout updated' : 'Workout saved 🤙');
-    location.hash = editing ? `#/session/${rec.id}` : '#/';
+    go(editing ? `#/session/${rec.id}` : '#/');
   };
+  if (formBase == null) formBase = formSnap(f);
   const d = actions.querySelector('[data-del]');
-  if (d) d.onclick = async () => { if (await confirmSheet('Delete this workout?', "This can't be undone.")) { db.sessions = db.sessions.filter(x => x.id !== f.id); save(); form = null; toast('Workout deleted'); location.hash = '#/history'; } };
+  if (d) d.onclick = async () => { if (await confirmSheet('Delete this workout?', "This can't be undone.")) { db.sessions = db.sessions.filter(x => x.id !== f.id); save(); form = null; toast('Workout deleted'); go('#/history'); } };
   actions.classList.toggle('stick', det.open); det.addEventListener('toggle', () => actions.classList.toggle('stick', det.open));
   v.appendChild(actions);
 }
@@ -763,19 +942,12 @@ function grapplingStats(){
     <div class="card"><h2>Most drilled</h2>${hbars(tech.slice(0,8),'win')}</div>`;
 }
 function viewStats(){
-  setHeader('Stats');
+  setHeader('Stats', '', { parent:'#/' });
   const v = $('#view');
-  if (!db.sessions.length) { v.innerHTML = `<div class="empty" style="padding:60px 10px">Log a few workouts to see your stats.<br><br><a class="btn primary" href="#/log">Log a workout</a></div>`; return; }
+  if (!db.sessions.length) { v.innerHTML = `<div class="empty" style="padding:40px 10px">Log a few workouts to see your stats.<br><br><a class="btn primary" href="#/log">Log a workout</a></div>${enabled('weight') || weightSeries().length ? weightStatsCard() : ''}`; wireWeight(v); return; }
   const st = periodStats(), weeks = weeklyHours(12), ws = weightSeries();
   const avg = weeks.slice(0,-1).reduce((a,w) => a+w.min, 0) / 60 / Math.max(1, weeks.length-1);
   const avgS = weeks.slice(0,-1).reduce((a,w) => a+w.n, 0) / Math.max(1, weeks.length-1);
-  let weightHtml = `<div class="empty">Add your body weight when you log a workout to see the trend.</div>`;
-  if (ws.length) {
-    const first = ws[0].w, last = ws[ws.length-1].w, diff = Math.round((last-first)*10)/10, goal = Number(db.profile.goalWeight) || null;
-    weightHtml = `<div style="display:flex;align-items:baseline;gap:10px;margin:-4px 0 6px"><span style="font-size:30px;font-weight:760;letter-spacing:-.03em">${last}<small style="font-size:15px;color:var(--muted)"> ${unit()}</small></span>
-      <span style="font-weight:700;color:${diff<=0?'var(--accent)':'var(--danger)'}">${diff>0?'+':''}${diff} ${unit()}</span><span style="color:var(--dim);font-size:13px">since ${fmtShort(ws[0].date)}</span></div>
-      ${ws.length > 1 ? lineChart(ws, goal) : ''}${goal ? `<div class="hint">${Math.max(0, Math.round((last-goal)*10)/10)} ${unit()} to goal</div>` : ''}`;
-  }
   const usedCats = CAT_KEYS.filter(k => db.sessions.some(s => catOf(s) === k));
   v.innerHTML = `
     <div class="statrow">
@@ -789,11 +961,12 @@ function viewStats(){
     ${catBreakdown()}
     ${prCard()}
     ${cardioCard()}
-    <div class="card"><h2>Weight trend</h2>${weightHtml}</div>
+    ${enabled('weight') || ws.length ? weightStatsCard() : ''}
     ${enabled('food') ? nutritionCard() : ''}
     ${grapplingStats()}
     <div class="card"><h2>Recent <a href="#/history" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">History ›</a></h2>${sorted().slice(0,3).map(sessRow).join('')}</div>
     <div class="foot">${st.total} sessions · ${hrs(st.totalMin)} total hours</div>`;
+  wireWeight(v);
 }
 
 /* ---------------- workout file import (GPX / TCX / FIT / CSV), fully client-side ---------------- */
@@ -998,7 +1171,7 @@ function calChart(days, target){
 function nutritionCard(){
   const t = totals(entriesOn(today())), tg = targets(), wk = weekSummary();
   const ws = weightSeries(); let wnote = '';
-  if (ws.length > 1) {
+  if (ws.length > 1 && !enabled('weight')) {
     const recent = ws.filter(p => p.date >= iso(addDays(new Date(), -28)));
     if (recent.length > 1) { const span = Math.max(1, (parse(recent[recent.length-1].date) - parse(recent[0].date)) / 864e5 / 7); const rate = r1((recent[recent.length-1].w - recent[0].w) / span); wnote = ` · weight ${rate>0?'+':''}${rate} ${unit()}/wk (4 wk)`; }
   }
@@ -1123,7 +1296,7 @@ function foodForm({ id=null, meal=null, preset=null }){
   if (del) del.onclick = () => { db.nutrition.entries = db.nutrition.entries.filter(x => x.id !== existing.id); save(); closeSheet(); toast('Food removed'); route(); };
   el.appendChild(btns);
   drawSugg(); drawTotal();
-  openSheet(el);
+  openSheet(el, null, { closeLabel:'Cancel' });
   if (!existing && !preset) name.focus({ preventScroll:true }); // synchronous, inside the tap gesture (iOS only shows the keyboard then)
 }
 
@@ -1352,7 +1525,7 @@ function suppForm(id){
   const ar = btns.querySelector('[data-arch]'); if (ar) ar.onclick = () => { ex.archived = !ex.archived; save(); closeSheet(); toast(ex.archived ? `${ex.name} archived` : `${ex.name} restored`); route(); };
   const dl = btns.querySelector('[data-del]'); if (dl) dl.onclick = async () => { if (await confirmSheet(`Delete ${ex.name}?`, 'This removes the item and its whole taken history. Archive instead to keep the history.')) { db.supps.items = db.supps.items.filter(i => i.id !== ex.id); db.supps.log = db.supps.log.filter(l => l.itemId !== ex.id); save(); toast('Supplement deleted'); route(); } };
   el.appendChild(btns);
-  openSheet(el);
+  openSheet(el, null, { closeLabel:'Cancel' });
   if (!ex) name.focus({ preventScroll:true });
 }
 function sampleSupps(){
@@ -1397,9 +1570,9 @@ function viewSettings(){
   setHeader('Profile');
   const p = db.profile, v = $('#view'); v.innerHTML = '';
   const sec = h(`<div class="card" id="sectionsCard"><h2>What I track</h2><div class="toggles"></div><div class="hint">Hidden sections disappear from the app. Your data is kept.</div></div>`);
-  [...CAT_KEYS.map(k => [k, CATS[k].label, CATS[k].disc.map(d => d[1]).join(', ')]), ['food','Food','Calories, protein, meals'], ['supps','Supplements','Daily checklist']].forEach(([k,l,sub]) => {
+  [...CAT_KEYS.map(k => [k, CATS[k].label, CATS[k].disc.map(d => d[1]).join(', ')]), ['weight','Weight goal','Weigh-ins & progress'], ['food','Food','Calories, protein, meals'], ['supps','Supplements','Daily checklist']].forEach(([k,l,sub]) => {
     const row = h(`<label class="toggle"><span><b>${l}</b><small>${esc(sub)}</small></span><input type="checkbox" role="switch" data-sec="${k}" ${enabled(k)?'checked':''}><i></i></label>`);
-    row.querySelector('input').onchange = e => { const en = { ...(p.enabled||{}) }; CAT_KEYS.concat(['food','supps']).forEach(x => { if (!(x in en)) en[x] = enabled(x); }); en[k] = e.target.checked;
+    row.querySelector('input').onchange = e => { const en = { ...(p.enabled||{}) }; SECTION_KEYS().forEach(x => { if (!(x in en)) en[x] = enabled(x); }); en[k] = e.target.checked;
       if (!CAT_KEYS.some(x => en[x])) { e.target.checked = true; toast('Keep at least one workout type'); return; }
       p.enabled = en; save(); updateNav(); toast(`${l} ${e.target.checked ? 'shown' : 'hidden'}`); };
     sec.querySelector('.toggles').appendChild(row);
@@ -1416,10 +1589,21 @@ function viewSettings(){
   if (enabled('grappling')) v.appendChild(card);
 
   const wcard = h('<div class="card"><h2>Weight</h2></div>');
-  wcard.appendChild(field('Units', seg([['lb','lb'],['kg','kg']], unit(), x => { p.unit = x; save(); })));
-  const goal = h(`<input class="input" type="text" inputmode="decimal" placeholder="Optional" value="${esc(p.goalWeight)}">`);
-  goal.onchange = () => { p.goalWeight = goal.value.replace(/[^\d.]/g,''); save(); toast('Goal saved'); };
-  wcard.appendChild(field('Goal weight', goal));
+  wcard.appendChild(field('Units', seg([['lb','lb'],['kg','kg']], unit(), x => { if (x === unit()) return; const from = unit(), cv = v => v === '' || v == null || !(Number(v) > 0) ? v : Math.round(convW(Number(v), from, x)*10)/10;
+    p.startWeight = cv(p.startWeight); p.goalWeight = cv(p.goalWeight); db.sessions.forEach(s => { s.weight = cv(s.weight); }); p.unit = x; save(); toast(`Weights shown in ${x}`); viewSettings(); })));
+  const firstW = weightSeries()[0];
+  const wnum = (val, ph, id) => h(`<input class="input" type="text" inputmode="decimal" placeholder="${esc(ph)}" value="${esc(val)}" id="${id}">`);
+  const startIn = wnum(p.startWeight, firstW ? `${firstW.w} (first weigh-in)` : 'e.g. 210', 'startW');
+  startIn.onchange = () => { p.startWeight = startIn.value.replace(/[^\d.]/g,''); p.sampleProfile = false; save(); toast('Starting weight saved'); };
+  const curRow = h(`<div class="field"><label>Current weight</label><div style="display:flex;gap:10px;align-items:center"><b style="font-size:20px;flex:1" id="curW">${weightGoal().cur != null ? `${weightGoal().cur} ${unit()}` : '—'}</b><button type="button" class="btn sm" id="logWeightP">Log weight</button></div></div>`);
+  curRow.querySelector('#logWeightP').onclick = logWeightSheet;
+  const goal = wnum(p.goalWeight, 'Optional', 'goalW');
+  goal.onchange = () => { p.goalWeight = goal.value.replace(/[^\d.]/g,''); p.sampleProfile = false; save(); toast('Goal saved'); };
+  const gdate = h(`<input class="input" type="date" id="goalDate" value="${esc(p.goalDate||'')}" min="${today()}">`);
+  gdate.onchange = () => { p.goalDate = gdate.value; save(); toast(gdate.value ? 'Goal date saved' : 'Goal date cleared'); };
+  if (enabled('weight')) { wcard.appendChild(field('Starting weight', startIn, 'Leave blank to use your first weigh-in.')); wcard.appendChild(curRow); }
+  const g2 = h('<div class="grid2"></div>'); g2.appendChild(field('Goal weight', goal)); g2.appendChild(field('Goal date (optional)', gdate));
+  wcard.appendChild(g2);
   if (enabled('cardio')) wcard.appendChild(field('Distance', seg([['mi','Miles'],['km','Kilometers']], distU(), x => { p.distUnit = x; save(); })));
   const mhr = h(`<input class="input" type="text" inputmode="numeric" placeholder="e.g. 190" value="${esc(p.maxHR||'')}">`);
   mhr.onchange = () => { p.maxHR = mhr.value.replace(/\D/g,''); save(); toast('Max heart rate saved'); };
@@ -1460,14 +1644,14 @@ function viewSettings(){
   const ld = $('#ldS'); if (ld) ld.onclick = loadSample;
   const rm = $('#rmS'); if (rm) rm.onclick = removeSample;
   $('#clr').onclick = async () => {
-    if (await confirmSheet('Clear all data?', `This permanently deletes ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries, saved foods, ${db.supps.items.length} supplements with their history and your profile from this device. Export a backup first if you want to keep them.`, 'Clear everything')) {
-      db = emptyDb(); save(); form = null; foodDate = null; suppDate = null; toast('All data cleared'); if (location.hash && location.hash !== '#/') location.hash = '#/'; else route();
+    if (await confirmSheet('Clear all data?', `This permanently deletes ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries, saved foods, ${db.supps.items.length} supplements with their history, ${db.weights.length} weigh-ins and your profile from this device. Export a backup first if you want to keep them.`, 'Clear everything')) {
+      db = emptyDb(); save(); form = null; foodDate = null; suppDate = null; toast('All data cleared'); go('#/');
     }
   };
 }
 
 function exportData(){
-  const payload = { app:'discipline-motivation', version:2, schema:SCHEMA, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition, supps:db.supps };
+  const payload = { app:'discipline-motivation', version:APP_VERSION, schema:SCHEMA, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition, supps:db.supps, weights:db.weights };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = `dm-backup-${today()}.json`;
@@ -1482,9 +1666,9 @@ async function importData(file){
     if (!d || !Array.isArray(d.sessions)) throw new Error('No sessions found');
     const src = migrate(JSON.parse(JSON.stringify(d)));
     const valid = src.sessions.filter(s => s && typeof s.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.date)).map(sanitizeSession);
-    const nut = sanitizeNutrition(d.nutrition), sup = sanitizeSupps(d.supps);
-    if (await confirmSheet(`Import ${valid.length} sessions, ${nut.entries.length} food entries and ${sup.items.length} supplements?`, `This replaces the ${db.sessions.length} sessions and ${db.nutrition.entries.length} food entries currently on this device.`, 'Replace & import', false)) {
-      db = { schema:SCHEMA, sessions:valid, profile:{ ...defaultProfile(), ...(src.profile||{}), setupDone:true }, nutrition:nut, supps:sup }; save(); toast(`Imported ${valid.length} sessions`); route();
+    const nut = sanitizeNutrition(d.nutrition), sup = sanitizeSupps(d.supps), wts = sanitizeWeights(src.weights);
+    if (await confirmSheet(`Import ${valid.length} sessions, ${nut.entries.length} food entries and ${sup.items.length} supplements?`, `This replaces the ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries and ${db.weights.length} weigh-ins currently on this device.`, 'Replace & import', false)) {
+      db = { schema:SCHEMA, sessions:valid, profile:{ ...defaultProfile(), ...(src.profile||{}), setupDone:true }, nutrition:nut, supps:sup, weights:wts }; save(); toast(`Imported ${valid.length} sessions`); route();
     }
   } catch(e) { console.warn(e); toast('That file isn\'t a valid backup'); }
   finally { const f = $('#impFile'); if (f) f.value = ''; }
@@ -1553,16 +1737,31 @@ function loadSample(){
   }
   sessions.push(...sampleOtherWorkouts(w));
   db.sessions = db.sessions.filter(s => !s.sample).concat(sessions.map(sanitizeSession));
-  db.profile = { ...db.profile, setupDone:true, enabled:{ grappling:true, striking:true, weights:true, cardio:true, food:true, supps:true } };
+  db.profile = { ...db.profile, setupDone:true, enabled:{ grappling:true, striking:true, weights:true, cardio:true, food:true, supps:true, weight:true } };
+  db.weights = (db.weights||[]).filter(x => !x.sample).concat(sampleWeights());
   const nut = sampleNutrition(), names = new Set(db.nutrition.foods.map(f => f.name.toLowerCase()));
   const sup = sampleSupps(); db.supps = { items: db.supps.items.filter(i => !i.sample).concat(sup.items), log: db.supps.log.filter(l => !l.sample).concat(sup.log) };
   db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample).concat(nut.entries), foods: db.nutrition.foods.filter(f => !f.sample).concat(nut.foods.filter(f => !names.has(f.name.toLowerCase()))) };
   if (!db.profile.targets) db.profile = { ...db.profile, targets:{ cal:2300, p:190, c:220, f:75 } };
   if (!db.profile.promotedOn) { db.profile = { ...db.profile, belt:'blue', stripes:2, promotedOn:iso(addDays(new Date(), -152)), goalWeight: db.profile.goalWeight || '195', sampleProfile:true }; }
+  if (!db.profile.startWeight && !(db.weights||[]).some(x => !x.sample)) db.profile = { ...db.profile, goalWeight: db.profile.goalWeight || String(Math.round(convW(195, 'lb', unit())*10)/10), startWeight: String(Math.round(convW(215, 'lb', unit())*10)/10), goalDate: db.profile.goalDate || iso(addDays(new Date(), 70)) };
   save(); toast(`Loaded ${sessions.length} sample sessions`); route();
+}
+function sampleWeights(){
+  // morning weigh-ins ~4x a week, trending from ~215 lb toward the 195 lb goal with day-to-day noise
+  let seed = 77; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const out = [], start = addDays(new Date(), -84), u = unit(); let w = 215.2;
+  for (let d = new Date(start); iso(d) <= today(); d = addDays(d, 1)) {
+    w -= 0.13 + (rnd()-0.5)*0.12;
+    if (![1,3,5,0].includes(d.getDay()) && iso(d) !== today()) continue;
+    const val = w + (rnd()-0.5)*1.4;
+    out.push({ id:uid(), date:iso(d), w:Math.round(convW(val, 'lb', u)*10)/10, u, createdAt:Math.min(Date.now() - 60000, new Date(d.getFullYear(), d.getMonth(), d.getDate(), 7, 0).getTime()), sample:true });
+  }
+  return out;
 }
 function removeSample(){
   const n = db.sessions.filter(s => s.sample).length;
+  db.weights = (db.weights||[]).filter(x => !x.sample);
   db.sessions = db.sessions.filter(s => !s.sample);
   db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample), foods: db.nutrition.foods.filter(f => !f.sample) };
   const sids = new Set(db.supps.items.filter(i => i.sample).map(i => i.id));
@@ -1572,11 +1771,38 @@ function removeSample(){
 }
 
 /* ---------------- router ---------------- */
+let formBase = null, curRoute = null, curHash = null, navIdx = -1, replacing = false;
+const formSnap = f => JSON.stringify(f, (k, v) => k.startsWith('_') ? undefined : v);
+const formDirty = () => !!form && formBase != null && formSnap(form) !== formBase;
+const onForm = () => curRoute === 'log' || curRoute === 'edit';
+/* Ask before throwing away a half-filled workout. */
+function guardLeave(proceed){
+  if (onForm() && formDirty()) {
+    const editing = curRoute === 'edit';
+    confirmSheet(editing ? 'Discard your changes?' : 'Discard this workout?', editing ? 'Your edits to this workout will be lost.' : 'What you entered will be lost.', 'Discard', true)
+      .then(ok => { if (ok) { form = null; formBase = null; whenSettled(proceed); } });
+  } else proceed();
+}
+function goBack(parent){
+  guardLeave(() => whenSettled(() => {
+    if (navIdx > 0) history.back();
+    else { replacing = true; location.replace(parent); }
+  }));
+}
 function route(){
-  if (!$('#sheet').hidden) closeSheet();
-  updateNav();
   const hash = location.hash.replace(/^#/, '') || '/';
+  // leaving a half-filled workout via the browser/iOS back gesture or a link: put the form back and ask first
+  if (onForm() && curHash !== hash && formDirty()) {
+    const target = location.hash || '#/';
+    history.pushState({ idx:navIdx }, '', '#' + curHash);
+    guardLeave(() => go(target));
+    return;
+  }
+  if (!$('#sheet').hidden) closeSheet({ noHistory:true });
+  { const st = history.state || {}; if (st.idx == null) history.replaceState({ ...st, idx: replacing ? Math.max(0, navIdx) : navIdx + 1 }, ''); navIdx = history.state.idx; replacing = false; }
+  updateNav();
   const [, a, b] = hash.split('/');
+  curRoute = a || ''; curHash = hash;
   const tab = { '':'home', history:'history', session:'history', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
   document.querySelectorAll('.tabbar a').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   if (a !== 'log' && a !== 'edit') form = (a === 'session' ? null : form && !form.id ? form : null);
@@ -1594,6 +1820,14 @@ function route(){
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', route);
+// Bottom nav: always closes whatever is open (sheet or form) and goes to that screen.
+document.querySelector('.tabbar').addEventListener('click', e => {
+  const a = e.target.closest('a[href]'); if (!a) return;
+  e.preventDefault();
+  const href = a.getAttribute('href'), same = (location.hash || '#/') === href;
+  if (same) { if (!$('#sheet').hidden) closeSheet(); else if (!onForm()) route(); window.scrollTo(0, 0); return; }
+  guardLeave(() => { if (!$('#sheet').hidden) closeSheet(); go(href); });
+});
 window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load(); route(); } });
 route();
 

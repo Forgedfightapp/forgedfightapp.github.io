@@ -412,3 +412,42 @@ details.details>summary small{color:var(--dim);font-weight:600;margin-left:auto}
 .seg.wrap.n6,.seg.wrap{flex-wrap:wrap}
 .seg.wrap.three button{flex:1 1 28%;min-height:42px}
 .actions{position:static}.actions.stick{position:sticky}
+/* ---- navigation: back buttons, sheets that never cover the bottom nav ---- */
+:root{--navh:calc(72px + var(--safe-b))}
+.topbar{flex-wrap:wrap;row-gap:0}
+.backrow{flex:0 0 100%;margin:-8px 0 2px -12px}
+.backrow[hidden]{display:none}
+.backbtn{display:inline-flex;align-items:center;gap:2px;min-height:44px;min-width:76px;padding:0 14px 0 4px;border:0;border-radius:12px;background:transparent;color:var(--accent);font:inherit;font-size:17px;font-weight:650;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.backbtn svg{width:26px;height:26px;stroke-width:2.6;flex:none}
+.backbtn:active{background:var(--surface2)}
+.tabbar{z-index:40}
+.sheet{bottom:var(--navh);padding-top:calc(10px + var(--safe-t))}
+.sheet .panel{max-height:100%;padding-bottom:40px;touch-action:pan-y}
+.sheethead{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;margin:-4px -8px 6px;min-height:46px}
+.sheethead .grab{margin:0}
+.sheethead .backbtn{justify-self:start}
+.toast{z-index:45}
+body.sheet-open .actions{z-index:auto}
+/* ---- weight goal ---- */
+.lnk{color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px;font-weight:700}
+.wtop{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-2px 0 10px}
+.wnow b{display:block;font-size:34px;font-weight:780;letter-spacing:-.03em;line-height:1.05}
+.wnow b small{font-size:15px;color:var(--muted);font-weight:650}
+.wnow span{color:var(--dim);font-size:13px;font-weight:600}
+.spark{width:132px;height:44px;flex:none}
+.spark path{fill:none;stroke:var(--brand);stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round}
+.spark circle{fill:var(--brand);stroke:var(--surface);stroke-width:2}
+.wgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.wgrid>div{background:var(--surface2);border-radius:12px;padding:10px}
+.wgrid b{display:block;font-size:20px;font-weight:760;letter-spacing:-.02em}
+.wgrid span{color:var(--dim);font-size:12px;font-weight:600}
+.wfacts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.wfacts>div{background:var(--surface2);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px}
+.wfacts span{color:var(--dim);font-size:12px;font-weight:600}
+.wfacts b{font-size:18px;font-weight:760}
+.wfacts small{color:var(--muted);font-size:12px}
+.wstep{display:grid;grid-template-columns:56px 1fr auto 56px;align-items:center;gap:8px}
+.wstep input{font-size:34px;font-weight:780;text-align:center;min-height:64px;letter-spacing:-.02em}
+.wstep .unit{color:var(--muted);font-weight:700}
+.wstep .iconbtn{width:56px;height:56px;font-size:28px;font-weight:700;color:var(--accent)}
+.wrow .iconbtn{flex:none}

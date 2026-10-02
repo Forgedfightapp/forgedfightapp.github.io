@@ -103,7 +103,7 @@ ok('clear data removes promotions', (await db()).belts.length === 0);
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#impFile', { state:'attached' });
 await page.setInputFiles('#impFile', path); await page.locator('.sheet [data-ok]').tap(); await settle(400);
 d = await db();
-ok('export/import round-trips promotions', JSON.stringify(d.belts) === JSON.stringify(b4) && d.profile.belt === 'blue' && d.schema === 4);
+ok('export/import round-trips promotions', JSON.stringify(d.belts) === JSON.stringify(b4) && d.profile.belt === 'blue' && d.schema === 5);
 await ctx.close();
 
 /* ---------- 3. migration v3 -> v4 ---------- */
@@ -113,7 +113,7 @@ await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v
   profile:{ belt:'purple', stripes:3, promotedOn:'2025-05-01', unit:'lb', setupDone:true, enabled:{ grappling:true, food:false, supps:false } }, nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] }, weights:[] })); });
 await page.reload(); await page.waitForSelector('#beltCard'); await settle(200);
 let mg = await page.evaluate(() => ({ d:JSON.parse(localStorage.getItem('dm.bjj.v1')), b:localStorage.getItem('dm.bjj.v1.backup.v3') }));
-ok('v3 → v4: old belt setting becomes first history entry', mg.d.schema === 4 && mg.d.belts.length === 1 && mg.d.belts[0].belt === 'purple' && mg.d.belts[0].stripes === 3 && mg.d.belts[0].date === '2025-05-01' && mg.d.sessions.length === 1);
+ok('v3 → v4: old belt setting becomes first history entry', mg.d.schema === 5 && mg.d.belts.length === 1 && mg.d.belts[0].belt === 'purple' && mg.d.belts[0].stripes === 3 && mg.d.belts[0].date === '2025-05-01' && mg.d.sessions.length === 1);
 ok('v3 → v4: backup kept', !!mg.b && JSON.parse(mg.b).schema === 3 && JSON.parse(mg.b).profile.belt === 'purple');
 ok('migrated rank shows on Home with mat time since promotion', (await page.locator('#beltCard').textContent()).includes('Purple belt · 3 stripes') && (await page.locator('#beltCard').textContent()).replace(/\s+/g,' ').includes('1 session · 1.5 h'));
 await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ schema:3, sessions:[], profile:{ belt:'blue', stripes:1, promotedOn:'', setupDone:true }, nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] }, weights:[] })); });

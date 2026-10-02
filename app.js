@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '2.2.2';
+const APP_VERSION = '2.3.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -16,10 +16,15 @@ const ADULT_BELTS = ['white','blue','purple','brown','black'], KIDS_BELTS = ['gr
 const INTENSITY = ['', 'Light','Easy','Moderate','Hard','All-out'];
 
 /* ---------------- storage ---------------- */
-const SCHEMA = 4;
+const SCHEMA = 5;
 const defaultProfile = () => ({ name:'', belt:'white', stripes:0, promotedOn:'', goalWeight:'', startWeight:'', goalDate:'', unit:'lb', distUnit:'mi', maxHR:'', sampleProfile:false, setupDone:false,
-  enabled:{ grappling:true, striking:false, weights:false, cardio:false, food:true, supps:true } });
-const emptyDb = () => ({ schema:SCHEMA, sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[], water:[] }, supps:{ items:[], log:[] }, weights:[], belts:[] });
+  enabled:{ grappling:true, weights:false, cardio:false, food:true, supps:true } });
+const emptyDb = () => ({ schema:SCHEMA, sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[], water:[] }, supps:{ items:[], log:[] }, weights:[], belts:[], archive:{ striking:[] } });
+/* Striking was removed in 2.3.0. Striking sessions are never deleted or converted: they are moved, untouched, into
+   db.archive.striking (kept in storage, export and import; hidden from the UI and stats). */
+function archiveStriking(d){ const ar = Array.isArray(d.archive?.striking) ? d.archive.striking : [], keep = [], moved = [];
+  (d.sessions||[]).forEach(s => (s && s.category === 'striking' ? moved : keep).push(s));
+  const ids = new Set(ar.map(x => x && x.id)); d.sessions = keep; d.archive = { ...(d.archive||{}), striking: ar.concat(moved.filter(x => !ids.has(x.id))) }; return moved.length; }
 /* Versioned schema. v1 (BJJ-only) -> v2 (multi-discipline): sessions gain category/discipline; a copy of the
    pre-migration data is kept under STORE_KEY + '.backup.v1' so nothing can be lost. */
 function migrate(d){
@@ -50,13 +55,19 @@ function migrate(d){
     }
     v = 4;
   }
+  if (v < 5) { // v5: Striking removed. Striking sessions move untouched into archive.striking (still stored + exported).
+    if (v === 4) { try { if (!localStorage.getItem(STORE_KEY + '.backup.v4')) localStorage.setItem(STORE_KEY + '.backup.v4', JSON.stringify(d)); } catch(e) { console.warn('backup failed', e); } }
+    if (d.profile?.enabled) { const { striking, ...rest } = d.profile.enabled; d.profile = { ...d.profile, enabled:rest }; }
+    v = 5;
+  }
+  archiveStriking(d); // also catches striking sessions in any later import
   d.schema = v; return d;
 }
 function load(){
   try{
     let d = JSON.parse(localStorage.getItem(STORE_KEY));
     if (d && Array.isArray(d.sessions)) { const before = d.schema; d = migrate(d); if (before !== d.schema) setTimeout(() => { try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch(e){} }, 0);
-      return { schema:d.schema, sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[], water:sanitizeWater(d.nutrition?.water) }, supps:{ items:d.supps?.items||[], log:d.supps?.log||[] }, weights:sanitizeWeights(d.weights), belts:sanitizeBelts(d.belts) }; }
+      return { schema:d.schema, sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[], water:sanitizeWater(d.nutrition?.water) }, supps:{ items:d.supps?.items||[], log:d.supps?.log||[] }, weights:sanitizeWeights(d.weights), belts:sanitizeBelts(d.belts), archive:{ striking:Array.isArray(d.archive?.striking) ? d.archive.striking : [] } }; }
   }catch(e){ console.warn('Could not read saved data', e);
     // never silently lose data: keep the unreadable copy before starting fresh
     try { const raw = localStorage.getItem(STORE_KEY); if (raw && !localStorage.getItem(STORE_KEY + '.unreadable')) localStorage.setItem(STORE_KEY + '.unreadable', raw); } catch(_) {} }
@@ -566,19 +577,15 @@ function viewBelts(){
 
 /* ---------------- disciplines ---------------- */
 const CATS = {
-  grappling:{ label:'Grappling', color:'#DC141F', dur:60, disc:[['bjj','BJJ'],['wrestling','Wrestling'],['judo','Judo']],
+  grappling:{ label:'BJJ', sub:'Gi, No-Gi', color:'#DC141F', dur:60, disc:[['bjj','BJJ'],['wrestling','Wrestling'],['judo','Judo']],
     icon:'<path d="M8 4a2 2 0 1 0 0 .1M16 4a2 2 0 1 0 0 .1M5 21l2-7-3-3 4-4h8l4 4-3 3 2 7M9 11l3 2 3-2"/>' },
-  striking:{ label:'Striking', color:'#F5B83D', dur:60, disc:[['boxing','Boxing'],['muaythai','Muay Thai'],['kickboxing','Kickboxing'],['mma','MMA']],
-    icon:'<path d="M6 10a5 5 0 0 1 5-5h3a4 4 0 0 1 4 4v4a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5zM8 18v3h8v-3M9.5 10.5h5.5"/>' },
   weights:{ label:'Weights', color:'#8FB0D9', dur:60, disc:[['strength','Strength']],
     icon:'<path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/>' },
   cardio:{ label:'Cardio', color:'#6FD3A8', dur:30, disc:[['run','Run'],['bike','Bike'],['row','Row'],['swim','Swim'],['rope','Jump rope'],['other','Other']],
     icon:'<path d="M3 12h4l2-5 4 10 2-5h6"/>' }
 };
 const CAT_KEYS = Object.keys(CATS);
-const STRIKE_TECH = ['Jab','Cross','Lead hook','Rear hook','Uppercut','Teep','Roundhouse kick','Low kick','Body kick','Head kick','Knee','Elbow','Clinch','Check kick','Slip & counter','Roll under','Parry','Footwork','Head movement','1-2-3','Jab-cross-low kick','Level change','Cage work'];
 const EXERCISES = ['Back squat','Front squat','Bench press','Incline bench press','Deadlift','Romanian deadlift','Trap bar deadlift','Overhead press','Barbell row','Pull-up','Chin-up','Dip','Lat pulldown','Cable row','Hip thrust','Bulgarian split squat','Lunge','Leg press','Kettlebell swing','Turkish get-up','Farmer carry','Power clean','Bicep curl','Tricep extension','Face pull','Neck curl','Plank','Push-up'];
-const STRIKE_MIX = [['shadow','Shadow'],['pads','Pads'],['bag','Bag'],['drills','Drills'],['sparring','Sparring']];
 const catOf = s => CATS[s.category] ? s.category : 'grappling';
 const discLabel = s => { const c = CATS[catOf(s)]; return (c.disc.find(d => d[0]===s.discipline) || c.disc[0])[1]; };
 const enabled = k => { const e = db.profile.enabled || {}; return k in e ? !!e[k] : (k === 'grappling' || k === 'food' || k === 'supps'); };
@@ -591,7 +598,7 @@ const paceStr = (sec, dist, unit) => dist > 0 && sec > 0 ? `${fmtDur(sec/dist)} 
 const speedStr = (sec, dist, unit) => dist > 0 && sec > 0 ? `${r1(dist/(sec/3600))} ${unit==='km'?'km/h':'mph'}` : '';
 const e1rm = (w, r) => w > 0 && r > 0 ? w * (1 + Math.min(r, 12)/30) : 0;
 const volumeOf = s => (s.exercises||[]).reduce((a,e) => a + e.sets.reduce((b,x) => b + (Number(x.reps)||0)*(Number(x.weight)||0), 0), 0);
-function sessTitle(s){ const c = catOf(s); if (c === 'grappling' || c === 'striking') { const t = (s.type && s.type !== 'class') ? ` · ${typeLabel(s.type)}` : ''; return discLabel(s) + t; } return c === 'weights' ? 'Weights' : discLabel(s); }
+function sessTitle(s){ const c = catOf(s); if (c === 'grappling') { const t = (s.type && s.type !== 'class') ? ` · ${typeLabel(s.type)}` : ''; return discLabel(s) + t; } return c === 'weights' ? 'Weights' : discLabel(s); }
 function catDot(c){ return `<i class="catdot" style="background:${CATS[c].color}"></i>`; }
 
 /* schema-2 session sanitizer: used for import, migration and every save (so stored == exported == re-imported) */
@@ -607,8 +614,6 @@ function sanitizeSession(s){
       subsLanded:(r.subsLanded||[]).map(String), subsTapped:(r.subsTapped||[]).map(String), stuck:(r.stuck||[]).map(String) })) : [],
     sample:!!s.sample, createdAt:s.createdAt||Date.now() };
   if (s.updatedAt) out.updatedAt = s.updatedAt;
-  if (s.strike) out.strike = { roundLen:Number(s.strike.roundLen)||3, mix:Object.fromEntries(STRIKE_MIX.map(([k]) => [k, Math.max(0, Number(s.strike.mix?.[k])||0)])),
-    spar:Array.isArray(s.strike.spar) ? s.strike.spar.filter(x => x && (x.partner || x.notes)).map(x => ({ partner:String(x.partner||''), notes:String(x.notes||'') })) : [] };
   if (Array.isArray(s.exercises)) out.exercises = s.exercises.filter(e => e && String(e.name||'').trim()).map(e => ({ name:String(e.name).trim(), sets:(e.sets||[]).map(x => ({ reps:n(x.reps), weight:n(x.weight), rpe:n(x.rpe) })) }));
   if (s.cardio) out.cardio = { distance:n(s.cardio.distance), unit:s.cardio.unit==='km'?'km':'mi', sec:Math.max(0, Math.round(Number(s.cardio.sec)||0)) };
   if (s.hr) { const hr = { avg:n(s.hr.avg), max:n(s.hr.max), cal:n(s.hr.cal), zones:[0,1,2,3,4].map(i => n(s.hr.zones?.[i])) }; if (hr.avg!==''||hr.max!==''||hr.cal!==''||hr.zones.some(z => z!=='')) out.hr = hr; }
@@ -637,10 +642,10 @@ function updateNav(){
 function viewSetup(){
   document.body.classList.add('setup-mode');
   setHeader('');
-  const v = $('#view'), pick = { grappling:true, striking:false, weights:false, cardio:false, food:true, supps:false, weight:false };
+  const v = $('#view'), pick = { grappling:true, weights:false, cardio:false, food:true, supps:false, weight:false };
   v.innerHTML = `<div class="welcome setup"><img class="mark" src="brand/chevron_mark_transparent_1024.svg" alt="" width="64" height="64">
     <h2>What do you train?</h2><p>Pick all that apply. You can change this any time in Profile.</p>
-    <div class="tiles" id="catTiles">${CAT_KEYS.map(k => `<button type="button" class="tile" data-k="${k}" aria-pressed="false"><svg viewBox="0 0 24 24">${CATS[k].icon}</svg><b>${CATS[k].label}</b><small>${CATS[k].disc.map(d=>d[1]).slice(0,3).join(', ')}</small></button>`).join('')}</div>
+    <div class="tiles" id="catTiles">${CAT_KEYS.map(k => `<button type="button" class="tile" data-k="${k}" aria-pressed="false"><svg viewBox="0 0 24 24">${CATS[k].icon}</svg><b>${CATS[k].label}</b><small>${CATS[k].sub || CATS[k].disc.map(d=>d[1]).slice(0,3).join(', ')}</small></button>`).join('')}</div>
     <h3>Also track</h3>
     <div class="tiles two" id="extraTiles"><button type="button" class="tile" data-k="food"><b>Food</b><small>Calories &amp; protein</small></button><button type="button" class="tile" data-k="supps"><b>Supplements</b><small>Daily checklist</small></button><button type="button" class="tile" data-k="weight"><b>Weight goal</b><small>Lose or gain</small></button></div>
     <div id="wtWrap" style="text-align:left;margin-top:6px"></div>
@@ -669,7 +674,6 @@ function lastOf(cat){ return sorted().find(s => catOf(s) === cat); }
 function templates(){ return enabledCats().map(lastOf).filter(Boolean); }
 function repeatSession(src){
   const rec = sanitizeSession({ category:catOf(src), discipline:src.discipline, gi:src.gi, type:src.type, duration:src.duration, rounds:src.rounds, intensity:src.intensity,
-    ...(src.strike ? { strike:{ roundLen:src.strike.roundLen, mix:src.strike.mix, spar:[] } } : {}),
     ...(src.exercises ? { exercises:src.exercises } : {}), ...(src.cardio ? { cardio:src.cardio } : {}),
     date:today(), id:uid(), createdAt:Date.now() });
   db.sessions.push(rec); save(); form = null;
@@ -710,7 +714,6 @@ function sessSub(s){
   const c = catOf(s), rolls = s.rolls||[];
   if (c === 'cardio' && s.cardio) { const k = s.cardio; const bits = [k.distance ? `${r1(k.distance)} ${k.unit}` : '', k.sec ? fmtDur(k.sec) : `${s.duration} min`, s.discipline === 'bike' ? speedStr(k.sec, k.distance, k.unit) : paceStr(k.sec, k.distance, k.unit)]; return bits.filter(Boolean).join(' · '); }
   if (c === 'weights') { const ex = s.exercises||[]; return [`${s.duration} min`, ex.length ? `${ex.length} exercise${ex.length>1?'s':''}` : '', volumeOf(s) ? `${Math.round(volumeOf(s)).toLocaleString()} ${unit()} vol` : ''].filter(Boolean).join(' · '); }
-  if (c === 'striking') { const m = s.strike?.mix || {}; return [`${s.duration} min`, s.rounds ? `${s.rounds} rds${s.strike ? ` × ${s.strike.roundLen} min` : ''}` : '', m.sparring ? `${m.sparring} sparring` : ''].filter(Boolean).join(' · '); }
   const w = rolls.filter(r => r.result==='win').length, l = rolls.filter(r => r.result==='loss').length;
   return [`${s.duration} min`, `${s.rounds||0} rounds`, rolls.length ? `${w}W ${l}L` : ''].filter(Boolean).join(' · ');
 }
@@ -744,7 +747,7 @@ function viewHistory(){
       if (histFilter==='nogi' && !(catOf(s)==='grappling' && s.gi==='nogi')) return false;
       if (histFilter==='comp' && s.type!=='comp') return false;
       if (!q) return true;
-      const hay = [s.notes, sessTitle(s), CATS[catOf(s)].label, ...(s.techniques||[]), ...(s.exercises||[]).map(e => e.name), ...(s.strike?.spar||[]).flatMap(x => [x.partner, x.notes]),
+      const hay = [s.notes, sessTitle(s), CATS[catOf(s)].label, ...(s.techniques||[]), ...(s.exercises||[]).map(e => e.name),
         ...(s.rolls||[]).flatMap(r => [r.partner, ...(r.subsLanded||[]), ...(r.subsTapped||[]), ...(r.stuck||[])])].join(' ').toLowerCase();
       return hay.includes(q);
     });
@@ -772,9 +775,6 @@ function viewSession(id){
   let body = '';
   if (c === 'grappling') body = `<div class="card"><h2>Techniques drilled</h2>${(s.techniques||[]).length ? `<div class="chips">${s.techniques.map(t => `<span class="chip" style="padding:7px 12px">${esc(t)}</span>`).join('')}</div>` : '<div class="empty" style="padding:4px 0">—</div>'}</div>
     <div class="card"><h2>Rolls <small>${rolls.filter(r=>r.result==='win').length}W · ${rolls.filter(r=>r.result==='loss').length}L · ${rolls.filter(r=>r.result==='draw').length}D</small></h2>${rolls.length ? rolls.map((r,i) => rollCard(r,i,false)).join('') : '<div class="empty" style="padding:4px 0">No rolls logged</div>'}</div>`;
-  if (c === 'striking') { const m = s.strike?.mix || {}; body = `<div class="card"><h2>Rounds <small>${s.rounds||0} × ${s.strike?.roundLen||3} min</small></h2><div class="mix">${STRIKE_MIX.map(([k,l]) => `<div><b>${m[k]||0}</b><span>${l}</span></div>`).join('')}</div></div>
-    ${(s.strike?.spar||[]).length ? `<div class="card"><h2>Sparring notes</h2>${s.strike.spar.map(x => `<div class="list-row"><div class="grow"><b>${esc(x.partner||'Partner')}</b><small style="white-space:pre-wrap">${esc(x.notes)}</small></div></div>`).join('')}</div>` : ''}
-    ${(s.techniques||[]).length ? `<div class="card"><h2>Worked on</h2><div class="chips">${s.techniques.map(t => `<span class="chip" style="padding:7px 12px">${esc(t)}</span>`).join('')}</div></div>` : ''}`; }
   if (c === 'weights') { const prs = prMap(s.id); body = `<div class="card"><h2>Exercises <small>${Math.round(volumeOf(s)).toLocaleString()} ${unit()} volume</small></h2>${(s.exercises||[]).length ? s.exercises.map(e => { const best = Math.max(0, ...e.sets.map(x => e1rm(Number(x.weight)||0, Number(x.reps)||0))); const pr = best && best > (prs[e.name.toLowerCase()]?.e1 || 0); return `<div class="ex-view"><div class="t"><b>${esc(e.name)}</b>${pr ? '<span class="pill pr">PR</span>' : ''}</div><div class="sets">${e.sets.map((x,i) => `<span>${i+1}. ${x.reps||0} × ${x.weight||0}${x.rpe!==''&&x.rpe!=null?` @${x.rpe}`:''}</span>`).join('')}</div></div>`; }).join('') : '<div class="empty" style="padding:4px 0">No exercises logged</div>'}</div>`; }
   if (c === 'cardio' && s.cardio) { const k = s.cardio; body = `<div class="kv"><div><b>${k.distance ? r1(k.distance) : '—'}<small style="font-size:13px;color:var(--muted)"> ${k.unit}</small></b><span>Distance</span></div><div><b>${k.sec ? fmtDur(k.sec) : s.duration+'m'}</b><span>Time</span></div><div><b>${(s.discipline==='bike' ? speedStr(k.sec,k.distance,k.unit) : paceStr(k.sec,k.distance,k.unit)) || '—'}</b><span>${s.discipline==='bike'?'Speed':'Pace'}</span></div></div>`; }
   $('#view').innerHTML = `
@@ -812,13 +812,11 @@ function blankSession(cat){
   cat = cat || catOf(sorted().find(s => enabledCats().includes(catOf(s))) || { category:enabledCats()[0] });
   const last = lastOf(cat);
   return { id:null, date:today(), category:cat, discipline:last?.discipline || CATS[cat].disc[0][0], gi:last?.gi || 'gi', type:'class',
-    duration:last?.duration || CATS[cat].dur, rounds:cat==='striking' ? (last?.rounds||6) : cat==='grappling' ? 5 : 0, intensity:3, techniques:[], rolls:[], weight:'', notes:'',
-    strike:{ roundLen:last?.strike?.roundLen || 3, mix:{ shadow:0, pads:0, bag:0, drills:0, sparring:0 }, spar:[] },
+    duration:last?.duration || CATS[cat].dur, rounds:cat==='grappling' ? 5 : 0, intensity:3, techniques:[], rolls:[], weight:'', notes:'',
     exercises:[], cardio:{ distance:'', unit:distU(), sec:0 }, hr:{ avg:'', max:'', cal:'', zones:['','','','',''] }, _open:false };
 }
 function hydrate(s){
   const b = blankSession(catOf(s)), f = JSON.parse(JSON.stringify(s));
-  f.strike = f.strike ? { ...b.strike, ...f.strike, mix:{ ...b.strike.mix, ...(f.strike.mix||{}) }, spar:f.strike.spar||[] } : b.strike;
   f.exercises = f.exercises || []; f.cardio = f.cardio || b.cardio; f.hr = f.hr ? { ...b.hr, ...f.hr, zones:f.hr.zones||b.hr.zones } : b.hr;
   f._open = true; return f;
 }
@@ -826,10 +824,9 @@ function toRecord(f){
   const c = f.category, out = { ...f };
   delete out._open; delete out._durTouched;
   if (c !== 'grappling') { out.rolls = []; }
-  if (c !== 'striking') delete out.strike;
+  delete out.strike;
   if (c !== 'weights') delete out.exercises; else out.exercises = f.exercises.map(e => ({ ...e, sets:e.sets.filter(x => x.reps !== '' || x.weight !== '') }));
   if (c !== 'cardio') delete out.cardio; else if (!f.cardio.distance && !f.cardio.sec) delete out.cardio;
-  if (c === 'striking') out.rounds = Math.max(Number(f.rounds)||0, STRIKE_MIX.reduce((a,[k]) => a + (Number(f.strike.mix[k])||0), 0));
   if (c === 'grappling') out.rounds = Math.max(Number(f.rounds)||0, f.rolls.length);
   if (c === 'cardio' && f.cardio.sec) out.duration = Math.max(1, Math.round(f.cardio.sec/60));
   return out;
@@ -858,13 +855,12 @@ function viewForm(id){
     const nb = blankSession(b.dataset.c);
     f.category = nb.category; f.discipline = nb.discipline; f.gi = nb.gi;
     if (!f._durTouched) f.duration = nb.duration;
-    if (f.category === 'striking' && !f.rounds) f.rounds = nb.rounds;
     redraw();
   });
   v.appendChild(field('Workout', catEl));
   // 2. discipline (+ gi for BJJ)
   const C = CATS[f.category];
-  if (C.disc.length > 1) { const ds = seg(C.disc, f.discipline, x => { f.discipline = x; if (f.category === 'grappling') redraw(); }, C.disc.length > 4); if (C.disc.length > 4) ds.classList.add('three'); v.appendChild(field(f.category === 'cardio' ? 'Activity' : 'Style', ds)); }
+  if (C.disc.length > 1 && (f.category !== 'grappling' || f.discipline !== 'bjj')) { const ds = seg(C.disc, f.discipline, x => { f.discipline = x; if (f.category === 'grappling') redraw(); }, C.disc.length > 4); if (C.disc.length > 4) ds.classList.add('three'); v.appendChild(field(f.category === 'cardio' ? 'Activity' : 'Style', ds)); }
   if (f.category === 'grappling' && f.discipline === 'bjj') v.appendChild(field('Uniform', seg([['gi','Gi'],['nogi','No-Gi']], f.gi, x => f.gi = x)));
   // 3. duration + date
   const g = h('<div class="durdate"></div>');
@@ -885,8 +881,8 @@ function viewForm(id){
   notes.oninput = () => f.notes = notes.value;
   const notesF = field('Notes', notes); let notesPlaced = false;
   const placeNotes = () => { if (!notesPlaced) { D.appendChild(notesF); notesPlaced = true; } };
-  if (f.category === 'grappling' || f.category === 'striking') {
-    D.appendChild(field('Session type', seg(SESSION_TYPES.filter(t => t[0] !== 'seminar' || f.category === 'grappling'), f.type, x => f.type = x, true)));
+  if (f.category === 'grappling') {
+    D.appendChild(field('Session type', seg(SESSION_TYPES, f.type, x => f.type = x, true)));
   }
   if (f.category === 'grappling') {
     D.appendChild(field('Techniques drilled', tagField({ values:f.techniques, suggestions:() => uniqueMerge(usedTechniques(), TECHNIQUES), placeholder:'Add technique…' })));
@@ -924,25 +920,6 @@ function viewForm(id){
     rollsWrap.querySelector('#addRoll').onclick = () => editRoll(null);
     drawRolls();
   }
-  if (f.category === 'striking') {
-    D.appendChild(field('Worked on', tagField({ values:f.techniques, suggestions:() => uniqueMerge(countBy(db.sessions.filter(s => catOf(s)==='striking').flatMap(s => s.techniques||[])).map(x => x[0]), STRIKE_TECH), placeholder:'Combo, technique…' })));
-    placeNotes();
-    const g2 = h('<div class="grid2"></div>');
-    const rs = stepper(f.rounds, { min:0, max:60, unitLabel:'rds', onChange:x => f.rounds = x });
-    g2.appendChild(field('Total rounds', rs));
-    g2.appendChild(field('Round length', stepper(f.strike.roundLen, { min:1, max:10, unitLabel:'min', onChange:x => f.strike.roundLen = x })));
-    D.appendChild(g2);
-    const mix = h('<div class="mixgrid"></div>');
-    STRIKE_MIX.forEach(([k,l]) => mix.appendChild(field(l, stepper(f.strike.mix[k]||0, { min:0, max:40, unitLabel:'', onChange:x => { f.strike.mix[k] = x; const sum = STRIKE_MIX.reduce((a,[kk]) => a + (Number(f.strike.mix[kk])||0), 0); if (sum > f.rounds) { f.rounds = sum; rs.querySelector('input').value = sum; } } }))));
-    D.appendChild(field('Rounds by type', mix));
-    const sp = h(`<div class="field"><label>Sparring partners</label><div class="sparlist"></div><button type="button" class="btn block" id="addSpar"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add sparring partner</button></div>`);
-    const drawSpar = () => { const L = sp.querySelector('.sparlist'); L.innerHTML = ''; f.strike.spar.forEach((x,i) => {
-      const row = h(`<div class="spar"><div style="display:flex;gap:8px"><input class="input" type="text" autocapitalize="words" placeholder="Partner" value="${esc(x.partner)}"><button type="button" class="iconbtn big" aria-label="Remove partner"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><textarea class="input" rows="2" placeholder="What worked, what to fix…">${esc(x.notes)}</textarea></div>`);
-      row.querySelector('input').oninput = e => x.partner = e.target.value; row.querySelector('textarea').oninput = e => x.notes = e.target.value;
-      row.querySelector('button').onclick = () => { f.strike.spar.splice(i,1); drawSpar(); }; L.appendChild(row); }); };
-    sp.querySelector('#addSpar').onclick = () => { f.strike.spar.push({ partner:'', notes:'' }); drawSpar(); sp.querySelector('.spar:last-child input').focus(); };
-    drawSpar(); D.appendChild(sp);
-  }
   if (f.category === 'weights') { D.appendChild(exerciseEditor(f)); placeNotes(); }
   if (f.category === 'cardio') {
     const k = f.cardio;
@@ -963,7 +940,7 @@ function viewForm(id){
     D.appendChild(field('Time (h:mm:ss)', tm)); D.appendChild(paceEl); drawPace(); placeNotes();
   }
   placeNotes();
-  if (f.category === 'grappling' || f.category === 'striking' || f.category === 'weights' || f.category === 'cardio') {
+  if (f.category === 'grappling' || f.category === 'weights' || f.category === 'cardio') {
     const intens = h(`<div><div class="intensity">${[1,2,3,4,5].map(i => `<button type="button" data-i="${i}" aria-label="Intensity ${i}">${i}</button>`).join('')}</div><div class="hint" id="intLabel"></div></div>`);
     const syncI = () => { intens.querySelectorAll('button').forEach(b => b.classList.toggle('on', Number(b.dataset.i) === f.intensity)); intens.querySelector('#intLabel').textContent = INTENSITY[f.intensity]; };
     intens.querySelectorAll('button').forEach(b => b.onclick = () => { f.intensity = Number(b.dataset.i); syncI(); });
@@ -1078,7 +1055,7 @@ function grapplingStats(){
     sl:rs.reduce((a,r)=>a+(r.subsLanded||[]).length,0), st:rs.reduce((a,r)=>a+(r.subsTapped||[]).length,0) }; };
   const gi = split('gi'), ng = split('nogi');
   const nl = landed.reduce((a,x)=>a+x[1],0), nc = caught.reduce((a,x)=>a+x[1],0);
-  return `<h3 class="sect-h">Grappling</h3>
+  return `<h3 class="sect-h">BJJ</h3>
     <div class="grid3" style="margin-bottom:14px"><div class="stat hero"><div class="v">${w}</div><div class="l">Won</div></div><div class="stat"><div class="v">${d}</div><div class="l">Draw</div></div><div class="stat"><div class="v" style="color:var(--loss)">${l}</div><div class="l">Lost</div></div></div>
     <div class="card"><h2>Sub ratio <small>${nl} landed · ${nc} caught</small></h2>
       <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--surface2)"><i style="width:${nl+nc ? nl/(nl+nc)*100 : 50}%;background:var(--brand)"></i><i style="flex:1;background:var(--loss)"></i></div>
@@ -1209,6 +1186,7 @@ function normDate(v){ v = String(v||'').trim(); let m = v.match(/^(\d{4})-(\d{1,
 function csvRowToSession(o){
   const date = normDate(pickF(o, 'date', 'day', 'start_time', 'start', 'activity_date')); if (!date) return null;
   const rawCat = pickF(o, 'category', 'workout', 'type', 'workout_type').toLowerCase(), rawDisc = pickF(o, 'discipline', 'activity', 'activity_type', 'sport', 'style').toLowerCase();
+  if (/strik|boxing|muay|kickbox|\bmma\b/.test(rawCat + ' ' + rawDisc)) return null; // striking is no longer tracked
   let cat = CAT_KEYS.find(k => rawCat.startsWith(k.slice(0,5)) || CATS[k].label.toLowerCase() === rawCat) || '';
   const findDisc = c => CATS[c].disc.find(d => rawDisc && (d[0] === rawDisc || d[1].toLowerCase() === rawDisc || rawDisc.includes(d[1].toLowerCase())));
   if (!cat) cat = CAT_KEYS.find(k => findDisc(k)) || (sportToActivity(rawDisc || rawCat) && sportToActivity(rawDisc || rawCat) !== 'other' ? 'cardio' : /lift|weight|strength|gym/.test(rawCat+rawDisc) ? 'weights' : 'grappling');
@@ -1833,7 +1811,7 @@ function viewSettings(){
       <button class="btn block" id="ldS">Load sample data (demo)</button>
       ${hasSample ? '<button class="btn block" id="rmS">Remove sample data</button>' : ''}
       <button class="btn block danger" id="clr">Clear all data</button>
-    </div></div>`);
+    </div>${(db.archive?.striking||[]).length ? `<p class="hint" id="archNote" style="margin-top:12px">${db.archive.striking.length} striking session${db.archive.striking.length === 1 ? '' : 's'} from an earlier version ${db.archive.striking.length === 1 ? 'is' : 'are'} kept on this device and included in Export backup, but hidden because striking is no longer tracked.</p>` : ''}</div>`);
   v.appendChild(data);
   v.appendChild(h(`<div class="card"><h2>Install on iPhone</h2><div style="color:var(--muted);font-size:14px">In Safari, tap <b style="color:var(--text)">Share</b> → <b style="color:var(--text)">Add to Home Screen</b>. It opens full-screen and works offline.</div></div>`));
   v.appendChild(h(`<div class="foot">Discipline &gt; Motivation · v${APP_VERSION} · ${db.sessions.length} sessions · ${db.nutrition.entries.length} food entries stored</div>`));
@@ -1851,7 +1829,7 @@ function viewSettings(){
 }
 
 function exportData(){
-  const payload = { app:'discipline-motivation', version:APP_VERSION, schema:SCHEMA, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition, supps:db.supps, weights:db.weights, belts:db.belts };
+  const payload = { app:'discipline-motivation', version:APP_VERSION, schema:SCHEMA, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition, supps:db.supps, weights:db.weights, belts:db.belts, archive:db.archive || { striking:[] } };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = `dm-backup-${today()}.json`;
@@ -1868,7 +1846,7 @@ async function importData(file){
     const valid = src.sessions.filter(s => s && typeof s.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.date)).map(sanitizeSession);
     const nut = sanitizeNutrition(d.nutrition), sup = sanitizeSupps(d.supps), wts = sanitizeWeights(src.weights), blt = sanitizeBelts(src.belts);
     if (await confirmSheet(`Import ${valid.length} sessions, ${nut.entries.length} food entries and ${sup.items.length} supplements?`, `This replaces the ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries and ${db.weights.length} weigh-ins currently on this device.`, 'Replace & import', false)) {
-      db = { schema:SCHEMA, sessions:valid, profile:{ ...defaultProfile(), ...(src.profile||{}), setupDone:true }, nutrition:nut, supps:sup, weights:wts, belts:blt }; syncProfileRank(); save(); toast(`Imported ${valid.length} sessions`); route();
+      db = { schema:SCHEMA, sessions:valid, profile:{ ...defaultProfile(), ...(src.profile||{}), setupDone:true }, nutrition:nut, supps:sup, weights:wts, belts:blt, archive:{ striking:src.archive?.striking || [] } }; syncProfileRank(); save(); toast(`Imported ${valid.length} sessions`); route();
     }
   } catch(e) { console.warn(e); toast('That file isn\'t a valid backup'); }
   finally { const f = $('#impFile'); if (f) f.value = ''; }
@@ -1878,18 +1856,9 @@ async function importData(file){
 function sampleOtherWorkouts(){
   let seed = 31; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd()*a.length)], out = [], start = addDays(new Date(), -84), total = 84;
-  const sparNotes = ['Kept my hands up better. Still dropping the right after the jab.','Got caught with low kicks — check earlier.','Good pressure, cut off the ring well.','Clinch work felt strong, need sharper knees.'];
-  const partners = ['Mo','Sam','Coach Lee','Tasha','Vince'];
   const lifts = [['Back squat', 245, 275, 5], ['Bench press', 185, 205, 5], ['Deadlift', 315, 355, 3], ['Overhead press', 115, 130, 5], ['Pull-up', 0, 0, 8], ['Barbell row', 155, 175, 8]];
   for (let d = new Date(start), i = 0; d <= new Date(); d = addDays(d, 1), i++) {
     const dow = d.getDay(), prog = i / total, date = iso(d), created = Math.min(Date.now() - 120000, d.getTime() - 3600e3);
-    if (dow === 2 && rnd() < .85) { // Tuesday: Muay Thai
-      const mix = { shadow:2, pads:3 + Math.floor(rnd()*2), bag:2 + Math.floor(rnd()*2), drills:1, sparring: rnd() < .6 ? 2 + Math.floor(rnd()*2) : 0 };
-      const rounds = Object.values(mix).reduce((a,b) => a+b, 0);
-      out.push({ id:uid(), date, category:'striking', discipline: rnd() < .8 ? 'muaythai' : 'boxing', type:'class', duration:60, rounds, intensity:3 + Math.round(rnd()*1.4),
-        strike:{ roundLen:3, mix, spar: mix.sparring ? [{ partner:pick(partners), notes:pick(sparNotes) }] : [] }, techniques:[pick(STRIKE_TECH), pick(STRIKE_TECH)].filter((x,j,a) => a.indexOf(x)===j),
-        hr: rnd() < .6 ? { avg:148 + Math.round(rnd()*12), max:178 + Math.round(rnd()*10), cal:620 + Math.round(rnd()*150), zones:[4,10,18,20,8] } : undefined, sample:true, createdAt:created });
-    }
     if ((dow === 4 || dow === 0) && rnd() < .85) { // Thu/Sun: lifting, A/B split with slow progression
       const A = dow === 4, pickL = A ? [lifts[0], lifts[1], lifts[4]] : [lifts[2], lifts[3], lifts[5]];
       const exercises = pickL.map(([name, lo, hi, reps]) => { const top = lo ? Math.round((lo + (hi - lo) * prog + (rnd()-.5)*5) / 5) * 5 : 0;
@@ -1937,7 +1906,7 @@ function loadSample(){
   }
   sessions.push(...sampleOtherWorkouts(w));
   db.sessions = db.sessions.filter(s => !s.sample).concat(sessions.map(sanitizeSession));
-  db.profile = { ...db.profile, setupDone:true, enabled:{ grappling:true, striking:true, weights:true, cardio:true, food:true, supps:true, weight:true } };
+  db.profile = { ...db.profile, setupDone:true, enabled:{ grappling:true, weights:true, cardio:true, food:true, supps:true, weight:true } };
   db.weights = (db.weights||[]).filter(x => !x.sample).concat(sampleWeights());
   if (!(db.belts||[]).some(x => !x.sample)) { db.belts = sampleBelts(); syncProfileRank(); }
   const nut = sampleNutrition(), names = new Set(db.nutrition.foods.map(f => f.name.toLowerCase()));
@@ -1972,6 +1941,7 @@ function removeSample(){
   db.belts = (db.belts||[]).filter(x => !x.sample);
   db.weights = (db.weights||[]).filter(x => !x.sample);
   db.sessions = db.sessions.filter(s => !s.sample);
+  if (db.archive?.striking) db.archive.striking = db.archive.striking.filter(s => !s?.sample);
   db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample), foods: db.nutrition.foods.filter(f => !f.sample), water:(db.nutrition.water||[]).filter(x => !x.sample) };
   const sids = new Set(db.supps.items.filter(i => i.sample).map(i => i.id));
   db.supps = { items: db.supps.items.filter(i => !i.sample), log: db.supps.log.filter(l => !l.sample && !sids.has(l.itemId)) };

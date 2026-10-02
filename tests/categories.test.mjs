@@ -1,0 +1,74 @@
+import { chromium, devices } from 'playwright';
+import fs from 'fs';
+const BASE = process.env.BASE || 'http://localhost:8787/';
+const SHOTS = process.env.SHOTS || '/workspace/bjj-tracker/screenshots';
+const errors = [], results = [];
+const ok = (n, c, x='') => { results.push(`${c?'PASS':'FAIL'} ${n} ${x}`); if (!c) process.exitCode = 1; };
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport:{width:390,height:844}, deviceScaleFactor:3, isMobile:true, hasTouch:true, userAgent:devices['iPhone 13'].userAgent, acceptDownloads:true });
+const page = await ctx.newPage(); page.on('pageerror', e => errors.push('pageerror: '+e.message)); page.on('console', m => { if (m.type()==='error') errors.push(m.text()); });
+const settle = (ms=300) => page.waitForTimeout(ms);
+const db = () => page.evaluate(() => JSON.parse(localStorage.getItem('dm.bjj.v1')));
+
+/* first-run + log form: only BJJ, Weights, Cardio */
+await page.goto(BASE); await page.waitForSelector('#catTiles');
+const tiles = await page.locator('#catTiles .tile').evaluateAll(ts => ts.map(t => [t.dataset.k, t.querySelector('b').textContent, t.querySelector('small').textContent]));
+ok('first-run offers BJJ, Weights, Cardio only', JSON.stringify(tiles.map(t => t[1])) === '["BJJ","Weights","Cardio"]' && tiles[0][2] === 'Gi, No-Gi', JSON.stringify(tiles));
+await page.locator('.tile[data-k="weights"]').tap(); await page.locator('#go').tap(); await page.waitForSelector('.statrow');
+await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); await settle();
+const cats = await page.locator('.cats button').evaluateAll(bs => bs.map(b => b.textContent.trim()));
+ok('log form: BJJ and Weights (no Striking); BJJ has Uniform but no Style picker', JSON.stringify(cats) === '["BJJ","Weights"]' && await page.locator('.field', { has:page.locator('label', { hasText:/^Uniform$/ }) }).count() === 1 && await page.locator('.field', { has:page.locator('label', { hasText:/^Style$/ }) }).count() === 0, JSON.stringify(cats));
+await page.goto(BASE + '#/settings'); await settle();
+const secs = await page.locator('input[data-sec]').evaluateAll(is => is.map(i => i.dataset.sec));
+ok('"What I track": no Striking toggle', !secs.includes('striking') && secs.includes('grappling') && secs.includes('cardio'), JSON.stringify(secs));
+
+/* v4 data with striking sessions: archived untouched, not lost, no crash */
+const strike1 = { id:'s1', date:'2026-09-10', category:'striking', discipline:'muaythai', type:'class', duration:60, rounds:10, intensity:4, techniques:['Teep'], notes:'Pads', weight:'', rolls:[], strike:{ roundLen:3, mix:{ shadow:2, pads:4, bag:2, drills:0, sparring:2 }, spar:[{ partner:'Mo', notes:'Check kicks' }] }, hr:{ avg:150, max:180, cal:600, zones:[1,2,3,4,0] }, sample:false, createdAt:1 };
+const strike2 = { ...strike1, id:'s2', date:'2026-09-17', discipline:'boxing', strike:{ ...strike1.strike, spar:[] } };
+const bjj = { id:'g1', date:'2026-09-12', category:'grappling', discipline:'bjj', gi:'nogi', type:'class', duration:75, rounds:5, intensity:3, techniques:[], notes:'', weight:'', rolls:[], sample:false, createdAt:2 };
+const wrest = { ...bjj, id:'g2', date:'2026-09-14', discipline:'wrestling' };
+const v4 = { schema:4, sessions:[strike1, bjj, strike2, wrest], profile:{ name:'', belt:'white', stripes:0, unit:'lb', distUnit:'mi', setupDone:true, enabled:{ grappling:true, striking:true, weights:false, cardio:false, food:false, supps:false } }, nutrition:{ entries:[], foods:[], water:[] }, supps:{ items:[], log:[] }, weights:[], belts:[] };
+await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }, v4);
+await page.goto(BASE + '#/'); await page.reload(); await page.waitForSelector('.statrow'); await settle(400);
+let d = await db(), b = await page.evaluate(() => localStorage.getItem('dm.bjj.v1.backup.v4'));
+ok('v4 → v5: striking sessions moved untouched to archive (not deleted, not converted)', d.schema === 5 && d.sessions.length === 2 && d.sessions.every(s => s.category === 'grappling') && JSON.stringify(d.archive.striking) === JSON.stringify([strike1, strike2]), JSON.stringify(d.archive));
+ok('v4 backup kept', !!b && JSON.parse(b).sessions.length === 4);
+ok('striking toggle removed from profile settings', !('striking' in d.profile.enabled));
+await page.goto(BASE + '#/history'); await settle(400);
+const hist = await page.locator('#view').innerText();
+ok('history: striking hidden, filters have no Striking; legacy wrestling still shown', !/Muay|Boxing|Striking/.test(hist) && /Wrestling/.test(hist) && await page.locator('.sess').count() === 2, hist.slice(0, 200));
+await page.goto(BASE + '#/stats'); await settle(400);
+ok('stats render without striking', !/Striking|Muay/.test(await page.locator('#view').innerText()));
+await page.goto(BASE + '#/session/g2'); await settle(300);
+const detailTxt = await page.locator('body').innerText();
+await page.goto(BASE + '#/edit/g2'); await page.waitForSelector('.cats'); await settle(300);
+ok('legacy wrestling session opens; editing keeps its style', /wrestling/i.test(detailTxt) && (await page.locator('.field', { has:page.locator('label', { hasText:/^Style$/ }) }).locator('button.on').textContent()) === 'Wrestling');
+await page.goto(BASE + '#/'); await settle(200);
+await page.goto(BASE + '#/settings'); await page.waitForSelector('#archNote');
+ok('Profile notes the archived sessions', (await page.locator('#archNote').textContent()).startsWith('2 striking sessions from an earlier version are kept on this device and included in Export backup'));
+await page.locator('#archNote').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, 150)); await settle();
+await page.screenshot({ path:`${SHOTS}/31-archived-striking-note.png` });
+const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#exp').tap()]);
+const path = '/tmp/catmig-export.json'; await dl.saveAs(path); const exp = JSON.parse(fs.readFileSync(path, 'utf8'));
+ok('export includes the archived striking sessions', exp.schema === 5 && exp.archive.striking.length === 2 && exp.sessions.length === 2);
+await page.locator('#clr').tap(); await page.locator('.sheet [data-ok]').tap(); await settle(400);
+d = await db(); ok('clear data clears the archive too', !d.archive?.striking?.length && d.sessions.length === 0);
+await page.goto(BASE + '#/settings'); await settle(300);
+await page.setInputFiles('#impFile', path); await page.locator('.sheet [data-ok]').tap(); await settle(400);
+d = await db(); ok('import restores the archive', d.archive.striking.length === 2 && d.sessions.length === 2 && JSON.stringify(d.archive.striking[0]) === JSON.stringify(strike1));
+// an old (v4) backup file with striking in sessions also lands in the archive
+fs.writeFileSync('/tmp/catmig-v4.json', JSON.stringify(v4));
+await page.goto(BASE + '#/settings'); await settle(300);
+await page.setInputFiles('#impFile', '/tmp/catmig-v4.json'); await page.locator('.sheet [data-ok]').tap(); await settle(400);
+d = await db(); ok('importing an old backup archives its striking sessions', d.sessions.length === 2 && d.archive.striking.length === 2 && !d.sessions.some(s => s.category === 'striking'));
+// sample data has no striking
+await page.goto(BASE + '#/settings'); await settle(300); await page.locator('#ldS').tap(); await settle(500);
+d = await db(); ok('sample data: no striking, only BJJ/Weights/Cardio', !d.sessions.some(s => s.category === 'striking') && new Set(d.sessions.filter(s => s.sample).map(s => s.category)).size === 3 && d.sessions.filter(s => s.category === 'grappling' && s.sample).every(s => s.discipline === 'bjj'));
+await page.goto(BASE + '#/history'); await settle(400);
+const filt = await page.locator('.filters button, .filters a').evaluateAll(xs => xs.map(x => x.textContent.trim()));
+ok('history filters: BJJ, Weights, Cardio (+Gi/No-Gi), no Striking', !filt.includes('Striking') && filt.includes('BJJ') && filt.includes('Gi'), JSON.stringify(filt));
+await page.goto(BASE + '#/'); await settle(300);
+ok('quick log has no striking entries', !/Muay|Striking|Boxing/.test(await page.locator('.quick').innerText()));
+ok('no console errors', errors.length === 0, JSON.stringify(errors));
+console.log(results.join('\n'));
+await browser.close();

@@ -54,30 +54,11 @@ ok('repeat last = 1 tap from Home', taps === 1 && d.sessions.length === 2 && d.s
 await page.locator('#toast .undo').tap(); await page.waitForTimeout(150);
 ok('repeat can be undone', (await db()).sessions.length === 1);
 
-/* 3. turn on striking in settings, log striking with details */
+/* 3. section toggles (striking no longer exists) */
 await page.locator('.tabbar a[data-tab="settings"]').tap();
-await page.locator('.toggle', { has: page.locator('input[data-sec="striking"]') }).tap();
-await page.locator('.toggle', { has: page.locator('input[data-sec="grappling"]') }).tap(); // hide grappling
+await page.locator('.toggle', { has: page.locator('input[data-sec="grappling"]') }).tap(); // hide BJJ
 d = await db();
-ok('section toggles', d.profile.enabled.striking === true && d.profile.enabled.grappling === false);
-await page.locator('.tabbar a.fab').tap(); await page.waitForSelector('.cats');
-await page.locator('.cats button[data-c="striking"]').tap();
-await page.getByRole('radio', { name:'Muay Thai' }).tap();
-
-const stepIn = (label, n) => (async () => { for (let i = 0; i < n; i++) await page.locator('.mixgrid .field', { hasText: label }).getByRole('button', { name:'Increase' }).tap(); })();
-await stepIn('Pads', 4); await stepIn('Bag', 3); await stepIn('Sparring', 3);
-await page.locator('#addSpar').tap();
-await page.locator('.spar input').fill('Mo'); await page.locator('.spar textarea').fill('Check the low kick earlier');
-await page.locator('[data-hr="avg"]').fill('151'); await page.locator('[data-hr="max"]').fill('182'); await page.locator('[data-hr="cal"]').fill('640');
-await page.locator('[data-z="3"]').fill('12');
-await page.locator('.field', { hasText:'Total rounds' }).scrollIntoViewIfNeeded(); await hideToast();
-await page.evaluate(() => window.scrollTo(0, document.querySelector('#detailsSec').offsetTop - 70));
-await page.screenshot({ path:`${SHOTS}/16-striking-log.png` });
-await page.locator('.actions [data-save]').tap(); await page.waitForSelector('.statrow');
-d = await db(); const st = d.sessions.find(s => s.category === 'striking');
-ok('striking saved with breakdown + sparring + HR', st && st.discipline === 'muaythai' && st.strike.mix.pads === 4 && st.strike.mix.sparring === 3 && st.rounds >= 10 && st.strike.spar[0].partner === 'Mo' && st.hr.avg === 151 && st.hr.zones[3] === 12, JSON.stringify(st && { mix:st.strike.mix, rounds:st.rounds, hr:st.hr }));
-await page.goto(BASE + '#/session/' + st.id); await page.waitForSelector('.mix');
-await page.screenshot({ path:`${SHOTS}/16b-striking-detail.png`, fullPage:true });
+ok('section toggles (BJJ hidden; no Striking toggle)', d.profile.enabled.grappling === false && !('striking' in d.profile.enabled) && await page.locator('input[data-sec="striking"]').count() === 0);
 
 /* 4. weights with exercises, autocomplete, PR */
 await page.locator('.tabbar a.fab').tap(); await page.waitForSelector('.cats');
@@ -144,7 +125,7 @@ ok('leaving a filled-in form asks to discard', await page.locator('.sheet h3', {
 await page.locator('.sheet [data-ok]').tap(); await page.waitForSelector('#csvFile', { state:'attached' });
 await page.setInputFiles('#csvFile', `${FIX}/workouts.csv`); await page.locator('.sheet [data-ok]').tap(); await page.waitForTimeout(250);
 d = await db(); const added = d.sessions.filter(s => s.source === 'CSV import');
-ok('CSV bulk import adds 4 workouts', d.sessions.length === before + 4 && added.some(s => s.category === 'striking' && s.discipline === 'muaythai' && s.hr.max === 180) && added.some(s => s.discipline === 'swim' && s.cardio.distance === 1.5 && s.cardio.unit === 'km') && added.some(s => s.date === '2026-09-21'), JSON.stringify(added.map(s => [s.date, s.category, s.discipline])));
+ok('CSV bulk import adds 3 workouts (striking row skipped)', d.sessions.length === before + 3 && !added.some(s => s.date === '2026-09-21') && !d.sessions.some(s => s.category === 'striking') && added.some(s => s.discipline === 'swim' && s.cardio.distance === 1.5 && s.cardio.unit === 'km') && added.some(s => s.date === '2026-09-22'), JSON.stringify(added.map(s => [s.date, s.category, s.discipline])));
 
 /* 7. stats view (dashboard depth) with sample data */
 await page.goto(BASE + '#/settings'); await page.locator('#ldS').tap(); await page.waitForTimeout(300);
@@ -153,7 +134,7 @@ ok('home essentials: week, hours, streak, quick log, nutrition, supps, belt', aw
 await hideToast(); await page.screenshot({ path:`${SHOTS}/01-dashboard.png` });
 await page.screenshot({ path:`${SHOTS}/01b-dashboard-full.png`, fullPage:true });
 await page.locator('#seeStats').tap(); await page.waitForSelector('#catCard');
-ok('stats: hours by category, PRs, cardio distance', await page.locator('#catCard .list-row').count() === 4 && await page.locator('#prCard .list-row').count() >= 3 && /This week/.test(await page.locator('#cardioCard').innerText()));
+ok('stats: hours by category, PRs, cardio distance', await page.locator('#catCard .list-row').count() === 3 && await page.locator('#prCard .list-row').count() >= 3 && /This week/.test(await page.locator('#cardioCard').innerText()));
 await hideToast(); await page.screenshot({ path:`${SHOTS}/19-stats.png` });
 await page.screenshot({ path:`${SHOTS}/19b-stats-full.png`, fullPage:true });
 await page.goto(BASE + '#/history'); await page.waitForSelector('.sess');
@@ -190,7 +171,7 @@ const af = await db();
 const canon = v => Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => [k, canon(v[k])])) : v;
 const S = x => JSON.stringify(canon([...x.sessions].sort((a,b) => a.id.localeCompare(b.id))));
 if (S(af) !== S(b4)) { const A = canon(af.sessions), B = canon(b4.sessions); const bad = A.find(e => JSON.stringify(e) !== JSON.stringify(B.find(x => x.id === e.id))); console.log('DIFF', JSON.stringify(bad), JSON.stringify(B.find(x => x.id === bad?.id))); }
-ok('export/import round-trips all workout types', S(af) === S(b4) && af.schema === 4 && JSON.stringify(af.weights) === JSON.stringify(b4.weights), `${af.sessions.length}/${b4.sessions.length}`);
+ok('export/import round-trips all workout types', S(af) === S(b4) && af.schema === 5 && JSON.stringify(af.weights) === JSON.stringify(b4.weights), `${af.sessions.length}/${b4.sessions.length}`);
 await ctx.close();
 
 /* 10. schema v1 -> v2 migration (existing BJJ-only user) */
@@ -199,7 +180,7 @@ await page.goto(BASE);
 await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ sessions:[{ id:'old1', date:'2026-09-01', gi:'nogi', type:'open', duration:90, rounds:6, intensity:4, techniques:['Leg drag'], rolls:[{ id:'r1', partner:'Jake', result:'win', subsLanded:['Armbar'], subsTapped:[], stuck:[] }], weight:200, notes:'old', createdAt:1 }], profile:{ belt:'blue', stripes:1, unit:'lb' }, nutrition:{ entries:[], foods:[] } })); });
 await page.reload(); await page.waitForSelector('.statrow, .welcome'); await page.waitForTimeout(200);
 const m = await page.evaluate(() => ({ d:JSON.parse(localStorage.getItem('dm.bjj.v1')), b:localStorage.getItem('dm.bjj.v1.backup.v1') }));
-ok('v1 data migrates to schema 4 as Grappling/BJJ', m.d.schema === 4 && Array.isArray(m.d.weights) && m.d.sessions[0].category === 'grappling' && m.d.sessions[0].discipline === 'bjj' && m.d.sessions[0].rolls[0].subsLanded[0] === 'Armbar' && m.d.profile.belt === 'blue');
+ok('v1 data migrates to schema 5 as BJJ', m.d.schema === 5 && Array.isArray(m.d.weights) && m.d.sessions[0].category === 'grappling' && m.d.sessions[0].discipline === 'bjj' && m.d.sessions[0].rolls[0].subsLanded[0] === 'Armbar' && m.d.profile.belt === 'blue');
 ok('pre-migration backup kept', !!m.b && JSON.parse(m.b).sessions[0].id === 'old1' && !JSON.parse(m.b).schema);
 ok('migrated user skips first-run', await page.locator('.welcome.setup').count() === 0 && await page.locator('.statrow').count() === 1);
 await page.goto(BASE + '#/session/old1'); await page.waitForSelector('#del');

@@ -9,15 +9,14 @@ for (const w of [390, 375]) {
   const page = await ctx.newPage(); page.on('pageerror', e => errors.push('pageerror: '+e.message)); page.on('console', m => { if (m.type()==='error') errors.push(m.text()); });
   const settle = (ms=300) => page.waitForTimeout(ms);
   await page.goto(BASE); await page.waitForSelector('#loadSample'); await page.locator('#loadSample').tap(); await page.waitForSelector('#beltCard');
-  await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); ['grappling','striking','cardio','weights'].forEach(k => d.profile.enabled[k] = true); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
-  for (const c of ['grappling','striking','weights','cardio']) {
+  await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); ['grappling','cardio','weights'].forEach(k => d.profile.enabled[k] = true); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
+  for (const c of ['grappling','weights','cardio']) {
     await page.goto(BASE + '#/'); await settle(200); await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); await settle(200);
     if (await page.locator('.sheet [data-ok]').count()) { await page.locator('.sheet [data-ok]').tap(); await settle(); }
     await page.locator(`.cats button[data-c="${c}"]`).tap(); await settle(200);
     const t = `${w}px ${c}:`;
     ok(`${t} no expander / no "Add details" toggle; details always shown`, await page.locator('#view details.details').count() === 0 && !(await page.locator('#view').innerText()).includes('Add details') && await page.locator('#detailsSec').isVisible() && (await page.locator('#detailsSec .sect-title').textContent()).startsWith('Details'));
     const EXP = { grappling:['Session type','Techniques drilled','Notes','Rounds','Rolls','Intensity','Body weight','Import from device','Heart rate'],
-      striking:['Session type','Worked on','Notes','Total rounds','Rounds by type','Sparring partners','Intensity','Body weight','Import from device','Heart rate'],
       weights:['Notes','Intensity','Body weight','Import from device','Heart rate'], cardio:['Distance','Time (h:mm:ss)','Notes','Intensity','Body weight','Import from device','Heart rate'] }[c];
     const order = await page.evaluate(names => { const y = txt => { const l = [...document.querySelectorAll('#view .field>label, #view .field>.label')].find(x => x.textContent.trim().startsWith(txt)); return l ? l.getBoundingClientRect().top + scrollY : null; };
       return names.map(y); }, EXP);

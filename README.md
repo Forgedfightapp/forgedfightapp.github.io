@@ -1,7 +1,7 @@
 # Discipline > Motivation — Training Log (PWA)
 
 Offline-first, iPhone-first training tracker. Vanilla JS, no build step, no CDNs. All data stays in
-`localStorage` (key `dm.bjj.v1`, schema 4; older data auto-migrates and backups are kept at `dm.bjj.v1.backup.v1` / `.backup.v2` / `.backup.v3`; an unreadable store is copied to `dm.bjj.v1.unreadable` before starting fresh).
+`localStorage` (key `dm.bjj.v1`, schema 5; older data auto-migrates and backups are kept at `dm.bjj.v1.backup.v1` / `.backup.v2` / `.backup.v3` / `.backup.v4`; an unreadable store is copied to `dm.bjj.v1.unreadable` before starting fresh).
 
 ## Design priority: simple first
 - **Quick log**: Home → `+` → Save = 3 taps (category + last-used duration + today pre-filled). The Save button stays pinned above the nav. All other fields are always visible under a **Details (optional)** heading, with Notes right after the main type/technique fields, then the rest, ending with Intensity → Body weight → Import from device (GPX/TCX/FIT/CSV) → Heart rate.
@@ -21,8 +21,17 @@ Weigh-ins and workout body weight merge into one history (latest entry per day).
 progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
 projected goal date.
 
+## 2.3.0: BJJ, Weights, Cardio
+- Striking removed everywhere: first-run, "What I track", log form, quick log, dashboard/stats, history filters, sample data.
+- **Existing striking data is never deleted or converted.** On migration to schema 5 (backup `.backup.v4`), striking sessions move
+  unchanged from `sessions` into `archive.striking`. They stay in storage, Export backup and Import (old backups are archived the same way);
+  they are hidden from the UI/stats, and Profile → Your data says how many are kept. Clear all data removes them. CSV rows that are striking are skipped.
+  Converting them to another category would have changed what the data means and made stats wrong, so they are archived instead.
+- The "Grappling" label is now "BJJ" (internal key stays `grappling`). New BJJ sessions have no Style picker (just Gi/No-Gi). Older
+  Wrestling/Judo sessions keep their style and still show/edit it.
+
 ## 2.2.2
-- Log form order: notes come right after the main type and technique/exercise fields. Grappling: Session type → Techniques drilled → Notes → Rounds → Rolls → Intensity → Body weight → Import from device → Heart rate. Striking: Session type → Worked on → Notes → rounds/sparring → …. Weights: exercises → Notes → …. Cardio: distance/time → Notes → ….
+- Log form order: notes come right after the main type and technique/exercise fields. Grappling: Session type → Techniques drilled → Notes → Rounds → Rolls → Intensity → Body weight → Import from device → Heart rate. Weights: exercises → Notes → …. Cardio: distance/time → Notes → ….
 - Suggestion chips wrap onto at most 2 rows; no chip is cut off at the edge.
 
 ## 2.2.1
@@ -44,7 +53,7 @@ and progress vs optional goal; a water line on the Home nutrition card. First-ru
 is hidden there, and every screen pads for nav + home-indicator inset.
 
 ## Features
-Grappling (BJJ/Wrestling/Judo, rolls, subs, belt), Striking (round mix, sparring), Weights (sets × reps × weight, RPE, PRs/e1RM, volume),
+BJJ (gi/no-gi, rolls, subs, belt), Weights (sets × reps × weight, RPE, PRs/e1RM, volume),
 Cardio (distance/time, pace/speed), heart rate + zones on all, GPX/TCX/FIT/CSV import, nutrition, supplements, JSON export/import, sample data.
 
 ## Run
@@ -52,7 +61,7 @@ Cardio (distance/time, pace/speed), heart rate + zones on all, GPX/TCX/FIT/CSV i
     ./restart-preview.sh                            # server + Cloudflare quick tunnel (prints public URL)
 
 ## Tests (Playwright, iPhone 13 emulation)
-`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/supplements.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/multi.test.mjs` (run with `node`, needs
+`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/supplements.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/multi.test.mjs` (run with `node`, needs
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 

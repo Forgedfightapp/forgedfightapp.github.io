@@ -41,7 +41,6 @@ const week0 = Number(await stat('Sessions this week'));
 await page.locator('.tabbar a.fab').tap();
 await page.waitForSelector('.cats');
 await page.locator('.cats button[data-c="grappling"]').tap();
-await page.getByRole('radio', { name: 'BJJ' }).tap();
 
 await page.getByRole('radio', { name: 'No-Gi' }).tap();
 await page.getByRole('radio', { name: 'Drilling' }).tap();

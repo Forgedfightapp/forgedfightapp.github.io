@@ -40,6 +40,8 @@ await page.waitForSelector('.cats');
 ok('log form only shows enabled types', await page.locator('.cats button').count() === 3 && await page.locator('.cats button[data-c="striking"]').count() === 0);
 await page.screenshot({ path:`${SHOTS}/02a-quick-log.png` });
 await tap(page.locator('.cats button[data-c="weights"]'));
+{ const r = await page.evaluate(() => { const b = document.querySelector('.actions [data-save]').getBoundingClientRect(), fab = document.querySelector('.tabbar a.fab').getBoundingClientRect(); return { top:b.top, bottom:b.bottom, fabTop:fab.top }; });
+  ok('Save is visible without scrolling (sticky above the nav)', r.top >= 0 && r.bottom <= r.fabTop, JSON.stringify(r)); }
 await tap(page.locator('.actions [data-save]'));
 await page.waitForSelector('.statrow');
 d = await db();
@@ -61,7 +63,7 @@ ok('section toggles', d.profile.enabled.striking === true && d.profile.enabled.g
 await page.locator('.tabbar a.fab').tap(); await page.waitForSelector('.cats');
 await page.locator('.cats button[data-c="striking"]').tap();
 await page.getByRole('radio', { name:'Muay Thai' }).tap();
-await page.locator('details.details summary').tap();
+
 const stepIn = (label, n) => (async () => { for (let i = 0; i < n; i++) await page.locator('.mixgrid .field', { hasText: label }).getByRole('button', { name:'Increase' }).tap(); })();
 await stepIn('Pads', 4); await stepIn('Bag', 3); await stepIn('Sparring', 3);
 await page.locator('#addSpar').tap();
@@ -69,7 +71,7 @@ await page.locator('.spar input').fill('Mo'); await page.locator('.spar textarea
 await page.locator('[data-hr="avg"]').fill('151'); await page.locator('[data-hr="max"]').fill('182'); await page.locator('[data-hr="cal"]').fill('640');
 await page.locator('[data-z="3"]').fill('12');
 await page.locator('.field', { hasText:'Total rounds' }).scrollIntoViewIfNeeded(); await hideToast();
-await page.evaluate(() => window.scrollTo(0, document.querySelector('details.details').offsetTop - 70));
+await page.evaluate(() => window.scrollTo(0, document.querySelector('#detailsSec').offsetTop - 70));
 await page.screenshot({ path:`${SHOTS}/16-striking-log.png` });
 await page.locator('.actions [data-save]').tap(); await page.waitForSelector('.statrow');
 d = await db(); const st = d.sessions.find(s => s.category === 'striking');
@@ -80,7 +82,7 @@ await page.screenshot({ path:`${SHOTS}/16b-striking-detail.png`, fullPage:true }
 /* 4. weights with exercises, autocomplete, PR */
 await page.locator('.tabbar a.fab').tap(); await page.waitForSelector('.cats');
 await page.locator('.cats button[data-c="weights"]').tap();
-await page.locator('details.details summary').tap();
+
 await page.locator('#addEx').tap();
 await page.locator('.exname').fill('benc');
 await page.locator('.excard .sugg').getByRole('button', { name:'Bench press', exact:true }).tap();
@@ -90,7 +92,7 @@ await page.locator('[data-addset]').tap(); await setIn(1, 'weight', '195'); awai
 ok('exercise autocomplete + new PR flag', (await page.locator('.excard .exname').inputValue()) === 'Bench press' && (await page.locator('.prnote').textContent()).includes('New PR'));
 await page.locator('#addEx').tap(); await page.locator('.exname').nth(1).fill('Pull-up');
 await page.locator('.excard').nth(1).locator('input[data-f="reps"]').fill('10');
-await hideToast(); await page.evaluate(() => window.scrollTo(0, document.querySelector('details.details').offsetTop - 70));
+await hideToast(); await page.evaluate(() => window.scrollTo(0, document.querySelector('#detailsSec').offsetTop - 70));
 await hideToast(); await page.screenshot({ path:`${SHOTS}/17-weights-log.png` });
 await page.locator('.actions [data-save]').tap(); await page.waitForSelector('.statrow');
 d = await db(); const wk = d.sessions.filter(s => s.category === 'weights').find(s => s.exercises?.length);
@@ -102,7 +104,7 @@ ok('weights detail shows PR + volume', (await page.locator('.ex-view').first().i
 await page.locator('.tabbar a.fab').tap(); await page.waitForSelector('.cats');
 await page.locator('.cats button[data-c="cardio"]').tap();
 await page.getByRole('radio', { name:'Run' }).tap();
-await page.locator('details.details summary').tap();
+
 await page.locator('.field', { hasText:'Unit' }).getByRole('radio', { name:'km' }).tap();
 await page.locator('input[data-k="distance"]').fill('5');
 await page.locator('[aria-label="Minutes"]').fill('25'); await page.locator('[aria-label="Seconds"]').fill('00');
@@ -117,8 +119,8 @@ ok('cardio saved (distance/time/duration)', run && run.cardio.distance === 5 && 
 const importInto = async (file, cat) => {
   await page.goto(BASE + '#/log'); await page.waitForSelector('.cats');
   if (cat) await page.locator(`.cats button[data-c="${cat}"]`).tap();
-  await page.locator('details.details summary').tap();
-  await page.setInputFiles('#wkFile', `${FIX}/${file}`); await page.waitForSelector('text=📎');
+  
+  await page.setInputFiles('#wkFile', `${FIX}/${file}`); await page.waitForSelector(`text=${file}`);
 };
 await importInto('run.gpx', 'weights');
 ok('GPX: switches to cardio, fills distance/time/HR', await page.locator('.cats button.on').getAttribute('data-c') === 'cardio' && await (async () => { const v = Number(await page.locator('input[data-k="distance"]').inputValue()); return Math.abs(v - 3.0) < 0.15 || Math.abs(v * 1.609344 - 3.0) < 0.15; })() && await page.locator('[aria-label="Minutes"]').inputValue() === '10' && await page.locator('[data-hr="avg"]').inputValue() === '150' && await page.locator('[data-hr="max"]').inputValue() === '160',
@@ -147,7 +149,7 @@ ok('CSV bulk import adds 4 workouts', d.sessions.length === before + 4 && added.
 /* 7. stats view (dashboard depth) with sample data */
 await page.goto(BASE + '#/settings'); await page.locator('#ldS').tap(); await page.waitForTimeout(300);
 await page.goto(BASE); await page.waitForSelector('.statrow');
-ok('home essentials: week, hours, streak, quick log, nutrition, supps, belt', await page.locator('.statrow .stat').count() === 3 && await page.locator('.quick [data-rep]').count() >= 3 && await page.locator('#nutriCard').count() === 1 && await page.locator('#suppCard').count() === 1 && await page.locator('.beltbar').count() === 1);
+ok('home essentials: week, hours, streak, quick log, nutrition, supps, belt', await page.locator('.statrow .stat').count() === 3 && await page.locator('.quick [data-rep]').count() >= 3 && await page.locator('#nutriCard').count() === 1 && await page.locator('#suppCard').count() === 1 && await page.locator('#beltCard svg.beltsvg.lg').count() === 1);
 await hideToast(); await page.screenshot({ path:`${SHOTS}/01-dashboard.png` });
 await page.screenshot({ path:`${SHOTS}/01b-dashboard-full.png`, fullPage:true });
 await page.locator('#seeStats').tap(); await page.waitForSelector('#catCard');

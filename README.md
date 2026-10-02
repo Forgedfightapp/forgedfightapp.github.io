@@ -4,7 +4,7 @@ Offline-first, iPhone-first training tracker. Vanilla JS, no build step, no CDNs
 `localStorage` (key `dm.bjj.v1`, schema 4; older data auto-migrates and backups are kept at `dm.bjj.v1.backup.v1` / `.backup.v2` / `.backup.v3`; an unreadable store is copied to `dm.bjj.v1.unreadable` before starting fresh).
 
 ## Design priority: simple first
-- **Quick log**: Home → `+` → Save = 3 taps (category + last-used duration + today pre-filled). Everything else lives under **Add details**.
+- **Quick log**: Home → `+` → Save = 3 taps (category + last-used duration + today pre-filled). The Save button stays pinned above the nav. All other fields are always visible under a **Details (optional)** heading, in this order (after the category-specific fields): Intensity → Body weight → Import from device (GPX/TCX/FIT/CSV) → Heart rate → Notes.
 - **Log again**: one tap on Home repeats a recent workout per category (with Undo).
 - **Food quick add** (1 tap from recent/saved foods) and **Mark all taken** per supplement time block.
 - Home shows essentials only; deeper charts are under **See all stats** (`#/stats`).
@@ -20,6 +20,12 @@ Start weight (defaults to first weigh-in), goal weight, optional goal date, lb/k
 Weigh-ins and workout body weight merge into one history (latest entry per day). Home card: current, goal, lost/gained so far, left to go,
 progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
 projected goal date.
+
+## 2.2.1
+- Paired fields everywhere (Profile goals, Goal weight/date, first-run, workout, food and supplement forms) line up: each row's labels take the same height and the inputs sit at the bottom, all 54 px tall. Checked at 390/375/320 px, also with larger label text.
+- Shorter Profile goal labels under "Daily nutrition goals": Calories, Protein (g), Carbs (g), Fat (g), Water (oz|ml).
+- SVG belt illustration (`beltSVG(belt, stripes, 'lg'|'sm')`). Home and Profile show a tied belt in the current colour, with white stripe tape on the black bar (red bar for black belt). With no promotions it shows a white belt and "Track your belt journey". The timeline uses the small flat version.
+- Log form: Duration gets its own full-width row with Date below it, so 3 digits plus "min" always fit. Steppers in 2-column rows have narrower −/+ buttons. No "Add details" expander. Save is sticky (`html,body{overflow-x:clip}`; before, `hidden` stopped sticky from working). "Import from device".
 
 ## Belt history (2.2.0)
 History → Belts: vertical timeline, newest first, one group per belt with date range, total time (calendar y/m/d, e.g. "2 yr 3 mo"; current belt
@@ -42,7 +48,7 @@ Cardio (distance/time, pace/speed), heart rate + zones on all, GPX/TCX/FIT/CSV i
     ./restart-preview.sh                            # server + Cloudflare quick tunnel (prints public URL)
 
 ## Tests (Playwright, iPhone 13 emulation)
-`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/supplements.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/multi.test.mjs` (run with `node`, needs
+`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/supplements.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/multi.test.mjs` (run with `node`, needs
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 

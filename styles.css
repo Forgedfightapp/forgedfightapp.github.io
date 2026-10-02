@@ -201,7 +201,7 @@ input[type=date].input{display:block}
 .statrow .stat.hero{grid-column:1/-1}
 /* prevent horizontally-scrolling suggestion rows from widening the layout */
 .sheet .panel,.field,.card,.grid2>*,.grid3>*,main{min-width:0}
-html,body{overflow-x:hidden}
+html,body{overflow-x:hidden}@supports (overflow:clip){html,body{overflow-x:clip}}
 .sugg{max-width:100%}
 /* ---- nutrition ---- */
 .daynav{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px}
@@ -514,3 +514,36 @@ body.setup-mode .tabbar{display:none}
 .wline b{color:var(--text)}
 .wline .mini{flex:1;height:6px;border-radius:3px;background:var(--surface2);overflow:hidden;margin-left:6px}
 .wline .mini i{display:block;height:100%;background:#3b9dff}
+
+/* ---- 2.2.1: belt illustration + aligned field grids ---- */
+.beltsvg{display:block;overflow:visible}
+.beltsvg.lg{width:100%;max-width:340px;height:auto;margin:2px auto 0;filter:drop-shadow(0 3px 6px rgba(0,0,0,.45))}
+.beltsvg.sm{flex:0 0 72px;width:72px;height:14.4px}
+.belt:has(.beltsvg){display:block}
+.belt-prompt{text-align:center;margin:10px 0 14px}
+.belt-prompt b{display:block;font-family:var(--font-head,inherit);font-size:20px;letter-spacing:.02em}
+.belt-prompt span{display:block;color:var(--muted);font-size:14px;margin-top:4px}
+/* paired fields: equal-height label rows, controls aligned to the bottom of each row */
+.grid2>.field,.grid3>.field{display:flex;flex-direction:column;margin-bottom:18px}
+.grid2>.field>label,.grid3>.field>label{flex:1 0 auto;display:flex;align-items:flex-end;line-height:1.25}
+.grid2>.field>:not(label):not(.hint),.grid3>.field>:not(label):not(.hint){flex:none}
+/* same control height in paired rows (inputs, date pickers, selects, steppers, segmented) = 54px */
+.grid2>.field>.input,.grid3>.field>.input{height:54px;min-height:54px;box-sizing:border-box}
+.grid2>.field>.seg button{min-height:44px}
+.grid2>.field>.stepper,.grid2>.field>.seg{box-sizing:border-box;min-height:54px}
+.beltsvg{stroke:none;stroke-width:1;stroke-linecap:butt}
+.belt-meta{flex-wrap:wrap;gap:2px 12px}
+.belt-meta b{white-space:nowrap}
+/* log form: duration + date on their own rows; steppers always fit 3 digits + unit */
+.durdate{display:block}
+.stepper input{min-width:3.4ch;font-variant-numeric:tabular-nums}
+.stepper .unit{flex:none;white-space:nowrap}
+.grid2 .stepper button{width:44px;flex:none}
+.details-sec{margin-top:6px;padding-top:14px;border-top:1px solid var(--line)}
+.sect-title{font-family:var(--font-head);text-transform:uppercase;letter-spacing:.04em;font-size:18px;font-weight:700;margin:0 0 14px}
+.sect-title small{font-family:var(--font-sub,inherit);text-transform:none;letter-spacing:0;color:var(--dim);font-size:14px;font-weight:600;margin-left:6px}
+.field>label.btn{display:flex;align-items:center;justify-content:center;gap:8px;text-transform:none;letter-spacing:0;font-size:16px;color:var(--text);margin-bottom:0}
+.field>label.btn svg{width:20px;height:20px;flex:none}
+/* header scrolls away (it is tall on phones); only the Save bar is pinned */
+.topbar{position:relative}
+.actions.stick{position:sticky;bottom:calc(var(--navh) + 6px);z-index:4;padding:14px 0 8px;background:linear-gradient(to bottom,rgba(17,17,17,0),var(--bg) 16px);box-shadow:0 14px 0 var(--bg)}

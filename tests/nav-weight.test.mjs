@@ -91,7 +91,7 @@ await sheetCase('my stack', () => page.locator('#manageStack').tap(), 'Close');
 await sheetCase('add supplement', async () => { await page.locator('#manageStack').tap(); await page.waitForSelector('#addSupp'); await page.locator('#addSupp').tap(); }, 'Cancel');
 await page.goto(BASE + '#/log'); await page.waitForSelector('.cats');
 await page.locator('.cats button[data-c="grappling"]').tap();
-await page.locator('details.details summary').tap();
+
 await sheetCase('add roll', () => page.locator('#addRoll').tap(), 'Cancel');
 await page.locator('.tabbar a[data-tab="home"]').tap(); await settle();
 if (await page.locator('.sheet [data-ok]').count()) { await page.locator('.sheet [data-ok]').tap(); await settle(400); }

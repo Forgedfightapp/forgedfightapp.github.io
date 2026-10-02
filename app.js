@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.2.1';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -458,13 +458,32 @@ function beltGroups(){
   groups.forEach((g, i) => { g.current = i === groups.length-1; g.end = g.current ? t : groups[i+1].start; g.span = diffYMD(g.start, g.end); g.mat = matIn(g.start, g.end, g.current); });
   return groups;
 }
-function beltBar(belt, stripes, cls=''){
-  const b = beltOf(belt);
-  return `<div class="beltbar ${b[0]} ${cls}" style="background:${b[2]}"><div class="tip">${Array.from({length:Math.min(stripes, 6)}, () => '<i></i>').join('')}</div></div>`;
+// Belt illustration (SVG). size 'lg' = tied belt with hanging tails; 'sm' = flat bar for lists/timeline.
+function beltSVG(belt, stripes, size='lg', title){
+  const b = beltOf(belt), n = Math.max(0, Math.min(maxStripes(belt), Number(stripes) || 0)), black = b[0] === 'black';
+  const fill = b[2], bar = black ? '#c8102e' : '#141414', edge = black ? 'rgba(255,255,255,.28)' : 'rgba(0,0,0,.28)', stitch = black ? 'rgba(255,255,255,.16)' : 'rgba(0,0,0,.18)';
+  const label = esc(title || `${b[1]} belt${n ? ', ' + (black ? n + (['','st','nd','rd'][n] || 'th') + ' degree' : n + ' stripe' + (n > 1 ? 's' : '')) : ''}`);
+  if (size === 'sm') {
+    const tape = Array.from({length:n}, (_, i) => `<rect x="${96 - i*5}" y="2" width="2.6" height="20" fill="#f4f4f4"/>`).join('');
+    return `<svg class="beltsvg sm" data-belt="${b[0]}" data-stripes="${n}" viewBox="0 0 120 24" role="img" aria-label="${label}"><rect x=".75" y=".75" width="118.5" height="22.5" rx="3" fill="${fill}" stroke="${edge}" stroke-width="1.5"/><path d="M3 6.5H117M3 17.5H117" stroke="${stitch}" stroke-width="1" stroke-dasharray="3 2"/><rect x="66" y=".75" width="40" height="22.5" fill="${bar}"/>${tape}<rect x=".75" y=".75" width="118.5" height="22.5" rx="3" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/></svg>`;
+  }
+  // tails are drawn in a rotated frame: (0,0) at the knot, extending down 84 units, 28 wide
+  const tape = Array.from({length:n}, (_, i) => `<rect x="-14" y="${68 - i*6.2}" width="28" height="2.8" fill="#f4f4f4"/>`).join('');
+  const tail = (tx, rot, rank) => `<g transform="translate(${tx} 46) rotate(${rot})"><rect x="-14" y="0" width="28" height="84" rx="2.5" fill="${fill}" stroke="${edge}" stroke-width="1.5"/>
+    <path d="M-8 2V82M8 2V82" stroke="${stitch}" stroke-dasharray="4 3"/>${rank ? `<rect x="-14" y="${34}" width="28" height="40" fill="${bar}"/>${tape}` : ''}</g>`;
+  return `<svg class="beltsvg lg" data-belt="${b[0]}" data-stripes="${n}" viewBox="0 0 320 132" role="img" aria-label="${label}">
+    <rect x="2" y="20" width="316" height="28" rx="4" fill="${fill}" stroke="${edge}" stroke-width="1.5"/>
+    <path d="M6 27.5H314M6 40.5H314" stroke="${stitch}" stroke-dasharray="4 3"/>
+    ${tail(146, 32, false)}${tail(174, -30, true)}
+    <rect x="136" y="11" width="48" height="46" rx="7" fill="${fill}" stroke="${edge}" stroke-width="1.5"/>
+    <path d="M140 20L180 48M141 44L160 30" stroke="${edge}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  </svg>`;
 }
+const beltBar = (belt, stripes, cls='') => beltSVG(belt, stripes, cls === 'mini' ? 'sm' : 'lg');
+const beltEmpty = () => `<div class="belt empty-belt">${beltSVG('white', 0, 'lg', 'White belt')}</div><div class="belt-prompt"><b>Track your belt journey</b><span>Log your belt and stripes to track time at each rank.</span></div>`;
 function beltCard(){
   const cur = currentRank();
-  if (!cur) return `<div class="card" id="beltCard"><h2>Belt</h2><div class="empty" style="padding:2px 0 8px">Log your belt and stripes to track time at each rank.</div><button type="button" class="btn block" data-promo>Log promotion</button></div>`;
+  if (!cur) return `<div class="card" id="beltCard"><h2>Belt</h2>${beltEmpty()}<button type="button" class="btn primary block" data-promo>Log promotion</button></div>`;
   const g = beltGroups(), cg = g[g.length-1], b = beltOf(cur.belt), sinceLast = diffYMD(cur.date, today()), m = matIn(cur.date, today(), true);
   const stripeLine = cur.date === cg.start ? `<span>Last stripe <b>none yet</b></span>` : `<span>Since last ${cur.belt === 'black' ? 'degree' : 'stripe'} <b data-b="since">${fmtSpan(sinceLast)}</b></span>`;
   return `<div class="card tappable" id="beltCard" data-href="#/belts"><h2>${esc(b[1])} belt${cur.stripes ? ` · ${rankLabel(cur)}` : ''} ${cur.sample ? '<span class="pill sample">Sample</span>' : ''}<a class="lnk" href="#/belts">Timeline ›</a></h2>
@@ -848,7 +867,7 @@ function viewForm(id){
   if (C.disc.length > 1) { const ds = seg(C.disc, f.discipline, x => { f.discipline = x; if (f.category === 'grappling') redraw(); }, C.disc.length > 4); if (C.disc.length > 4) ds.classList.add('three'); v.appendChild(field(f.category === 'cardio' ? 'Activity' : 'Style', ds)); }
   if (f.category === 'grappling' && f.discipline === 'bjj') v.appendChild(field('Uniform', seg([['gi','Gi'],['nogi','No-Gi']], f.gi, x => f.gi = x)));
   // 3. duration + date
-  const g = h('<div class="grid2"></div>');
+  const g = h('<div class="durdate"></div>');
   g.appendChild(field('Duration', stepper(f.duration, { step:f.category==='cardio' ? 5 : 15, min:0, max:600, unitLabel:'min', onChange:x => { f.duration = x; f._durTouched = true; } })));
   const date = h(`<input class="input" type="date" value="${esc(f.date)}" max="${today()}">`);
   date.onchange = () => { f.date = date.value || today(); };
@@ -856,13 +875,12 @@ function viewForm(id){
   v.appendChild(g);
 
   // 4. details expander
-  const det = h(`<details class="details" ${f._open ? 'open' : ''}><summary><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add details <small>optional</small></summary><div class="det-body"></div></details>`);
-  det.addEventListener('toggle', () => f._open = det.open);
-  const D = det.querySelector('.det-body');
+  // 4. details: always visible, every field below is optional
+  const det = h(`<section class="details-sec" id="detailsSec"><h3 class="sect-title">Details <small>(optional)</small></h3></section>`);
+  const D = det;
   // file import
-  const imp = h(`<div class="field"><label>Import from a file</label><label class="btn block" for="wkFile"><svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg>GPX · TCX · FIT · CSV</label><input type="file" id="wkFile" accept=".gpx,.tcx,.fit,.csv,application/gpx+xml,application/vnd.garmin.tcx+xml,text/csv" hidden>${f.source ? `<div class="hint">📎 ${esc(f.source)}</div>` : '<div class="hint">Fills in date, time, distance, heart rate and calories from a watch or app export.</div>'}</div>`);
-  imp.querySelector('#wkFile').onchange = async e => { const file = e.target.files[0]; if (!file) return; try { const r = await parseWorkoutFile(file); applyImport(f, r, file.name); toast('Workout file imported'); f._open = true; redraw(); } catch(err) { console.warn(err); toast(`Couldn't read that file`); } };
-  D.appendChild(imp);
+  const imp = h(`<div class="field"><label>Import from device</label><label class="btn block" for="wkFile"><svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M5 21h14"/></svg>GPX · TCX · FIT · CSV</label><input type="file" id="wkFile" accept=".gpx,.tcx,.fit,.csv,application/gpx+xml,application/vnd.garmin.tcx+xml,text/csv" hidden>${f.source ? `<div class="hint">📎 ${esc(f.source)}</div>` : '<div class="hint">Fills in date, time, distance, heart rate and calories from a watch or app export.</div>'}</div>`);
+  imp.querySelector('#wkFile').onchange = async e => { const file = e.target.files[0]; if (!file) return; try { const r = await parseWorkoutFile(file); applyImport(f, r, file.name); toast('Workout file imported'); redraw(); } catch(err) { console.warn(err); toast(`Couldn't read that file`); } };
   if (f.category === 'grappling' || f.category === 'striking') {
     D.appendChild(field('Session type', seg(SESSION_TYPES.filter(t => t[0] !== 'seminar' || f.category === 'grappling'), f.type, x => f.type = x, true)));
   }
@@ -944,16 +962,17 @@ function viewForm(id){
     intens.querySelectorAll('button').forEach(b => b.onclick = () => { f.intensity = Number(b.dataset.i); syncI(); });
     syncI(); D.appendChild(field('Intensity', intens));
   }
-  // heart rate
-  const hr = f.hr, hrEl = h(`<div class="hrbox"><div class="grid3"></div><div class="label sect" style="margin-top:10px">Minutes in zone</div><div class="zones"></div></div>`);
-  [['avg','Avg HR'],['max','Max HR'],['cal','Calories']].forEach(([k2,l]) => { const i = h(`<input class="input num" type="text" inputmode="numeric" placeholder="—" value="${esc(hr[k2])}" data-hr="${k2}">`); i.oninput = () => hr[k2] = i.value.replace(/[^\d.]/g,''); hrEl.querySelector('.grid3').appendChild(field(l, i)); });
-  hr.zones.forEach((z,i) => { const inp = h(`<input class="input num" type="text" inputmode="decimal" placeholder="—" value="${esc(z)}" aria-label="Zone ${i+1} minutes" data-z="${i}">`); inp.oninput = () => hr.zones[i] = inp.value.replace(/[^\d.]/g,''); const w = h(`<div class="z"><span>Z${i+1}</span></div>`); w.appendChild(inp); hrEl.querySelector('.zones').appendChild(w); });
-  D.appendChild(field('Heart rate', hrEl));
   // body weight + notes
   const wt = h(`<div class="stepper" style="padding-left:14px"><input type="text" inputmode="decimal" placeholder="Optional" value="${esc(f.weight)}" style="text-align:left;font-weight:600"><span class="unit" style="padding-right:16px">${unit()}</span></div>`);
   const wi = wt.querySelector('input'); wi.oninput = () => { f.weight = wi.value.replace(/[^\d.]/g,''); };
   const lastW = weightSeries().pop();
   D.appendChild(field('Body weight', wt, lastW ? `Last: ${lastW.w} ${unit()} on ${fmtShort(lastW.date)}` : 'Track your weight alongside training'));
+  D.appendChild(imp);
+  // heart rate
+  const hr = f.hr, hrEl = h(`<div class="hrbox"><div class="grid3"></div><div class="label sect" style="margin-top:10px">Minutes in zone</div><div class="zones"></div></div>`);
+  [['avg','Avg HR'],['max','Max HR'],['cal','Calories']].forEach(([k2,l]) => { const i = h(`<input class="input num" type="text" inputmode="numeric" placeholder="—" value="${esc(hr[k2])}" data-hr="${k2}">`); i.oninput = () => hr[k2] = i.value.replace(/[^\d.]/g,''); hrEl.querySelector('.grid3').appendChild(field(l, i)); });
+  hr.zones.forEach((z,i) => { const inp = h(`<input class="input num" type="text" inputmode="decimal" placeholder="—" value="${esc(z)}" aria-label="Zone ${i+1} minutes" data-z="${i}">`); inp.oninput = () => hr.zones[i] = inp.value.replace(/[^\d.]/g,''); const w = h(`<div class="z"><span>Z${i+1}</span></div>`); w.appendChild(inp); hrEl.querySelector('.zones').appendChild(w); });
+  D.appendChild(field('Heart rate', hrEl));
   const notes = h(`<textarea class="input" placeholder="What clicked? What to work on next time?">${esc(f.notes)}</textarea>`);
   notes.oninput = () => f.notes = notes.value;
   D.appendChild(field('Notes', notes));
@@ -974,7 +993,7 @@ function viewForm(id){
   if (formBase == null) formBase = formSnap(f);
   const d = actions.querySelector('[data-del]');
   if (d) d.onclick = async () => { if (await confirmSheet('Delete this workout?', "This can't be undone.")) { db.sessions = db.sessions.filter(x => x.id !== f.id); save(); form = null; toast('Workout deleted'); go('#/history'); } };
-  actions.classList.toggle('stick', det.open); det.addEventListener('toggle', () => actions.classList.toggle('stick', det.open));
+  actions.classList.add('stick');
   v.appendChild(actions);
 }
 const r2 = n => Math.round(n*100)/100;
@@ -1754,7 +1773,7 @@ function viewSettings(){
     sec.querySelector('.toggles').appendChild(row);
   });
   v.appendChild(sec);
-  const card = h(`<div class="card" id="rankCard"><h2>Belt <a class="lnk" href="#/belts">Timeline ›</a></h2>${currentRank() ? `<div class="belt">${beltBar(currentRank().belt, currentRank().stripes)}</div><div class="belt-meta"><span><b>${esc(beltOf(currentRank().belt)[1])} belt</b>${currentRank().stripes ? ` · ${rankLabel(currentRank())}` : ''}</span><span>since ${fmtShort(beltGroups().slice(-1)[0].start)}</span></div>` : '<div class="hint">No promotions logged yet.</div>'}
+  const card = h(`<div class="card" id="rankCard"><h2>Belt <a class="lnk" href="#/belts">Timeline ›</a></h2>${currentRank() ? `<div class="belt">${beltBar(currentRank().belt, currentRank().stripes)}</div><div class="belt-meta"><span><b>${esc(beltOf(currentRank().belt)[1])} belt</b>${currentRank().stripes ? ` · ${rankLabel(currentRank())}` : ''}</span><span>since ${fmtShort(beltGroups().slice(-1)[0].start)}</span></div>` : beltEmpty()}
     <button type="button" class="btn primary block" data-promo style="margin-top:12px">Log promotion</button><div class="hint" style="margin-top:8px">${(db.belts||[]).length} promotion${(db.belts||[]).length === 1 ? '' : 's'} in your history. Edit or delete them on the timeline.</div></div>`);
   wireBelt(card);
   if (enabled('grappling')) v.appendChild(card);
@@ -1794,7 +1813,7 @@ function viewSettings(){
   });
   const wg = h(`<input class="input" type="text" inputmode="decimal" id="waterGoal" value="${waterGoalMl() ? fromMl(waterGoalMl()) : ''}" placeholder="${waterMetric() ? 'e.g. 2500' : 'e.g. 96'}">`);
   wg.onchange = () => { const raw = wg.value.replace(/[^\d.]/g,''); if (!raw) { db.profile.waterGoal = ''; save(); toast('Water goal cleared'); return; } const ml = toMl(raw); if (!(ml >= 250 && ml <= 10000)) { toast(`Enter a goal in ${waterU()}`); return; } db.profile.waterGoal = Math.round(ml); save(); toast('Water goal saved'); };
-  tgrid.appendChild(field(`Daily water goal (${waterU()})`, wg));
+  tgrid.appendChild(field(`Water (${waterU()})`, wg));
   tcard.appendChild(h(`<div class="hint">${TARGET_HINT} Rough guide: protein ≈ 0.8–1 g per lb of body weight.</div>`));
   if (enabled('food')) v.appendChild(tcard);
 
@@ -1977,7 +1996,7 @@ function goBack(parent){
   }));
 }
 const TARGET_HINT = 'Used to track your progress on the Nutrition screen. You can change these anytime in Profile.';
-const TARGET_LABEL = { cal:'Daily calorie goal', p:'Daily protein goal (g)', c:'Daily carbs goal (g)', f:'Daily fat goal (g)' };
+const TARGET_LABEL = { cal:'Calories', p:'Protein (g)', c:'Carbs (g)', f:'Fat (g)' };
 function route(){
   document.body.classList.remove('setup-mode');
   const hash = location.hash.replace(/^#/, '') || '/';

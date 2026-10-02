@@ -42,7 +42,7 @@ await page.locator('.tabbar a.fab').tap();
 await page.waitForSelector('.cats');
 await page.locator('.cats button[data-c="grappling"]').tap();
 await page.getByRole('radio', { name: 'BJJ' }).tap();
-await page.locator('details.details summary').tap();
+
 await page.getByRole('radio', { name: 'No-Gi' }).tap();
 await page.getByRole('radio', { name: 'Drilling' }).tap();
 await page.locator('.field', { hasText: 'Duration' }).getByRole('button', { name: 'Increase' }).tap(); // 60/75 -> +15
@@ -93,7 +93,7 @@ await page.goto(BASE); await page.waitForSelector('.statrow');
 
 // autocomplete includes custom tag from history
 await page.locator('.tabbar a.fab').tap();
-await page.locator('details.details summary').tap();
+
 const ti2 = page.locator('.field', { hasText: 'Techniques drilled' }).locator('.tags input');
 await ti2.fill('zeta');
 ok('previously-used tag autocompletes', await page.locator('.sugg button', { hasText: 'Test Technique Zeta' }).count() === 1);

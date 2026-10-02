@@ -1,7 +1,7 @@
 :root{
   /* charcoal / near-black notebook leather + red elastic band accent (#E8392F sampled & corrected from cover photo) */
   --bg:#0c0c0d; --surface:#161617; --surface2:#1f1f21; --line:#2b2b2e;
-  --text:#f5f5f5; --muted:#a3a3a8; --dim:#76767c;
+  --text:#f5f5f5; --muted:#a3a3a8; --dim:#85858b;
   --brand:#E8392F;                 /* exact band red: logo details, rings, bars, chart fills */
   --accent:#F04A3F;                /* text/icons on dark: >=4.5:1 on all surfaces */
   --accent-fill:#D2302A;           /* filled buttons/toggles: white ink >=4.5:1 */

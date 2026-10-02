@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.3.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -202,7 +202,7 @@ function lineChart(series, goal){
   let lo = Math.floor(Math.min(...vals) - 1), hi = Math.ceil(Math.max(...vals) + 1);
   const X = d => pl + (W-pl-pr) * (parse(d).getTime()-t0)/span;
   const Y = v => pt + (H-pt-pb) * (1 - (v-lo)/(hi-lo));
-  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weight trend"><defs><linearGradient id="wgrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#3ee8b5" stop-opacity=".28"/><stop offset="1" stop-color="#3ee8b5" stop-opacity="0"/></linearGradient></defs>`;
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weight trend"><defs><linearGradient id="wgrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#E8392F" stop-opacity=".28"/><stop offset="1" stop-color="#E8392F" stop-opacity="0"/></linearGradient></defs>`;
   [hi, (hi+lo)/2, lo].forEach(v => { const y = Y(v); s += `<line class="grid" x1="${pl}" x2="${W}" y1="${y}" y2="${y}"/><text x="${pl-6}" y="${y+3}" text-anchor="end">${Math.round(v)}</text>`; });
   if (goal) { const y = Y(goal); s += `<line class="goal" x1="${pl}" x2="${W-pr}" y1="${y}" y2="${y}"/><text x="${W-pr}" y="${y-5}" text-anchor="end" style="fill:#ffc43d">Goal ${goal}</text>`; }
   const pts = series.map(p => [X(p.date), Y(p.w)]);
@@ -235,7 +235,8 @@ function beltCard(){
 function setHeader(title, action=''){
   const t = $('#title'), tg = $('#tagline');
   if (title) { t.textContent = title; tg.innerHTML = 'Discipline <span style="color:var(--accent)">&gt;</span> Motivation'; }
-  else { t.innerHTML = 'Discipline <span class="gt">&gt;</span> Motivation'; tg.textContent = 'BJJ Training Log'; }
+  else { t.innerHTML = '<img class="banner-logo" src="brand/banner-logo.svg" alt="Discipline &gt; Motivation" width="1200" height="180">'; tg.innerHTML = '<b>Training Log</b><span>Track your progress</span>'; }
+  document.querySelector('.topbar').classList.toggle('home', !title);
   $('#topAction').innerHTML = action;
 }
 
@@ -243,7 +244,7 @@ function viewHome(){
   setHeader('');
   const v = $('#view');
   if (!db.sessions.length) {
-    v.innerHTML = `<div class="welcome"><img class="logo" src="icons/icon.svg" alt=""><h2>Show up. Log it. Repeat.</h2>
+    v.innerHTML = `<div class="welcome"><img class="dm-logo" src="brand/dm-logo.svg" alt="D &gt; M · Discipline &gt; Motivation"><img class="lockup" src="brand/training-log-lockup.svg" alt="Training Log · Track your progress"><h2>Show up. Log it. Repeat.</h2>
       <p>Track sessions, rolls, submissions and weight. Everything stays on your phone.</p>
       <a class="btn primary" href="#/log">Log your first session</a>
       <button class="btn" id="loadSample">Load sample data (demo)</button></div>${beltCard()}`;
@@ -456,9 +457,9 @@ function viewStats(){
   const gi = split('gi'), ng = split('nogi');
   const nl = landed.reduce((a,x)=>a+x[1],0), nc = caught.reduce((a,x)=>a+x[1],0);
   v.innerHTML = `
-    <div class="grid3" style="margin-bottom:14px"><div class="stat hero"><div class="v">${w}</div><div class="l">Won</div></div><div class="stat"><div class="v">${d}</div><div class="l">Draw</div></div><div class="stat"><div class="v" style="color:var(--danger)">${l}</div><div class="l">Lost</div></div></div>
+    <div class="grid3" style="margin-bottom:14px"><div class="stat hero"><div class="v">${w}</div><div class="l">Won</div></div><div class="stat"><div class="v">${d}</div><div class="l">Draw</div></div><div class="stat"><div class="v" style="color:var(--loss)">${l}</div><div class="l">Lost</div></div></div>
     <div class="card"><h2>Sub ratio <small>${nl} landed · ${nc} caught</small></h2>
-      <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--surface2)"><i style="width:${nl+nc ? nl/(nl+nc)*100 : 50}%;background:var(--accent)"></i><i style="flex:1;background:var(--danger)"></i></div>
+      <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--surface2)"><i style="width:${nl+nc ? nl/(nl+nc)*100 : 50}%;background:var(--accent)"></i><i style="flex:1;background:var(--loss)"></i></div>
       <div class="hint" style="display:flex;justify-content:space-between"><span>${rolls.length} rolls logged</span><span>${nl+nc ? Math.round(nl/(nl+nc)*100) : 0}% finishes yours</span></div></div>
     <div class="card"><h2>Landed</h2>${hbars(landed.slice(0,10),'win')}</div>
     <div class="card"><h2>Caught by</h2>${hbars(caught.slice(0,10),'loss')}</div>

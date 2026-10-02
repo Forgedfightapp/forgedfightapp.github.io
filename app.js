@@ -4,20 +4,22 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '2.1.1';
+const APP_VERSION = '2.2.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
 const TECHNIQUES = ['Scissor sweep','Hip bump sweep','Flower sweep','Butterfly sweep','Knee slice pass','Toreando pass','Over-under pass','Stack pass','Leg drag','Elbow-knee escape','Bridge and roll','Back take from turtle','Seatbelt control','Arm drag','Double leg','Single leg','Hip escape (shrimp)','Technical stand-up','Collar drag','De La Riva entry','X-guard sweep','Berimbolo','Mount maintenance','Side control transitions','Guard retention','Kimura trap','Body triangle','Ashi garami entry'];
 const SESSION_TYPES = [['class','Class'],['open','Open mat'],['drill','Drilling'],['private','Private'],['comp','Competition'],['seminar','Seminar'],['other','Other']];
-const BELTS = [['white','White','#f1f1f1'],['blue','Blue','#2563eb'],['purple','Purple','#7c3aed'],['brown','Brown','#7b4a26'],['black','Black','#151515']];
+const BELTS = [['white','White','#f1f1f1'],['blue','Blue','#2563eb'],['purple','Purple','#7c3aed'],['brown','Brown','#7b4a26'],['black','Black','#151515'],
+  ['grey','Grey','#9ca3af'],['yellow','Yellow','#facc15'],['orange','Orange','#f97316'],['green','Green','#16a34a']];
+const ADULT_BELTS = ['white','blue','purple','brown','black'], KIDS_BELTS = ['grey','yellow','orange','green'];
 const INTENSITY = ['', 'Light','Easy','Moderate','Hard','All-out'];
 
 /* ---------------- storage ---------------- */
-const SCHEMA = 3;
+const SCHEMA = 4;
 const defaultProfile = () => ({ name:'', belt:'white', stripes:0, promotedOn:'', goalWeight:'', startWeight:'', goalDate:'', unit:'lb', distUnit:'mi', maxHR:'', sampleProfile:false, setupDone:false,
   enabled:{ grappling:true, striking:false, weights:false, cardio:false, food:true, supps:true } });
-const emptyDb = () => ({ schema:SCHEMA, sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] }, weights:[] });
+const emptyDb = () => ({ schema:SCHEMA, sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[], water:[] }, supps:{ items:[], log:[] }, weights:[], belts:[] });
 /* Versioned schema. v1 (BJJ-only) -> v2 (multi-discipline): sessions gain category/discipline; a copy of the
    pre-migration data is kept under STORE_KEY + '.backup.v1' so nothing can be lost. */
 function migrate(d){
@@ -36,14 +38,28 @@ function migrate(d){
     d.profile = { ...(d.profile||{}), enabled:{ ...(d.profile?.enabled||{}), weight: d.profile?.enabled?.weight ?? hadW } };
     v = 3;
   }
+  if (v < 4) { // v4: belt/stripe promotion history. The old single belt setting becomes the first entry.
+    if (v === 3) { try { if (!localStorage.getItem(STORE_KEY + '.backup.v3')) localStorage.setItem(STORE_KEY + '.backup.v3', JSON.stringify(d)); } catch(e) { console.warn('backup failed', e); } }
+    const pr = d.profile || {};
+    if (!Array.isArray(d.belts)) {
+      d.belts = [];
+      const belt = BELTS.some(b => b[0] === pr.belt) ? pr.belt : 'white', st = Math.max(0, Math.min(6, Number(pr.stripes) || 0));
+      if (pr.promotedOn || belt !== 'white' || st > 0)
+        d.belts.push({ id:'mig-' + (pr.promotedOn || 'nodate'), date: /^\d{4}-\d{2}-\d{2}$/.test(pr.promotedOn||'') ? pr.promotedOn : new Date().toISOString().slice(0,10), belt, stripes:st,
+          instructor:'', academy:'', notes: pr.promotedOn ? '' : 'Date unknown (moved from the old belt setting). Tap to set it.', createdAt:1, ...(pr.sampleProfile ? { sample:true } : {}) });
+    }
+    v = 4;
+  }
   d.schema = v; return d;
 }
 function load(){
   try{
     let d = JSON.parse(localStorage.getItem(STORE_KEY));
     if (d && Array.isArray(d.sessions)) { const before = d.schema; d = migrate(d); if (before !== d.schema) setTimeout(() => { try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch(e){} }, 0);
-      return { schema:d.schema, sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[] }, supps:{ items:d.supps?.items||[], log:d.supps?.log||[] }, weights:sanitizeWeights(d.weights) }; }
-  }catch(e){ console.warn('Could not read saved data', e); }
+      return { schema:d.schema, sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[], water:sanitizeWater(d.nutrition?.water) }, supps:{ items:d.supps?.items||[], log:d.supps?.log||[] }, weights:sanitizeWeights(d.weights), belts:sanitizeBelts(d.belts) }; }
+  }catch(e){ console.warn('Could not read saved data', e);
+    // never silently lose data: keep the unreadable copy before starting fresh
+    try { const raw = localStorage.getItem(STORE_KEY); if (raw && !localStorage.getItem(STORE_KEY + '.unreadable')) localStorage.setItem(STORE_KEY + '.unreadable', raw); } catch(_) {} }
   return emptyDb();
 }
 let db = load();
@@ -403,17 +419,130 @@ function hbars(rows, cls){
   const max = rows[0][1];
   return rows.map(([k,v]) => `<div class="hbar ${cls}"><div class="t"><span>${esc(k)}</span><span>${v}</span></div><div class="b"><i style="width:${Math.max(6, v/max*100)}%"></i></div></div>`).join('');
 }
+/* ---------------- belt & stripe promotion history ---------------- */
+function beltOf(k){ return BELTS.find(x => x[0] === k) || BELTS[0]; }
+function maxStripes(belt){ return belt === 'black' ? 6 : 4; }
+function sanitizeBelts(list){
+  return (Array.isArray(list) ? list : []).filter(x => x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.date)) && BELTS.some(b => b[0] === x.belt))
+    .map(x => ({ id:String(x.id || ('b' + Date.now().toString(36) + Math.random().toString(36).slice(2,8))), date:String(x.date), belt:x.belt,
+      stripes:Math.max(0, Math.min(maxStripes(x.belt), Math.round(Number(x.stripes) || 0))), instructor:String(x.instructor||''), academy:String(x.academy||''), notes:String(x.notes||''),
+      createdAt:Number(x.createdAt) || 0, ...(x.sample ? { sample:true } : {}) }));
+}
+/* months added with the day clamped to the month's end (Jan 31 + 1 mo = Feb 28/29) */
+function addMonthsClamp(d, n){ const y = d.getFullYear(), m = d.getMonth() + n, last = new Date(y, m + 1, 0).getDate(); return new Date(y, m, Math.min(d.getDate(), last)); }
+/* calendar difference a -> b (ISO dates) as whole years, months and leftover days */
+function diffYMD(a, b){
+  const A = parse(a), B = parse(b);
+  if (B <= A) return { y:0, m:0, d:0, days:0 };
+  let months = (B.getFullYear() - A.getFullYear()) * 12 + (B.getMonth() - A.getMonth());
+  if (addMonthsClamp(A, months) > B) months--;
+  const anchor = addMonthsClamp(A, months);
+  return { y:Math.floor(months / 12), m:months % 12, d:Math.round((B - anchor) / 864e5), days:Math.round((B - A) / 864e5) };
+}
+function fmtSpan(x){
+  if (x.y) return `${x.y} yr${x.m ? ` ${x.m} mo` : ''}`;
+  if (x.m) return `${x.m} mo${x.d ? ` ${x.d} d` : ''}`;
+  return `${x.d} d`;
+}
+const beltHistory = () => [...(db.belts||[])].sort((a,b) => a.date.localeCompare(b.date) || (a.createdAt||0) - (b.createdAt||0));
+const currentRank = () => { const h = beltHistory(); return h.length ? h[h.length-1] : null; };
+const rankLabel = (e, short) => e.stripes ? (e.belt === 'black' ? `${e.stripes}${['','st','nd','rd'][e.stripes] || 'th'} degree` : `${e.stripes} stripe${e.stripes > 1 ? 's' : ''}`) : (short ? 'No stripes' : `Promoted to ${beltOf(e.belt)[1].toLowerCase()} belt`);
+function syncProfileRank(){ const c = currentRank(); db.profile = { ...db.profile, belt:c ? c.belt : 'white', stripes:c ? c.stripes : 0, promotedOn:c ? c.date : '' }; }
+/* mat time logged in [from, to) (to inclusive when it is today) */
+function matIn(from, to, inclusive){ const ss = db.sessions.filter(s => catOf(s) === 'grappling' && s.date >= from && (inclusive ? s.date <= to : s.date < to)); return { n:ss.length, min:ss.reduce((a,s) => a + (Number(s.duration)||0), 0) }; }
+/* consecutive entries at the same belt form one group; a group runs until the next belt's first entry (or today) */
+function beltGroups(){
+  const h = beltHistory(), t = today(), groups = [];
+  h.forEach((e, i) => { const prev = h[i-1]; e = { ...e, took: prev ? diffYMD(prev.date, e.date) : null, end: h[i+1] ? h[i+1].date : t, current: i === h.length-1 };
+    const g = groups[groups.length-1]; if (g && g.belt === e.belt) g.items.push(e); else groups.push({ belt:e.belt, start:e.date, items:[e] }); });
+  groups.forEach((g, i) => { g.current = i === groups.length-1; g.end = g.current ? t : groups[i+1].start; g.span = diffYMD(g.start, g.end); g.mat = matIn(g.start, g.end, g.current); });
+  return groups;
+}
+function beltBar(belt, stripes, cls=''){
+  const b = beltOf(belt);
+  return `<div class="beltbar ${b[0]} ${cls}" style="background:${b[2]}"><div class="tip">${Array.from({length:Math.min(stripes, 6)}, () => '<i></i>').join('')}</div></div>`;
+}
 function beltCard(){
-  const p = db.profile, b = BELTS.find(x => x[0]===p.belt) || BELTS[0];
-  const stripes = Array.from({length:Number(p.stripes)||0}, () => '<i></i>').join('');
-  let since = '';
-  if (p.promotedOn) {
-    const days = Math.floor((new Date() - parse(p.promotedOn)) / 864e5);
-    const n = db.sessions.filter(s => s.date >= p.promotedOn && (s.category||'grappling') === 'grappling').length;
-    since = `<div class="belt-meta"><span>Promoted <b>${fmtShort(p.promotedOn)}</b></span><span><b>${days}</b> days · <b>${n}</b> sessions</span></div>`;
-  } else since = `<div class="belt-meta"><span>Set your promotion date in <a href="#/settings" style="color:var(--accent)">Profile</a></span></div>`;
-  return `<div class="card"><h2>${esc(b[1])} belt${p.stripes?` · ${p.stripes} stripe${p.stripes>1?'s':''}`:''} ${p.sampleProfile?'<span class="pill sample">Sample</span>':''}</h2>
-    <div class="belt"><div class="beltbar ${b[0]}" style="background:${b[2]}"><div class="tip">${stripes}</div></div></div>${since}</div>`;
+  const cur = currentRank();
+  if (!cur) return `<div class="card" id="beltCard"><h2>Belt</h2><div class="empty" style="padding:2px 0 8px">Log your belt and stripes to track time at each rank.</div><button type="button" class="btn block" data-promo>Log promotion</button></div>`;
+  const g = beltGroups(), cg = g[g.length-1], b = beltOf(cur.belt), sinceLast = diffYMD(cur.date, today()), m = matIn(cur.date, today(), true);
+  const stripeLine = cur.date === cg.start ? `<span>Last stripe <b>none yet</b></span>` : `<span>Since last ${cur.belt === 'black' ? 'degree' : 'stripe'} <b data-b="since">${fmtSpan(sinceLast)}</b></span>`;
+  return `<div class="card tappable" id="beltCard" data-href="#/belts"><h2>${esc(b[1])} belt${cur.stripes ? ` · ${rankLabel(cur)}` : ''} ${cur.sample ? '<span class="pill sample">Sample</span>' : ''}<a class="lnk" href="#/belts">Timeline ›</a></h2>
+    <div class="belt">${beltBar(cur.belt, cur.stripes)}</div>
+    <div class="belt-meta"><span>At ${esc(b[1].toLowerCase())} belt <b data-b="rank">${fmtSpan(cg.span)}</b></span>${stripeLine}</div>
+    <div class="belt-meta" style="margin-top:4px"><span><b>${m.n}</b> session${m.n === 1 ? '' : 's'} · <b>${hrs(m.min)}</b> h since last promotion</span></div>
+    <button type="button" class="btn block" data-promo style="margin-top:12px">Log promotion</button></div>`;
+}
+function wireBelt(root){
+  root.querySelectorAll('[data-promo]').forEach(x => x.onclick = e => { e.stopPropagation(); promoSheet(null); });
+  const c = root.querySelector('#beltCard.tappable'); if (c) c.onclick = e => { if (!e.target.closest('a,button')) go('#/belts'); };
+  root.querySelectorAll('[data-pid]').forEach(x => x.onclick = () => promoSheet(x.dataset.pid));
+}
+/* the next likely promotion, so logging is usually just "Log promotion" -> "Save" */
+function nextRank(cur){
+  if (!cur) return { belt:'white', stripes:0 };
+  if (cur.stripes < maxStripes(cur.belt) && cur.belt !== 'black') return { belt:cur.belt, stripes:cur.stripes + 1 };
+  if (cur.belt === 'black') return { belt:'black', stripes:Math.min(6, cur.stripes + 1) };
+  const ai = ADULT_BELTS.indexOf(cur.belt), ki = KIDS_BELTS.indexOf(cur.belt);
+  return { belt: ai >= 0 ? ADULT_BELTS[ai+1] : KIDS_BELTS[ki+1] || 'blue', stripes:0 };
+}
+function promoSheet(id){
+  const ex = id ? db.belts.find(x => x.id === id) : null;
+  const f = ex ? { ...ex } : { ...nextRank(currentRank()), date:today(), instructor:currentRank()?.instructor || '', academy:currentRank()?.academy || '', notes:'' };
+  let kids = KIDS_BELTS.includes(f.belt);
+  const el = h(`<div><h3>${ex ? 'Edit promotion' : 'Log promotion'}</h3>
+    <div class="field"><label>Belt</label><div class="beltpick" id="beltPick"></div><button type="button" class="btn sm ghost" id="kidsT" style="margin-top:8px">Kids belts</button></div>
+    <div class="field" id="stripeF"></div>
+    <div class="field"><label>Date</label><input class="input" type="date" id="pDate" max="${today()}" value="${esc(f.date)}"></div>
+    <details class="details" ${ex && (ex.instructor || ex.academy || ex.notes) ? 'open' : ''}><summary><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add details <small>optional</small></summary><div class="det-body">
+      <div class="field"><label>Instructor</label><input class="input" id="pInst" autocapitalize="words" value="${esc(f.instructor)}" placeholder="e.g. Prof. Silva"></div>
+      <div class="field"><label>Academy</label><input class="input" id="pAcad" autocapitalize="words" value="${esc(f.academy)}" placeholder="e.g. Riverside BJJ"></div>
+      <div class="field"><label>Notes</label><textarea class="input" id="pNotes" rows="2" placeholder="How it happened, what to work on next…">${esc(f.notes)}</textarea></div></div></details>
+    <div style="display:flex;gap:10px;margin-top:6px">${ex ? '<button type="button" class="btn danger" id="pDel">Delete</button>' : ''}<button type="button" class="btn primary" style="flex:1" id="pSave">${ex ? 'Save changes' : 'Save promotion'}</button></div></div>`);
+  const pick = el.querySelector('#beltPick'), sf = el.querySelector('#stripeF'), kt = el.querySelector('#kidsT');
+  const drawStripes = () => { if (f.stripes > maxStripes(f.belt)) f.stripes = maxStripes(f.belt); sf.innerHTML = `<label>${f.belt === 'black' ? 'Degree' : 'Stripes'}</label>`;
+    sf.appendChild(seg(Array.from({length:maxStripes(f.belt)+1}, (_, i) => [i, String(i)]), f.stripes, x => { f.stripes = x; })); };
+  const drawPick = () => { const list = kids ? ADULT_BELTS.concat(KIDS_BELTS) : ADULT_BELTS; kt.textContent = kids ? 'Hide kids belts' : 'Kids belts';
+    pick.innerHTML = list.map(k => `<button type="button" data-belt="${k}" class="${f.belt === k ? 'on' : ''}" aria-pressed="${f.belt === k}"><i style="background:${beltOf(k)[2]}"></i>${beltOf(k)[1]}</button>`).join('');
+    pick.querySelectorAll('button').forEach(x => x.onclick = () => { f.belt = x.dataset.belt; drawPick(); drawStripes(); }); };
+  kt.onclick = () => { kids = !kids; if (!kids && KIDS_BELTS.includes(f.belt)) f.belt = 'white'; drawPick(); drawStripes(); };
+  drawPick(); drawStripes();
+  el.querySelector('#pSave').onclick = () => {
+    const date = el.querySelector('#pDate').value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today()) { toast('Pick a date (today or earlier)'); return; }
+    const before = JSON.parse(JSON.stringify(db.belts));
+    const rec = sanitizeBelts([{ ...f, id:ex ? ex.id : uid(), date, instructor:el.querySelector('#pInst').value.trim(), academy:el.querySelector('#pAcad').value.trim(), notes:el.querySelector('#pNotes').value.trim(), createdAt:ex ? ex.createdAt : Date.now() }])[0];
+    if (ex && ex.notes.startsWith('Date unknown') && rec.notes === ex.notes && date !== ex.date) rec.notes = '';
+    delete rec.sample;
+    db.belts = db.belts.filter(x => x.id !== rec.id).concat(rec); syncProfileRank(); save(); closeSheet();
+    undoToast(`${ex ? 'Updated' : 'Logged'}: ${beltOf(rec.belt)[1]} belt${rec.stripes ? ', ' + rankLabel(rec) : ''}`, () => { db.belts = before; syncProfileRank(); save(); route(); });
+    whenSettled(route);
+  };
+  const del = el.querySelector('#pDel');
+  if (del) del.onclick = () => { const before = JSON.parse(JSON.stringify(db.belts)); db.belts = db.belts.filter(x => x.id !== ex.id); syncProfileRank(); save(); closeSheet();
+    undoToast('Promotion deleted', () => { db.belts = before; syncProfileRank(); save(); route(); }); whenSettled(route); };
+  openSheet(el, null, { closeLabel:'Cancel' });
+}
+function histSeg(which){
+  if (!enabled('grappling') && !(db.belts||[]).length) return '';
+  return `<div class="seg fuelseg histseg" role="tablist"><a role="tab" href="#/history" class="${which === 'workouts' ? 'on' : ''}">Workouts</a><a role="tab" href="#/belts" class="${which === 'belts' ? 'on' : ''}">Belts</a></div>`;
+}
+function viewBelts(){
+  setHeader('History', `<a class="btn sm" href="#/stats">Stats</a>`);
+  const v = $('#view'), groups = beltGroups().reverse();
+  const items = g => [...g.items].reverse().map(e => `<button type="button" class="tl-item" data-pid="${esc(e.id)}"><i class="tl-dot"></i><div class="grow"><b>${esc(rankLabel(e))}</b>
+      <small>${fmtShort(e.date)}${e.instructor ? ` · ${esc(e.instructor)}` : ''}${e.academy ? ` · ${esc(e.academy)}` : ''}${e.sample ? ' · sample' : ''}</small>${e.notes ? `<small class="tl-note">${esc(e.notes)}</small>` : ''}</div>
+      <span class="tl-took">${e.took ? `<b>${fmtSpan(e.took)}</b><small>after previous</small>` : '<small>start</small>'}</span></button>`).join('');
+  v.innerHTML = `${histSeg('belts')}
+    <button type="button" class="btn primary block" data-promo style="margin-bottom:14px"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Log promotion</button>
+    ${groups.length ? `<div class="timeline" id="timeline">${groups.map(g => { const b = beltOf(g.belt); return `<section class="tl-group ${g.current ? 'current' : ''}" data-belt="${g.belt}" style="--belt:${b[2]}">
+      <div class="tl-head">${beltBar(g.belt, g.items[g.items.length-1].stripes, 'mini')}<div class="grow"><b>${esc(b[1])} belt</b><small>${fmtShort(g.start)} – ${g.current ? 'today' : fmtShort(g.end)}</small></div>
+        <div class="tl-dur"><b data-span>${fmtSpan(g.span)}</b><small>${g.current ? 'so far' : 'at this belt'}</small></div></div>
+      ${g.mat.n ? `<div class="tl-meta">${g.mat.n} session${g.mat.n > 1 ? 's' : ''} · ${hrs(g.mat.min)} h on the mat logged</div>` : ''}
+      <div class="tl-items">${items(g)}</div></section>`; }).join('')}</div>
+      <div class="hint" style="text-align:center;margin-top:8px">Tap an entry to edit or delete it. Add past promotions in any order — they're sorted by date.</div>`
+    : `<div class="empty" style="padding:30px 10px">No promotions yet. Log your current belt (and past ones if you like) to see your journey.</div>`}`;
+  wireBelt(v);
 }
 
 /* ---------------- disciplines ---------------- */
@@ -487,6 +616,7 @@ function updateNav(){
 
 /* first-run */
 function viewSetup(){
+  document.body.classList.add('setup-mode');
   setHeader('');
   const v = $('#view'), pick = { grappling:true, striking:false, weights:false, cardio:false, food:true, supps:false, weight:false };
   v.innerHTML = `<div class="welcome setup"><img class="mark" src="brand/chevron_mark_transparent_1024.svg" alt="" width="64" height="64">
@@ -494,24 +624,19 @@ function viewSetup(){
     <div class="tiles" id="catTiles">${CAT_KEYS.map(k => `<button type="button" class="tile" data-k="${k}" aria-pressed="false"><svg viewBox="0 0 24 24">${CATS[k].icon}</svg><b>${CATS[k].label}</b><small>${CATS[k].disc.map(d=>d[1]).slice(0,3).join(', ')}</small></button>`).join('')}</div>
     <h3>Also track</h3>
     <div class="tiles two" id="extraTiles"><button type="button" class="tile" data-k="food"><b>Food</b><small>Calories &amp; protein</small></button><button type="button" class="tile" data-k="supps"><b>Supplements</b><small>Daily checklist</small></button><button type="button" class="tile" data-k="weight"><b>Weight goal</b><small>Lose or gain</small></button></div>
-    <div id="tgtWrap" class="grid2" style="text-align:left;margin-top:14px"></div>
     <div id="wtWrap" style="text-align:left;margin-top:6px"></div>
     <button class="btn primary block" id="go" style="margin-top:18px">Get started</button>
     <button class="btn block ghost" id="loadSample" style="margin-top:10px">Load sample data (demo)</button></div>`;
-  const tgt = $('#tgtWrap');
-  const cal = h(`<input class="input" type="text" inputmode="numeric" placeholder="e.g. 2400" id="setupCal">`), pro = h(`<input class="input" type="text" inputmode="numeric" placeholder="e.g. 180" id="setupPro">`);
-  tgt.appendChild(field('Daily calories (optional)', cal)); tgt.appendChild(field('Protein g (optional)', pro));
   const wt = $('#wtWrap'); let wu = unit();
   const wNow = h(`<input class="input" type="text" inputmode="decimal" placeholder="Today" id="setupW">`), wGoal = h(`<input class="input" type="text" inputmode="decimal" placeholder="Target" id="setupGoal">`), wDate = h(`<input class="input" type="date" id="setupGoalDate" min="${today()}">`);
   wt.appendChild(field('Units', seg([['lb','lb'],['kg','kg']], wu, x => { wu = x; })));
   const wg = h('<div class="grid2"></div>'); wg.appendChild(field('Current weight', wNow)); wg.appendChild(field('Goal weight', wGoal)); wt.appendChild(wg);
   wt.appendChild(field('Goal date (optional)', wDate));
-  const sync = () => { v.querySelectorAll('.tile').forEach(b => { b.classList.toggle('on', !!pick[b.dataset.k]); b.setAttribute('aria-pressed', !!pick[b.dataset.k]); }); tgt.hidden = !pick.food; wt.hidden = !pick.weight; };
+  const sync = () => { v.querySelectorAll('.tile').forEach(b => { b.classList.toggle('on', !!pick[b.dataset.k]); b.setAttribute('aria-pressed', !!pick[b.dataset.k]); }); wt.hidden = !pick.weight; };
   v.querySelectorAll('.tile').forEach(b => b.onclick = () => { pick[b.dataset.k] = !pick[b.dataset.k]; if (!CAT_KEYS.some(k => pick[k])) pick.grappling = true; sync(); });
   sync();
   $('#go').onclick = () => {
-    const t = { ...targets() }; if (num(cal.value)) t.cal = Math.round(num(cal.value)); if (num(pro.value)) t.p = Math.round(num(pro.value));
-    db.profile = { ...db.profile, enabled:{ ...pick }, setupDone:true, ...(num(cal.value)||num(pro.value) ? { targets:t } : {}) };
+    db.profile = { ...db.profile, enabled:{ ...pick }, setupDone:true };
     if (pick.weight) { const now = num(wNow.value), gw = num(wGoal.value); db.profile.unit = wu;
       if (now) { db.weights.push({ id:uid(), date:today(), w:r1(now), u:wu, createdAt:Date.now() }); db.profile.startWeight = String(r1(now)); }
       if (gw) db.profile.goalWeight = String(r1(gw)); if (wDate.value) db.profile.goalDate = wDate.value; }
@@ -558,7 +683,7 @@ function viewHome(){
     ${enabled('supps') ? suppCard() : ''}
     ${enabled('grappling') ? beltCard() : ''}
     <a class="btn block" href="#/stats" id="seeStats">See all stats ›</a>`;
-  wireRepeat(v); wireWeight(v);
+  wireRepeat(v); wireWeight(v); wireBelt(v);
   const rm = $('#rmSample'); if (rm) rm.onclick = removeSample;
 }
 
@@ -585,11 +710,11 @@ let histFilter = 'all', histQuery = '';
 function viewHistory(){
   setHeader('History', `<a class="btn sm" href="#/stats">Stats</a>`);
   const v = $('#view');
-  if (!db.sessions.length) { v.innerHTML = `<div class="empty" style="padding:60px 10px">No workouts yet.<br><br><a class="btn primary" href="#/log">Log a workout</a></div>`; return; }
+  if (!db.sessions.length) { v.innerHTML = `${histSeg('workouts')}<div class="empty" style="padding:60px 10px">No workouts yet.<br><br><a class="btn primary" href="#/log">Log a workout</a></div>`; return; }
   const cats = enabledCats().filter(k => db.sessions.some(s => catOf(s) === k));
   const filters = [['all','All'], ...(cats.length > 1 ? cats.map(k => [k, CATS[k].label]) : []), ...(enabled('grappling') ? [['gi','Gi'],['nogi','No-Gi']] : []), ['comp','Competition']];
   if (!filters.some(f => f[0]===histFilter)) histFilter = 'all';
-  v.innerHTML = `<div class="search"><input class="input" type="search" placeholder="Search workouts, partners, notes…" value="${esc(histQuery)}" id="q"></div>
+  v.innerHTML = `${histSeg('workouts')}<div class="search"><input class="input" type="search" placeholder="Search workouts, partners, notes…" value="${esc(histQuery)}" id="q"></div>
     <div class="filters">${filters.map(([k,l]) => `<button data-f="${k}" class="${histFilter===k?'on':''}">${l}</button>`).join('')}</div>
     <div id="list"></div>`;
   const draw = () => {
@@ -1114,6 +1239,9 @@ const defaultNutrition = () => ({ entries:[], foods:[] });
 const num = v => { const n = Number(v); return isFinite(n) && n > 0 ? n : 0; };
 const r1 = n => Math.round(n*10)/10;
 const targets = () => ({ ...defaultTargets(), ...(db.profile.targets||{}) });
+/* goals the user actually set (null = not set; no made-up defaults) */
+const goals = () => { const t = db.profile.targets || {}; return Object.fromEntries(['cal','p','c','f'].map(k => [k, Number(t[k]) > 0 ? Number(t[k]) : null])); };
+const setGoalsLink = (id='setGoals') => `<a class="lnk setgoals" id="${id}" href="#/settings/goals">Set your goals ›</a>`;
 const entriesOn = d => db.nutrition.entries.filter(e => e.date === d);
 function totals(list){
   const t = { cal:0, p:0, c:0, f:0, fiber:0, sugar:0, sodium:0 };
@@ -1137,6 +1265,7 @@ function weekSummary(end=today()){
   return { days, n:logged.length, cal:avg('cal'), p:avg('p'), c:avg('c'), f:avg('f') };
 }
 function ring(value, target, label, sub){
+  if (!target) return `<svg class="ring" viewBox="0 0 128 128" role="img" aria-label="${esc(label)} ${Math.round(value)}"><circle cx="64" cy="64" r="52" class="ring-bg"/><text x="64" y="62" text-anchor="middle" class="ring-v">${Math.round(value)}</text><text x="64" y="82" text-anchor="middle" class="ring-l">kcal today</text></svg>`;
   const R = 52, C = 2*Math.PI*R, pct = target ? value/target : 0, over = pct > 1.05;
   const dash = Math.min(1, pct) * C;
   return `<svg class="ring" viewBox="0 0 128 128" role="img" aria-label="${esc(label)} ${Math.round(value)} of ${target}">
@@ -1144,6 +1273,7 @@ function ring(value, target, label, sub){
     <text x="64" y="62" text-anchor="middle" class="ring-v">${Math.round(value)}</text><text x="64" y="82" text-anchor="middle" class="ring-l">${esc(sub)}</text></svg>`;
 }
 function macroBar(label, value, target, u, cls=''){
+  if (!target) return `<div class="mbar ${cls} nogoal"><div class="t"><span>${esc(label)}</span><span><b>${u === 'kcal' ? Math.round(value) : r1(value)}</b> ${u}</span></div></div>`;
   const pct = target ? Math.min(100, value/target*100) : 0, over = target && value > target*1.05;
   return `<div class="mbar ${cls}"><div class="t"><span>${esc(label)}</span><span><b>${u === 'kcal' ? Math.round(value) : r1(value)}</b> / ${target} ${u}</span></div><div class="b"><i class="${over?'over':''}" style="width:${pct}%"></i></div></div>`;
 }
@@ -1156,27 +1286,28 @@ function macroSplit(t){
 }
 function calChart(days, target){
   const W = 340, H = 140, pt = 16, pb = 22, pl = 4, pr = 4;
-  const max = Math.max(target*1.15, ...days.map(d => d.cal), 1);
+  const max = Math.max((target||0)*1.15, ...days.map(d => d.cal), 1);
   const bw = (W-pl-pr)/days.length, Y = v => H - pb - (H-pt-pb) * v/max;
   let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Calories per day, last ${days.length} days">`;
   days.forEach((d,i) => {
     const x = pl + i*bw + bw*0.2, y = Y(d.cal), cur = d.date === today();
-    s += `<rect class="bar ${d.cal?'':'dim'} ${d.cal > target*1.05 ? 'over' : ''}" x="${x.toFixed(1)}" y="${(d.cal?y:H-pb-3).toFixed(1)}" width="${(bw*0.6).toFixed(1)}" height="${(d.cal?H-pb-y:3).toFixed(1)}" rx="4" ${cur?'':'opacity=".6"'}/>`;
+    s += `<rect class="bar ${d.cal?'':'dim'} ${target && d.cal > target*1.05 ? 'over' : ''}" x="${x.toFixed(1)}" y="${(d.cal?y:H-pb-3).toFixed(1)}" width="${(bw*0.6).toFixed(1)}" height="${(d.cal?H-pb-y:3).toFixed(1)}" rx="4" ${cur?'':'opacity=".6"'}/>`;
     if (d.cal) s += `<text x="${(x+bw*0.3).toFixed(1)}" y="${(y-4).toFixed(1)}" text-anchor="middle" style="fill:${cur?'var(--accent)':'var(--muted)'}">${Math.round(d.cal)}</text>`;
     s += `<text x="${(x+bw*0.3).toFixed(1)}" y="${H-6}" text-anchor="middle">${cur ? 'Today' : DOW[parse(d.date).getDay()]}</text>`;
   });
-  const ty = Y(target); s += `<line class="goal" x1="0" x2="${W}" y1="${ty}" y2="${ty}"/><text x="${W-pr}" y="${ty-4}" text-anchor="end" style="fill:#ffc43d">Target ${target}</text>`;
+  if (target) { const ty = Y(target); s += `<line class="goal" x1="0" x2="${W}" y1="${ty}" y2="${ty}"/><text x="${W-pr}" y="${ty-4}" text-anchor="end" style="fill:#ffc43d">Goal ${target}</text>`; }
   return s + '</svg>';
 }
 function nutritionCard(){
-  const t = totals(entriesOn(today())), tg = targets(), wk = weekSummary();
+  const t = totals(entriesOn(today())), tg = goals(), wk = weekSummary();
   const ws = weightSeries(); let wnote = '';
   if (ws.length > 1 && !enabled('weight')) {
     const recent = ws.filter(p => p.date >= iso(addDays(new Date(), -28)));
     if (recent.length > 1) { const span = Math.max(1, (parse(recent[recent.length-1].date) - parse(recent[0].date)) / 864e5 / 7); const rate = r1((recent[recent.length-1].w - recent[0].w) / span); wnote = ` · weight ${rate>0?'+':''}${rate} ${unit()}/wk (4 wk)`; }
   }
   return `<div class="card" id="nutriCard"><h2>Nutrition today <a href="#/food" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">Food log ›</a></h2>
-    ${macroBar('Calories', t.cal, tg.cal, 'kcal', 'cal')}${macroBar('Protein', t.p, tg.p, 'g', 'pro')}
+    ${macroBar('Calories', t.cal, tg.cal, 'kcal', 'cal')}${macroBar('Protein', t.p, tg.p, 'g', 'pro')}${!tg.cal || !tg.p ? `<div class="hint">${setGoalsLink('setGoalsHome')} to track progress.</div>` : ''}
+    <div class="wline" id="homeWater">💧 Water <b>${fromMl(waterOn(today()))}</b>${waterGoalMl() ? ` / ${fromMl(waterGoalMl())}` : ''} ${waterU()}${waterGoalMl() ? `<span class="mini"><i style="width:${Math.min(100, waterOn(today()) / waterGoalMl() * 100)}%"></i></span>` : ''}</div>
     <div class="hint">${wk.n ? `7-day avg ${Math.round(wk.cal)} kcal · ${Math.round(wk.p)} g protein${wnote}` : 'No food logged this week yet.'}</div>
     <a class="btn block" style="margin-top:12px" href="#/food">Log food</a></div>`;
 }
@@ -1187,7 +1318,7 @@ function viewFood(d){
   if (!foodDate) foodDate = today();
   const day = foodDate, isToday = day === today();
   setHeader('Food', `<button class="btn sm" id="savedFoods">My foods</button>`);
-  const list = entriesOn(day), t = totals(list), tg = targets(), wk = weekSummary(day);
+  const list = entriesOn(day), t = totals(list), tg = goals(), wk = weekSummary(day);
   const v = $('#view');
   v.innerHTML = `${fuelSwitch('food')}
     <div class="daynav"><a class="iconbtn big" href="#/food/${iso(addDays(parse(day),-1))}" aria-label="Previous day"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></a>
@@ -1195,18 +1326,20 @@ function viewFood(d){
       ${isToday ? '<span class="iconbtn big" style="opacity:.25"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>' : `<a class="iconbtn big" href="#/food/${iso(addDays(parse(day),1))}" aria-label="Next day"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></a>`}</div>
     ${quickFoods().length ? `<div class="card quickfood"><h2>Quick add <small>tap = 1 serving</small></h2><div class="qf">${quickFoods().map((f,i) => `<button type="button" class="qfb" data-qf="${i}"><b>${esc(f.name)}</b><small>${Math.round(num(f.cal))} kcal · ${r1(num(f.p))} g P</small></button>`).join('')}</div></div>` : ''}
     <div class="card nutri-top">
-      <div class="ringwrap">${ring(t.cal, tg.cal, 'Calories', `of ${tg.cal} kcal`)}<div class="left">${t.cal <= tg.cal ? `<b>${Math.round(tg.cal - t.cal)}</b> kcal left` : `<b class="over">${Math.round(t.cal - tg.cal)}</b> kcal over`}</div></div>
+      <div class="ringwrap">${ring(t.cal, tg.cal, 'Calories', `of ${tg.cal} kcal`)}<div class="left">${!tg.cal ? setGoalsLink() : t.cal <= tg.cal ? `<b>${Math.round(tg.cal - t.cal)}</b> kcal left` : `<b class="over">${Math.round(t.cal - tg.cal)}</b> kcal over`}</div></div>
       <div class="mbars">${macroBar('Protein', t.p, tg.p, 'g', 'pro')}${macroBar('Carbs', t.c, tg.c, 'g', 'carb')}${macroBar('Fat', t.f, tg.f, 'g', 'fat')}</div>
     </div>
+    ${waterCard(day)}
     <div class="card"><h2>Macro split</h2>${macroSplit(t)}
       <div class="extras">${EXTRAS.map(([k,l,u]) => `<div><b>${r1(t[k])}<small> ${u}</small></b><span>${l}</span></div>`).join('')}</div></div>
     ${MEALS.map(([k,l]) => { const items = list.filter(e => e.meal === k), mt = totals(items); return `<div class="card meal" data-meal="${k}"><h2>${l} <small>${Math.round(mt.cal)} kcal · ${r1(mt.p)} g P</small></h2>
       ${items.map(e => `<button type="button" class="food-row" data-id="${esc(e.id)}"><div class="grow"><b>${esc(e.name)}</b><small>${r1(num(e.qty)||1)} × ${esc(e.serving||'serving')} · P ${r1(num(e.p)*(num(e.qty)||1))} · C ${r1(num(e.c)*(num(e.qty)||1))} · F ${r1(num(e.f)*(num(e.qty)||1))}</small></div><span class="kcal">${Math.round(num(e.cal)*(num(e.qty)||1))}</span></button>`).join('')}
       <button type="button" class="btn block addfood" data-add="${k}"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add ${l === 'Snacks' ? 'snack' : l.toLowerCase()}</button></div>`; }).join('')}
     <div class="card"><h2>Last 7 days <small>${wk.n} day${wk.n===1?'':'s'} logged</small></h2>
-      <div class="kv" style="margin-bottom:8px"><div><b>${Math.round(wk.cal)}</b><span>Avg kcal</span></div><div><b>${Math.round(wk.p)}<small style="font-size:13px;color:var(--muted)"> g</small></b><span>Avg protein</span></div><div><b>${wk.days.filter(x => x.logged && x.p >= tg.p*0.95).length}/7</b><span>Protein goal hit</span></div></div>
+      <div class="kv" style="margin-bottom:8px"><div><b>${Math.round(wk.cal)}</b><span>Avg kcal</span></div><div><b>${Math.round(wk.p)}<small style="font-size:13px;color:var(--muted)"> g</small></b><span>Avg protein</span></div><div><b>${tg.p ? `${wk.days.filter(x => x.logged && x.p >= tg.p*0.95).length}/7` : '—'}</b><span>Protein goal hit</span></div></div>
       ${calChart(wk.days, tg.cal)}<div class="hint">Avg carbs ${Math.round(wk.c)} g · fat ${Math.round(wk.f)} g (days with food logged)</div></div>`;
   v.querySelectorAll('[data-add]').forEach(b => b.onclick = () => foodForm({ meal:b.dataset.add }));
+  wireWater(v, day);
   const qf = quickFoods();
   v.querySelectorAll('[data-qf]').forEach(b => b.onclick = () => {
     const f = qf[Number(b.dataset.qf)], hr = new Date().getHours();
@@ -1324,6 +1457,14 @@ function savedFoodsSheet(){
   q.oninput = draw; draw(); openSheet(el);
 }
 
+function sampleWater(){
+  // ~2–3 L a day for the last 2 weeks; today partly done
+  let seed = 5; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647; const out = [];
+  for (let i = 13; i >= 0; i--) { const d = addDays(new Date(), -i), n = i === 0 ? 3 : 5 + Math.floor(rnd()*4);
+    for (let j = 0; j < n; j++) { const at = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 7 + j*2, 0).getTime(); if (at > Date.now()) break;
+      out.push({ id:uid(), date:iso(d), ml: rnd() < .5 ? 237 : 500, createdAt:at, sample:true }); } }
+  return out;
+}
 function sampleNutrition(){
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const F = (name, serving, cal, p, c, f, fiber='', sugar='', sodium='') => ({ id:uid(), name, serving, cal, p, c, f, fiber, sugar, sodium, sample:true });
@@ -1355,7 +1496,42 @@ function sanitizeNutrition(n){
   const entries = Array.isArray(n?.entries) ? n.entries.filter(e => e && typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date) && e.name)
     .map(e => ({ id:String(e.id||uid()), date:e.date, meal:MEALS.some(m => m[0]===e.meal) ? e.meal : 'snack', qty:Number(e.qty)||1, ...food(e), createdAt:e.createdAt||Date.now() })) : [];
   const foods = Array.isArray(n?.foods) ? n.foods.filter(f => f && f.name).map(f => ({ id:String(f.id||uid()), ...food(f) })) : [];
-  return { entries, foods };
+  return { entries, foods, water:sanitizeWater(n?.water) };
+}
+/* water: stored in ml, shown in oz (lb users) or ml (kg users) */
+function sanitizeWater(list){
+  return (Array.isArray(list) ? list : []).filter(x => x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.date)) && Number(x.ml) > 0 && Number(x.ml) < 10000)
+    .map(x => ({ id:String(x.id || ('h' + Date.now().toString(36) + Math.random().toString(36).slice(2,8))), date:String(x.date), ml:Math.round(Number(x.ml)), createdAt:Number(x.createdAt)||0, ...(x.sample ? { sample:true } : {}) }));
+}
+const ML_PER_OZ = 29.5735;
+const waterMetric = () => unit() === 'kg';
+const waterU = () => waterMetric() ? 'ml' : 'oz';
+const fromMl = ml => waterMetric() ? Math.round(ml) : Math.round(ml / ML_PER_OZ * 10) / 10;
+const toMl = v => waterMetric() ? Number(v) : Number(v) * ML_PER_OZ;
+const waterOn = day => (db.nutrition.water||[]).filter(x => x.date === day).reduce((a,x) => a + x.ml, 0);
+const waterGoalMl = () => Number(db.profile.waterGoal) > 0 ? Number(db.profile.waterGoal) : null;
+const WATER_BTNS = () => waterMetric() ? [['glass', 250, '+250 ml', 'Glass'], ['bottle', 500, '+500 ml', 'Bottle']] : [['glass', 8 * ML_PER_OZ, '+8 oz', 'Glass'], ['bottle', 500, '+16.9 oz', 'Bottle']];
+function addWater(ml, day){
+  const rec = { id:uid(), date:day || today(), ml:Math.round(ml), createdAt:Date.now() };
+  db.nutrition.water = (db.nutrition.water||[]).concat(rec); save();
+  undoToast(`+${fromMl(rec.ml)} ${waterU()} water`, () => { db.nutrition.water = db.nutrition.water.filter(x => x.id !== rec.id); save(); route(); });
+  route();
+}
+function waterCard(day){
+  const tot = waterOn(day), g = waterGoalMl(), pct = g ? Math.min(100, tot / g * 100) : 0;
+  return `<div class="card" id="waterCard"><h2>Water <small>${day === today() ? 'today' : fmtShort(day)}</small></h2>
+    <div class="wtot"><b id="waterTotal">${fromMl(tot)}</b><span>${g ? ` / ${fromMl(g)} ${waterU()}` : ` ${waterU()}`}</span>${g ? `<em>${Math.round(tot / g * 100)}%</em>` : setGoalsLink('setWaterGoal').replace('Set your goals', 'Set goal')}</div>
+    ${g ? `<div class="mbar water"><div class="b"><i style="width:${pct}%"></i></div></div>` : ''}
+    <div class="wbtns">${WATER_BTNS().map(([k, ml, lbl, sub]) => `<button type="button" class="btn" data-water="${ml}" data-wk="${k}"><b>${lbl}</b><small>${sub}</small></button>`).join('')}<button type="button" class="btn" id="waterCustom"><b>+ Custom</b><small>${waterU()}</small></button></div></div>`;
+}
+function wireWater(root, day){
+  root.querySelectorAll('[data-water]').forEach(b => b.onclick = () => addWater(Number(b.dataset.water), day));
+  const c = root.querySelector('#waterCustom'); if (c) c.onclick = () => {
+    const el = h(`<div><h3>Add water</h3><div class="field"><label>Amount (${waterU()})</label><input class="input" id="waterAmt" type="text" inputmode="decimal" placeholder="${waterMetric() ? 'e.g. 330' : 'e.g. 12'}"></div><button type="button" class="btn primary block" id="waterAdd">Add water</button></div>`);
+    const inp = el.querySelector('#waterAmt');
+    el.querySelector('#waterAdd').onclick = () => { const v = Number(String(inp.value).replace(',', '.')); const ml = toMl(v); if (!(ml >= 10 && ml <= 5000)) { toast(`Enter an amount in ${waterU()}`); inp.focus(); return; } closeSheet(); whenSettled(() => addWater(ml, day)); };
+    openSheet(el, null, { closeLabel:'Cancel' }); inp.focus({ preventScroll:true });
+  };
 }
 
 /* ---------------- supplements ---------------- */
@@ -1578,14 +1754,9 @@ function viewSettings(){
     sec.querySelector('.toggles').appendChild(row);
   });
   v.appendChild(sec);
-  const card = h('<div class="card"><h2>Rank</h2></div>');
-  const belt = h(`<select class="input">${BELTS.map(([k,l]) => `<option value="${k}" ${p.belt===k?'selected':''}>${l} belt</option>`).join('')}</select>`);
-  belt.onchange = () => { p.belt = belt.value; p.sampleProfile = false; save(); toast('Belt updated'); };
-  card.appendChild(field('Belt', belt));
-  card.appendChild(field('Stripes', seg([[0,'0'],[1,'1'],[2,'2'],[3,'3'],[4,'4']], Number(p.stripes)||0, x => { p.stripes = x; p.sampleProfile = false; save(); })));
-  const promo = h(`<input class="input" type="date" value="${esc(p.promotedOn)}" max="${today()}">`);
-  promo.onchange = () => { p.promotedOn = promo.value; p.sampleProfile = false; save(); toast('Promotion date saved'); };
-  card.appendChild(field('Promotion date', promo));
+  const card = h(`<div class="card" id="rankCard"><h2>Belt <a class="lnk" href="#/belts">Timeline ›</a></h2>${currentRank() ? `<div class="belt">${beltBar(currentRank().belt, currentRank().stripes)}</div><div class="belt-meta"><span><b>${esc(beltOf(currentRank().belt)[1])} belt</b>${currentRank().stripes ? ` · ${rankLabel(currentRank())}` : ''}</span><span>since ${fmtShort(beltGroups().slice(-1)[0].start)}</span></div>` : '<div class="hint">No promotions logged yet.</div>'}
+    <button type="button" class="btn primary block" data-promo style="margin-top:12px">Log promotion</button><div class="hint" style="margin-top:8px">${(db.belts||[]).length} promotion${(db.belts||[]).length === 1 ? '' : 's'} in your history. Edit or delete them on the timeline.</div></div>`);
+  wireBelt(card);
   if (enabled('grappling')) v.appendChild(card);
 
   const wcard = h('<div class="card"><h2>Weight</h2></div>');
@@ -1611,14 +1782,20 @@ function viewSettings(){
   wcard.querySelector('h2').textContent = 'Body & units';
   v.appendChild(wcard);
 
-  const tcard = h('<div class="card" id="targetsCard"><h2>Daily nutrition targets</h2><div class="grid2"></div></div>');
-  const tg = targets(), tgrid = tcard.querySelector('.grid2');
+  const tcard = h('<div class="card" id="targetsCard"><h2>Daily nutrition goals</h2><div class="grid2"></div></div>');
+  const tg = goals(), tgrid = tcard.querySelector('.grid2');
   MACROS.forEach(([k,l,u]) => {
-    const i = h(`<input class="input" type="text" inputmode="numeric" value="${esc(tg[k])}" data-target="${k}">`);
-    i.onchange = () => { const n = Math.round(num(i.value.replace(/[^\d.]/g,''))); if (!n) { i.value = targets()[k]; toast('Enter a number'); return; } i.value = n; p.targets = { ...targets(), [k]:n }; save(); toast(`${l} target saved`); };
-    tgrid.appendChild(field(`${l} (${u})`, i));
+    const i = h(`<input class="input" type="text" inputmode="numeric" value="${esc(tg[k] ?? '')}" placeholder="e.g. ${defaultTargets()[k]}" data-target="${k}">`);
+    i.onchange = () => { const raw = i.value.replace(/[^\d.]/g,''), n = Math.round(num(raw)); const t = { ...(db.profile.targets||{}) };
+      if (!raw) { delete t[k]; db.profile.targets = t; save(); toast(`${l} goal cleared`); return; }
+      if (!n) { i.value = tg[k] ?? ''; toast('Enter a number'); return; }
+      i.value = n; t[k] = n; db.profile.targets = t; save(); toast(`${l} goal saved`); };
+    tgrid.appendChild(field(TARGET_LABEL[k] || `${l} (${u})`, i));
   });
-  tcard.appendChild(h('<div class="hint">Shown as progress on the Food tab and the dashboard. Rough guide: protein ≈ 0.8–1 g per lb of body weight.</div>'));
+  const wg = h(`<input class="input" type="text" inputmode="decimal" id="waterGoal" value="${waterGoalMl() ? fromMl(waterGoalMl()) : ''}" placeholder="${waterMetric() ? 'e.g. 2500' : 'e.g. 96'}">`);
+  wg.onchange = () => { const raw = wg.value.replace(/[^\d.]/g,''); if (!raw) { db.profile.waterGoal = ''; save(); toast('Water goal cleared'); return; } const ml = toMl(raw); if (!(ml >= 250 && ml <= 10000)) { toast(`Enter a goal in ${waterU()}`); return; } db.profile.waterGoal = Math.round(ml); save(); toast('Water goal saved'); };
+  tgrid.appendChild(field(`Daily water goal (${waterU()})`, wg));
+  tcard.appendChild(h(`<div class="hint">${TARGET_HINT} Rough guide: protein ≈ 0.8–1 g per lb of body weight.</div>`));
   if (enabled('food')) v.appendChild(tcard);
 
   const hasSample = db.sessions.some(s => s.sample) || db.nutrition.entries.some(e => e.sample) || db.supps.items.some(i => i.sample);
@@ -1644,14 +1821,14 @@ function viewSettings(){
   const ld = $('#ldS'); if (ld) ld.onclick = loadSample;
   const rm = $('#rmS'); if (rm) rm.onclick = removeSample;
   $('#clr').onclick = async () => {
-    if (await confirmSheet('Clear all data?', `This permanently deletes ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries, saved foods, ${db.supps.items.length} supplements with their history, ${db.weights.length} weigh-ins and your profile from this device. Export a backup first if you want to keep them.`, 'Clear everything')) {
+    if (await confirmSheet('Clear all data?', `This permanently deletes ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries, saved foods, ${db.supps.items.length} supplements with their history, ${db.weights.length} weigh-ins, ${db.belts.length} belt promotions and your profile from this device. Export a backup first if you want to keep them.`, 'Clear everything')) {
       db = emptyDb(); save(); form = null; foodDate = null; suppDate = null; toast('All data cleared'); go('#/');
     }
   };
 }
 
 function exportData(){
-  const payload = { app:'discipline-motivation', version:APP_VERSION, schema:SCHEMA, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition, supps:db.supps, weights:db.weights };
+  const payload = { app:'discipline-motivation', version:APP_VERSION, schema:SCHEMA, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition, supps:db.supps, weights:db.weights, belts:db.belts };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = `dm-backup-${today()}.json`;
@@ -1666,9 +1843,9 @@ async function importData(file){
     if (!d || !Array.isArray(d.sessions)) throw new Error('No sessions found');
     const src = migrate(JSON.parse(JSON.stringify(d)));
     const valid = src.sessions.filter(s => s && typeof s.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.date)).map(sanitizeSession);
-    const nut = sanitizeNutrition(d.nutrition), sup = sanitizeSupps(d.supps), wts = sanitizeWeights(src.weights);
+    const nut = sanitizeNutrition(d.nutrition), sup = sanitizeSupps(d.supps), wts = sanitizeWeights(src.weights), blt = sanitizeBelts(src.belts);
     if (await confirmSheet(`Import ${valid.length} sessions, ${nut.entries.length} food entries and ${sup.items.length} supplements?`, `This replaces the ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries and ${db.weights.length} weigh-ins currently on this device.`, 'Replace & import', false)) {
-      db = { schema:SCHEMA, sessions:valid, profile:{ ...defaultProfile(), ...(src.profile||{}), setupDone:true }, nutrition:nut, supps:sup, weights:wts }; save(); toast(`Imported ${valid.length} sessions`); route();
+      db = { schema:SCHEMA, sessions:valid, profile:{ ...defaultProfile(), ...(src.profile||{}), setupDone:true }, nutrition:nut, supps:sup, weights:wts, belts:blt }; syncProfileRank(); save(); toast(`Imported ${valid.length} sessions`); route();
     }
   } catch(e) { console.warn(e); toast('That file isn\'t a valid backup'); }
   finally { const f = $('#impFile'); if (f) f.value = ''; }
@@ -1739,11 +1916,13 @@ function loadSample(){
   db.sessions = db.sessions.filter(s => !s.sample).concat(sessions.map(sanitizeSession));
   db.profile = { ...db.profile, setupDone:true, enabled:{ grappling:true, striking:true, weights:true, cardio:true, food:true, supps:true, weight:true } };
   db.weights = (db.weights||[]).filter(x => !x.sample).concat(sampleWeights());
+  if (!(db.belts||[]).some(x => !x.sample)) { db.belts = sampleBelts(); syncProfileRank(); }
   const nut = sampleNutrition(), names = new Set(db.nutrition.foods.map(f => f.name.toLowerCase()));
   const sup = sampleSupps(); db.supps = { items: db.supps.items.filter(i => !i.sample).concat(sup.items), log: db.supps.log.filter(l => !l.sample).concat(sup.log) };
-  db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample).concat(nut.entries), foods: db.nutrition.foods.filter(f => !f.sample).concat(nut.foods.filter(f => !names.has(f.name.toLowerCase()))) };
+  db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample).concat(nut.entries), foods: db.nutrition.foods.filter(f => !f.sample).concat(nut.foods.filter(f => !names.has(f.name.toLowerCase()))), water:(db.nutrition.water||[]).filter(x => !x.sample).concat(sampleWater()) };
+  if (!db.profile.waterGoal) db.profile = { ...db.profile, waterGoal:2840 };
   if (!db.profile.targets) db.profile = { ...db.profile, targets:{ cal:2300, p:190, c:220, f:75 } };
-  if (!db.profile.promotedOn) { db.profile = { ...db.profile, belt:'blue', stripes:2, promotedOn:iso(addDays(new Date(), -152)), goalWeight: db.profile.goalWeight || '195', sampleProfile:true }; }
+  if (!db.profile.sampleProfile && !db.profile.goalWeight) db.profile = { ...db.profile, goalWeight:'195', sampleProfile:true };
   if (!db.profile.startWeight && !(db.weights||[]).some(x => !x.sample)) db.profile = { ...db.profile, goalWeight: db.profile.goalWeight || String(Math.round(convW(195, 'lb', unit())*10)/10), startWeight: String(Math.round(convW(215, 'lb', unit())*10)/10), goalDate: db.profile.goalDate || iso(addDays(new Date(), 70)) };
   save(); toast(`Loaded ${sessions.length} sample sessions`); route();
 }
@@ -1759,14 +1938,22 @@ function sampleWeights(){
   }
   return out;
 }
+function sampleBelts(){
+  // white belt (4 stripes) to blue belt 1 stripe over ~3 years, Riverside BJJ
+  const d = n => iso(addDays(new Date(), -n));
+  return [[1150,'white',0,'Started BJJ'],[965,'white',1,''],[800,'white',2,''],[640,'white',3,'First competition the week before.'],[480,'white',4,''],[300,'blue',0,'Promoted at the end-of-year seminar.'],[115,'blue',1,'']]
+    .map(([n, belt, stripes, notes], i) => ({ id:'sb' + i, date:d(n), belt, stripes, instructor:'Prof. Ana Silva', academy:'Riverside BJJ', notes, createdAt:i + 1, sample:true }));
+}
 function removeSample(){
   const n = db.sessions.filter(s => s.sample).length;
+  db.belts = (db.belts||[]).filter(x => !x.sample);
   db.weights = (db.weights||[]).filter(x => !x.sample);
   db.sessions = db.sessions.filter(s => !s.sample);
-  db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample), foods: db.nutrition.foods.filter(f => !f.sample) };
+  db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample), foods: db.nutrition.foods.filter(f => !f.sample), water:(db.nutrition.water||[]).filter(x => !x.sample) };
   const sids = new Set(db.supps.items.filter(i => i.sample).map(i => i.id));
   db.supps = { items: db.supps.items.filter(i => !i.sample), log: db.supps.log.filter(l => !l.sample && !sids.has(l.itemId)) };
   if (db.profile.sampleProfile) db.profile = { ...defaultProfile(), unit:db.profile.unit };
+  syncProfileRank();
   save(); toast(`Removed ${n} sample sessions`); route();
 }
 
@@ -1789,7 +1976,10 @@ function goBack(parent){
     else { replacing = true; location.replace(parent); }
   }));
 }
+const TARGET_HINT = 'Used to track your progress on the Nutrition screen. You can change these anytime in Profile.';
+const TARGET_LABEL = { cal:'Daily calorie goal', p:'Daily protein goal (g)', c:'Daily carbs goal (g)', f:'Daily fat goal (g)' };
 function route(){
+  document.body.classList.remove('setup-mode');
   const hash = location.hash.replace(/^#/, '') || '/';
   // leaving a half-filled workout via the browser/iOS back gesture or a link: put the form back and ask first
   if (onForm() && curHash !== hash && formDirty()) {
@@ -1803,11 +1993,12 @@ function route(){
   updateNav();
   const [, a, b] = hash.split('/');
   curRoute = a || ''; curHash = hash;
-  const tab = { '':'home', history:'history', session:'history', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
+  const tab = { '':'home', history:'history', belts:'history', session:'history', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
   document.querySelectorAll('.tabbar a').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   if (a !== 'log' && a !== 'edit') form = (a === 'session' ? null : form && !form.id ? form : null);
   switch (a || '') {
     case 'history': viewHistory(); break;
+    case 'belts': viewBelts(); break;
     case 'session': viewSession(b); break;
     case 'log': viewForm(null); break;
     case 'edit': viewForm(b); break;
@@ -1818,7 +2009,9 @@ function route(){
     default: viewHome();
   }
   window.scrollTo(0, 0);
+  if (a === 'settings' && b === 'goals') { const g = $('#targetsCard'); if (g) g.scrollIntoView({ block:'start' }); }
 }
+window.DM_TEST = { diffYMD, fmtSpan, beltGroups };
 window.addEventListener('hashchange', route);
 // Bottom nav: always closes whatever is open (sheet or form) and goes to that screen.
 document.querySelector('.tabbar').addEventListener('click', e => {

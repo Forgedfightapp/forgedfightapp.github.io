@@ -19,10 +19,16 @@ ok('first-run screen shown on empty app', await page.locator('.welcome.setup').c
 await page.screenshot({ path:`${SHOTS}/00-first-run.png` });
 await page.locator('.tile[data-k="weights"]').tap();
 await page.locator('.tile[data-k="cardio"]').tap();
-await page.locator('#setupPro').fill('190');
+ok('first-run has no calorie/protein goal fields', await page.locator('#setupCal, #setupPro, #tgtWrap').count() === 0);
 await page.locator('#go').tap(); await page.waitForSelector('.statrow');
 let d = await db();
-ok('setup saves choices', d.profile.setupDone && d.profile.enabled.weights && d.profile.enabled.cardio && !d.profile.enabled.striking && !d.profile.enabled.supps && d.profile.targets.p === 190, JSON.stringify(d.profile.enabled));
+ok('setup saves choices', d.profile.setupDone && d.profile.enabled.weights && d.profile.enabled.cardio && !d.profile.enabled.striking && !d.profile.enabled.supps && !d.profile.targets, JSON.stringify(d.profile.enabled));
+ok('no goals set: Home nutrition card links to Profile goals', await page.locator('#nutriCard #setGoalsHome').count() === 1 && !(await page.locator('#nutriCard').innerText()).includes(' / '));
+await page.locator('#setGoalsHome').tap(); await page.waitForSelector('#targetsCard'); await page.waitForTimeout(200);
+ok('Set your goals opens the Profile goals section', await page.evaluate(() => location.hash) === '#/settings/goals' && await page.evaluate(() => { const r = document.querySelector('#targetsCard').getBoundingClientRect(); return r.top >= 0 && r.top < 400; }));
+await page.goto(BASE + '#/food'); await page.waitForSelector('.nutri-top');
+ok('no goals set: Food screen shows link instead of progress', await page.locator('.nutri-top #setGoals').count() === 1 && !(await page.locator('.nutri-top').innerText()).includes('left'));
+await page.goto(BASE); await page.waitForSelector('.statrow');
 ok('hidden section stays hidden (no supplements card)', await page.locator('#suppCard').count() === 0 && await page.locator('#nutriCard').count() === 1);
 ok('nav label plain', (await page.locator('.tabbar a[data-tab="food"] span').innerText()) === 'Food');
 ok('bottom nav has 5 items', await page.locator('.tabbar a').count() === 5);
@@ -182,7 +188,7 @@ const af = await db();
 const canon = v => Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => [k, canon(v[k])])) : v;
 const S = x => JSON.stringify(canon([...x.sessions].sort((a,b) => a.id.localeCompare(b.id))));
 if (S(af) !== S(b4)) { const A = canon(af.sessions), B = canon(b4.sessions); const bad = A.find(e => JSON.stringify(e) !== JSON.stringify(B.find(x => x.id === e.id))); console.log('DIFF', JSON.stringify(bad), JSON.stringify(B.find(x => x.id === bad?.id))); }
-ok('export/import round-trips all workout types', S(af) === S(b4) && af.schema === 3 && JSON.stringify(af.weights) === JSON.stringify(b4.weights), `${af.sessions.length}/${b4.sessions.length}`);
+ok('export/import round-trips all workout types', S(af) === S(b4) && af.schema === 4 && JSON.stringify(af.weights) === JSON.stringify(b4.weights), `${af.sessions.length}/${b4.sessions.length}`);
 await ctx.close();
 
 /* 10. schema v1 -> v2 migration (existing BJJ-only user) */
@@ -191,7 +197,7 @@ await page.goto(BASE);
 await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ sessions:[{ id:'old1', date:'2026-09-01', gi:'nogi', type:'open', duration:90, rounds:6, intensity:4, techniques:['Leg drag'], rolls:[{ id:'r1', partner:'Jake', result:'win', subsLanded:['Armbar'], subsTapped:[], stuck:[] }], weight:200, notes:'old', createdAt:1 }], profile:{ belt:'blue', stripes:1, unit:'lb' }, nutrition:{ entries:[], foods:[] } })); });
 await page.reload(); await page.waitForSelector('.statrow, .welcome'); await page.waitForTimeout(200);
 const m = await page.evaluate(() => ({ d:JSON.parse(localStorage.getItem('dm.bjj.v1')), b:localStorage.getItem('dm.bjj.v1.backup.v1') }));
-ok('v1 data migrates to schema 3 as Grappling/BJJ', m.d.schema === 3 && Array.isArray(m.d.weights) && m.d.sessions[0].category === 'grappling' && m.d.sessions[0].discipline === 'bjj' && m.d.sessions[0].rolls[0].subsLanded[0] === 'Armbar' && m.d.profile.belt === 'blue');
+ok('v1 data migrates to schema 4 as Grappling/BJJ', m.d.schema === 4 && Array.isArray(m.d.weights) && m.d.sessions[0].category === 'grappling' && m.d.sessions[0].discipline === 'bjj' && m.d.sessions[0].rolls[0].subsLanded[0] === 'Armbar' && m.d.profile.belt === 'blue');
 ok('pre-migration backup kept', !!m.b && JSON.parse(m.b).sessions[0].id === 'old1' && !JSON.parse(m.b).schema);
 ok('migrated user skips first-run', await page.locator('.welcome.setup').count() === 0 && await page.locator('.statrow').count() === 1);
 await page.goto(BASE + '#/session/old1'); await page.waitForSelector('#del');

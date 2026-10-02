@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -507,7 +507,7 @@ function ring(value, target, label, sub){
 }
 function macroBar(label, value, target, u, cls=''){
   const pct = target ? Math.min(100, value/target*100) : 0, over = target && value > target*1.05;
-  return `<div class="mbar ${cls}"><div class="t"><span>${esc(label)}</span><span><b>${r1(value)}</b> / ${target} ${u}</span></div><div class="b"><i class="${over?'over':''}" style="width:${pct}%"></i></div></div>`;
+  return `<div class="mbar ${cls}"><div class="t"><span>${esc(label)}</span><span><b>${u === 'kcal' ? Math.round(value) : r1(value)}</b> / ${target} ${u}</span></div><div class="b"><i class="${over?'over':''}" style="width:${pct}%"></i></div></div>`;
 }
 function macroSplit(t){
   const pc = t.p*4, cc = t.c*4, fc = t.f*9, sum = pc+cc+fc;
@@ -649,7 +649,7 @@ function foodForm({ id=null, meal=null, preset=null }){
   el.appendChild(btns);
   drawSugg(); drawTotal();
   openSheet(el);
-  if (!existing && !preset) setTimeout(() => name.focus({ preventScroll:true }), 50);
+  if (!existing && !preset) name.focus({ preventScroll:true }); // synchronous, inside the tap gesture (iOS only shows the keyboard then)
 }
 
 function savedFoodsSheet(){

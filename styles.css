@@ -254,3 +254,4 @@ details.more .grid3{padding-bottom:4px}
 .flist .list-row b{display:block}
 .flist small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .flist .grow{min-width:0}
+.ring text{stroke:none}

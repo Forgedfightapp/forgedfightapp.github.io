@@ -1,11 +1,11 @@
-/* Discipline > Motivation service worker: caches the app shell for offline use. */
-const CACHE = 'dm-shell-v2.3.0';
+/* Forged service worker: caches the app shell for offline use. */
+const CACHE = 'forged-shell-v3.0.0';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'icons/icon-maskable-192.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png', 'icons/favicon-32.png', 'icons/favicon-16.png',
-  'brand/wordmark-header.svg', 'brand/chevron_mark_transparent_1024.svg',
+  'brand/forged/wordmark-header.svg', 'brand/forged/wordmark.svg', 'brand/forged/BarlowCondensed-ExtraBold.ttf',
   'brand/fonts/Oswald.ttf', 'brand/fonts/Barlow-Regular.ttf', 'brand/fonts/Barlow-SemiBold.ttf'
 ];
 self.addEventListener('install', e => {

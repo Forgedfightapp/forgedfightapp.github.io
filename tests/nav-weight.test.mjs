@@ -225,7 +225,7 @@ await page.goto(BASE);
 await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ schema:2, sessions:[{ id:'a', date:'2026-09-20', category:'grappling', discipline:'bjj', gi:'gi', type:'class', duration:60, rounds:5, intensity:3, techniques:[], rolls:[], weight:200, notes:'', createdAt:1 }], profile:{ belt:'blue', goalWeight:'190', unit:'lb', setupDone:true, enabled:{ grappling:true, food:false, supps:false } }, nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] } })); });
 await page.reload(); await page.waitForSelector('#weightCard'); await settle(200);
 const mg = await page.evaluate(() => ({ d:JSON.parse(localStorage.getItem('dm.bjj.v1')), b:localStorage.getItem('dm.bjj.v1.backup.v2') }));
-ok('v2 → v4 migration: weights added, data kept, backup saved', mg.d.schema === 5 && Array.isArray(mg.d.weights) && mg.d.sessions.length === 1 && mg.d.profile.goalWeight === '190' && mg.d.profile.enabled.weight === true && !!mg.b && JSON.parse(mg.b).schema === 2);
+ok('v2 → v4 migration: weights added, data kept, backup saved', mg.d.schema === 6 && Array.isArray(mg.d.weights) && mg.d.sessions.length === 1 && mg.d.profile.goalWeight === '190' && mg.d.profile.enabled.weight === true && !!mg.b && JSON.parse(mg.b).schema === 2);
 ok('migrated user sees weight card from workout body weight', await wv('current') === '200' && await wv('goal') === '190');
 await ctx.close();
 

@@ -27,7 +27,7 @@ for (const [w, big] of [[390,false],[375,false],[375,true],[320,true]]) {
   await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); Object.keys(d.profile.enabled).forEach(k => d.profile.enabled[k] = true); d.profile.enabled.cardio = d.profile.enabled.weights = true; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
   await page.goto(BASE + '#/settings'); await page.waitForSelector('#targetsCard'); await settle(); await run('Profile (weight goal + nutrition goals)');
   if (w === 390 && !big) { await page.evaluate(() => { const t = document.querySelector('#toast'); if (t) t.style.display = 'none'; document.querySelector('#targetsCard').scrollIntoView({ block:'start' }); window.scrollBy(0, -320); }); await settle(); await page.screenshot({ path:`${SHOTS}/27-profile-goals-aligned.png` }); }
-  for (const c of ['grappling','cardio','weights']) {
+  for (const c of ['grappling','striking','mma','cardio','weights','mobility']) {
     await nav('#/log'); await page.waitForSelector('.cats');
     if (await page.locator('.sheet [data-ok]').count()) { await page.locator('.sheet [data-ok]').tap(); await settle(); }
     await page.locator(`.cats button[data-c="${c}"]`).tap(); await settle(150);

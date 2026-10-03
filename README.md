@@ -1,7 +1,7 @@
-# Discipline > Motivation — Training Log (PWA)
+# Forged — For the fight (PWA)
 
 Offline-first, iPhone-first training tracker. Vanilla JS, no build step, no CDNs. All data stays in
-`localStorage` (key `dm.bjj.v1`, schema 5; older data auto-migrates and backups are kept at `dm.bjj.v1.backup.v1` / `.backup.v2` / `.backup.v3` / `.backup.v4`; an unreadable store is copied to `dm.bjj.v1.unreadable` before starting fresh).
+`localStorage` (key `dm.bjj.v1`, schema 6; older data auto-migrates and backups are kept at `dm.bjj.v1.backup.v1` / `.backup.v2` / `.backup.v3` / `.backup.v4` / `.backup.v5`; the storage key is unchanged from the Discipline > Motivation releases, and old D>M backup files import fine; an unreadable store is copied to `dm.bjj.v1.unreadable` before starting fresh).
 
 ## Design priority: simple first
 - **Quick log**: Home → `+` → Save = 3 taps (category + last-used duration + today pre-filled). The Save button stays pinned above the nav. All other fields are always visible under a **Details (optional)** heading, with Notes right after the main type/technique fields, then the rest, ending with Intensity → Body weight → Import from device (GPX/TCX/FIT/CSV) → Heart rate.
@@ -21,7 +21,22 @@ Weigh-ins and workout body weight merge into one history (latest entry per day).
 progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
 projected goal date.
 
-## 2.3.0: BJJ, Weights, Cardio
+## 3.0.0: FORGED + six sports
+- **Rebrand: FORGED, "For the fight".** Anvil and orange/white flame mark, FORGED wordmark (Barlow Condensed ExtraBold, as outlines). Name/short_name
+  "Forged" in the title, manifest, apple title, header and first-run. The old Discipline > Motivation / Training Log copy is gone.
+- **Categories:** Grappling (Sport picker: BJJ default, Wrestling, Judo, Sambo, Submission grappling; Gi/No-Gi only for BJJ) · Striking (Boxing,
+  Muay Thai, Kickboxing, Karate/Taekwondo, Other) · MMA (rounds, round length, pad work/drilling/sparring/grappling rounds, striking *and* grappling
+  techniques, sparring partners) · Weights · Cardio (unchanged) · Mobility (Yoga, Stretching, Foam rolling, Mobility flow, Recovery/other; focus-area
+  chips: hips, hamstrings, shoulders, back, neck, ankles, full body). Belt tracking stays BJJ-only.
+- All six are in first-run "What you train", Profile → What I track, quick log / Log again, stats hours-by-category, history filters and sample data.
+  Sports you do not pick stay hidden.
+- Form order stays the same everywhere: type → techniques/focus → Notes → category fields → Intensity → Body weight → Import from device → Heart rate.
+  Quick log is still 3 taps (Mobility: duration + date).
+- **Striking comes back on its own.** Migrating to schema 6 (backup `.backup.v5`) moves every session from 2.3.0's `archive.striking` back into the
+  normal list, unchanged. Old striking sessions with the "MMA" style become the MMA category. Striking/MMA/Mobility get switched on during that one
+  migration only if you have sessions in them. Importing an old backup with an archive restores it the same way.
+
+## 2.3.0: BJJ, Weights, Cardio (superseded by 3.0.0)
 - Striking removed everywhere: first-run, "What I track", log form, quick log, dashboard/stats, history filters, sample data.
 - **Existing striking data is never deleted or converted.** On migration to schema 5 (backup `.backup.v4`), striking sessions move
   unchanged from `sessions` into `archive.striking`. They stay in storage, Export backup and Import (old backups are archived the same way);
@@ -53,7 +68,7 @@ and progress vs optional goal; a water line on the Home nutrition card. First-ru
 is hidden there, and every screen pads for nav + home-indicator inset.
 
 ## Features
-BJJ (gi/no-gi, rolls, subs, belt), Weights (sets × reps × weight, RPE, PRs/e1RM, volume),
+Grappling (BJJ gi/no-gi + belt, Wrestling, Judo, Sambo, Submission grappling; rolls, subs), Striking and MMA (rounds by type, sparring notes), Mobility, Weights (sets × reps × weight, RPE, PRs/e1RM, volume),
 Cardio (distance/time, pace/speed), heart rate + zones on all, GPX/TCX/FIT/CSV import, nutrition, supplements, JSON export/import, sample data.
 
 ## Run
@@ -65,10 +80,15 @@ Cardio (distance/time, pace/speed), heart rate + zones on all, GPX/TCX/FIT/CSV i
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 
-## Brand (v2.1.1)
-Approved 2026-10 logo: DISCIPLINE (white, Oswald Bold) › red chevron #DC141F › MOTIVATION (gray, Barlow) on #111.
-Final assets in `brand/` (copied from /workspace/dm-logo/final). Header uses `brand/wordmark-header.svg` (the transparent-light wordmark
-with padding trimmed). Icons are rendered from `brand/app_icon.svg`; the maskable icon (`brand/app_icon_maskable.svg`) shrinks the chevron to 86%
-so it sits inside the 40% safe-zone circle. Re-render: `node brand/render_svg.mjs brand/icon-jobs.json`; preview: `node brand/make_icon_preview.mjs`.
-Colors: `--brand #DC141F` (fills, white text on it 5.0:1), `--accent #F04A52` for small red text (5.2:1 on #111, ≥4.5:1 on all surfaces).
-Fonts Oswald/Barlow are bundled in `brand/fonts/` (SIL OFL) and used only for headings. Old boxed D > M marks live in `brand/legacy/` (unused).
+## Brand (3.0.0: FORGED)
+Assets live in `brand/forged/`: `forged-mark.svg` (icon mark), `wordmark.svg` (mark + FORGED + FOR THE FIGHT, text as outlines), `wordmark-text.svg`,
+`wordmark-light-bg.svg`, `wordmark-header.svg` (used in the header), `app_icon.svg` / `app_icon_maskable.svg` (mark inside the safe circle),
+`favicon.svg`, PNGs `icon-1024/512/192.png`, `icon-maskable-512/192.png`, `apple-touch-icon.png` (180), `favicon-32/16.png`, and `icon-preview.png`.
+Copies used by the manifest are in `icons/`. To regenerate: `python3 brand/forged/make_forged.py` → `node brand/forged/tools/tightsvg.mjs <pad> <svgs>` →
+`node brand/forged/tools/render.mjs brand/forged/icon-jobs.json` → `node brand/forged/tools/forgedprev.mjs` (Playwright needed).
+Colors on the near-black base `--bg #0B0B0C` (surfaces #161618 / #1F1F22):
+- `--brand` / `--accent-fill #F2711C` is the flame orange for fills, with dark text `--accent-ink #0B0B0C` on it (6.7:1). Primary buttons now use dark text on orange.
+- `--accent #F58A45` is for small orange text: 8.1:1 on the background, 7.4:1 / 6.7:1 on surfaces.
+- Tagline gray #9C9C9C is 7.2:1. `--danger` is now red #FF6B6B so it can't be mistaken for the accent.
+Fonts: Barlow Condensed ExtraBold (`brand/forged/`, SIL OFL) for headings; Oswald/Barlow are still in `brand/fonts/`.
+The old Discipline > Motivation assets (chevron, wordmarks, icons, scripts) moved to `brand/legacy/dm-2.x/` (unused).

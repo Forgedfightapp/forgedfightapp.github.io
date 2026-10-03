@@ -10,65 +10,68 @@ const page = await ctx.newPage(); page.on('pageerror', e => errors.push('pageerr
 const settle = (ms=300) => page.waitForTimeout(ms);
 const db = () => page.evaluate(() => JSON.parse(localStorage.getItem('dm.bjj.v1')));
 
-/* first-run + log form: only BJJ, Weights, Cardio */
+/* branding */
 await page.goto(BASE); await page.waitForSelector('#catTiles');
-const tiles = await page.locator('#catTiles .tile').evaluateAll(ts => ts.map(t => [t.dataset.k, t.querySelector('b').textContent, t.querySelector('small').textContent]));
-ok('first-run offers BJJ, Weights, Cardio only', JSON.stringify(tiles.map(t => t[1])) === '["BJJ","Weights","Cardio"]' && tiles[0][2] === 'Gi, No-Gi', JSON.stringify(tiles));
-await page.locator('.tile[data-k="weights"]').tap(); await page.locator('#go').tap(); await page.waitForSelector('.statrow');
+ok('title + manifest say Forged', (await page.title()) === 'Forged · For the fight' && (await page.evaluate(async () => (await (await fetch('manifest.webmanifest')).json()).short_name)) === 'Forged');
+ok('first-run shows the FORGED lockup; no Discipline > Motivation copy anywhere', await page.locator('.welcome img.lockup[src*="forged/wordmark.svg"]').count() === 1 && !/discipline|motivation|training log/i.test(await page.locator('body').innerText()));
+ok('accent is flame orange with dark ink', await page.evaluate(() => { const cs = getComputedStyle(document.documentElement); return cs.getPropertyValue('--brand').trim().toUpperCase() === '#F2711C' && cs.getPropertyValue('--accent-ink').trim().toUpperCase() === '#0B0B0C'; }));
+
+/* first-run: six sports, unused stay hidden */
+const tiles = await page.locator('#catTiles .tile').evaluateAll(ts => ts.map(t => t.querySelector('b').textContent));
+ok('first-run offers Grappling, Striking, MMA, Weights, Cardio, Mobility', JSON.stringify(tiles) === '["Grappling","Striking","MMA","Weights","Cardio","Mobility"]', JSON.stringify(tiles));
+await page.locator('.tile[data-k="mobility"]').tap(); await page.locator('#go').tap(); await page.waitForSelector('.statrow');
 await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); await settle();
-const cats = await page.locator('.cats button').evaluateAll(bs => bs.map(b => b.textContent.trim()));
-ok('log form: BJJ and Weights (no Striking); BJJ has Uniform but no Style picker', JSON.stringify(cats) === '["BJJ","Weights"]' && await page.locator('.field', { has:page.locator('label', { hasText:/^Uniform$/ }) }).count() === 1 && await page.locator('.field', { has:page.locator('label', { hasText:/^Style$/ }) }).count() === 0, JSON.stringify(cats));
+ok('log form shows only picked sports (Grappling + Mobility)', JSON.stringify(await page.locator('.cats button').evaluateAll(bs => bs.map(b => b.dataset.c))) === '["grappling","mobility"]');
+await page.locator('.cats button[data-c="grappling"]').tap(); await settle(150);
+const sports = await page.locator('.field', { has:page.locator('label', { hasText:/^Sport$/ }) }).locator('button').allTextContents();
+ok('Grappling sport picker: BJJ default, Wrestling, Judo, Sambo, Submission grappling; Gi/No-Gi for BJJ', JSON.stringify(sports) === '["BJJ","Wrestling","Judo","Sambo","Submission grappling"]' && (await page.locator('.field', { has:page.locator('label', { hasText:/^Sport$/ }) }).locator('button.on').textContent()) === 'BJJ' && await page.locator('.field', { has:page.locator('label', { hasText:/^Uniform$/ }) }).count() === 1);
 await page.goto(BASE + '#/settings'); await settle();
 const secs = await page.locator('input[data-sec]').evaluateAll(is => is.map(i => i.dataset.sec));
-ok('"What I track": no Striking toggle', !secs.includes('striking') && secs.includes('grappling') && secs.includes('cardio'), JSON.stringify(secs));
+ok('"What I track" lists all six sports', ['grappling','striking','mma','weights','cardio','mobility'].every(k => secs.includes(k)), JSON.stringify(secs));
 
-/* v4 data with striking sessions: archived untouched, not lost, no crash */
+/* v5 (2.3.0) data with archived striking: sessions come back, MMA-style ones become MMA */
 const strike1 = { id:'s1', date:'2026-09-10', category:'striking', discipline:'muaythai', type:'class', duration:60, rounds:10, intensity:4, techniques:['Teep'], notes:'Pads', weight:'', rolls:[], strike:{ roundLen:3, mix:{ shadow:2, pads:4, bag:2, drills:0, sparring:2 }, spar:[{ partner:'Mo', notes:'Check kicks' }] }, hr:{ avg:150, max:180, cal:600, zones:[1,2,3,4,0] }, sample:false, createdAt:1 };
-const strike2 = { ...strike1, id:'s2', date:'2026-09-17', discipline:'boxing', strike:{ ...strike1.strike, spar:[] } };
+const strikeMma = { ...strike1, id:'s2', date:'2026-09-17', discipline:'mma', strike:{ ...strike1.strike, spar:[] } };
 const bjj = { id:'g1', date:'2026-09-12', category:'grappling', discipline:'bjj', gi:'nogi', type:'class', duration:75, rounds:5, intensity:3, techniques:[], notes:'', weight:'', rolls:[], sample:false, createdAt:2 };
-const wrest = { ...bjj, id:'g2', date:'2026-09-14', discipline:'wrestling' };
-const v4 = { schema:4, sessions:[strike1, bjj, strike2, wrest], profile:{ name:'', belt:'white', stripes:0, unit:'lb', distUnit:'mi', setupDone:true, enabled:{ grappling:true, striking:true, weights:false, cardio:false, food:false, supps:false } }, nutrition:{ entries:[], foods:[], water:[] }, supps:{ items:[], log:[] }, weights:[], belts:[] };
-await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }, v4);
-await page.goto(BASE + '#/'); await page.reload(); await page.waitForSelector('.statrow'); await settle(400);
-let d = await db(), b = await page.evaluate(() => localStorage.getItem('dm.bjj.v1.backup.v4'));
-ok('v4 → v5: striking sessions moved untouched to archive (not deleted, not converted)', d.schema === 5 && d.sessions.length === 2 && d.sessions.every(s => s.category === 'grappling') && JSON.stringify(d.archive.striking) === JSON.stringify([strike1, strike2]), JSON.stringify(d.archive));
-ok('v4 backup kept', !!b && JSON.parse(b).sessions.length === 4);
-ok('striking toggle removed from profile settings', !('striking' in d.profile.enabled));
+const v5 = { schema:5, sessions:[bjj], archive:{ striking:[strike1, strikeMma] }, profile:{ name:'', belt:'white', stripes:0, unit:'lb', distUnit:'mi', setupDone:true, enabled:{ grappling:true, weights:false, cardio:false, food:false, supps:false } }, nutrition:{ entries:[], foods:[], water:[] }, supps:{ items:[], log:[] }, weights:[], belts:[] };
+await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }, v5);
+await page.goto(BASE + '#/'); await page.reload(); await page.waitForSelector('.statrow',{timeout:5000}).catch(()=>{console.log('ERR',errors, page.url())}); await settle(400);
+let d = await db();
+const back1 = d.sessions.find(s => s.id === 's1'), back2 = d.sessions.find(s => s.id === 's2');
+ok('v5 → v6: archived striking sessions are back in the normal list, unchanged', d.schema === 6 && !d.archive && d.sessions.length === 3 && JSON.stringify(back1) === JSON.stringify(strike1), JSON.stringify(d.sessions.map(s => [s.id, s.category])));
+ok('old striking "MMA" style session becomes the MMA category (data kept)', back2.category === 'mma' && back2.strike.mix.pads === 4 && back2.notes === 'Pads');
+ok('Striking and MMA switched on because they have sessions; Mobility stays off', d.profile.enabled.striking === true && d.profile.enabled.mma === true && d.profile.enabled.mobility === false);
+ok('v5 backup kept', !!(await page.evaluate(() => localStorage.getItem('dm.bjj.v1.backup.v5'))));
 await page.goto(BASE + '#/history'); await settle(400);
-const hist = await page.locator('#view').innerText();
-ok('history: striking hidden, filters have no Striking; legacy wrestling still shown', !/Muay|Boxing|Striking/.test(hist) && /Wrestling/.test(hist) && await page.locator('.sess').count() === 2, hist.slice(0, 200));
-await page.goto(BASE + '#/stats'); await settle(400);
-ok('stats render without striking', !/Striking|Muay/.test(await page.locator('#view').innerText()));
-await page.goto(BASE + '#/session/g2'); await settle(300);
-const detailTxt = await page.locator('body').innerText();
-await page.goto(BASE + '#/edit/g2'); await page.waitForSelector('.cats'); await settle(300);
-ok('legacy wrestling session opens; editing keeps its style', /wrestling/i.test(detailTxt) && (await page.locator('.field', { has:page.locator('label', { hasText:/^Style$/ }) }).locator('button.on').textContent()) === 'Wrestling');
-await page.goto(BASE + '#/'); await settle(200);
-await page.goto(BASE + '#/settings'); await page.waitForSelector('#archNote');
-ok('Profile notes the archived sessions', (await page.locator('#archNote').textContent()).startsWith('2 striking sessions from an earlier version are kept on this device and included in Export backup'));
-await page.locator('#archNote').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, 150)); await settle();
-await page.screenshot({ path:`${SHOTS}/31-archived-striking-note.png` });
+ok('history shows the restored sessions', /muay thai/i.test(await page.locator('#view').innerText()) && await page.locator('.sess').count() === 3);
+// user turns striking off again: it must stay off on reload (no re-enable on every load)
+await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); d.profile.enabled.striking = false; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
+await page.reload(); await page.waitForSelector('#view .sess'); await settle(300);
+ok('turning a sport off sticks across reloads', (await db()).profile.enabled.striking === false);
+/* importing a 2.3.0 backup file restores its archived striking sessions too */
+fs.writeFileSync('/tmp/catmig-v5.json', JSON.stringify({ app:'discipline-motivation', version:'2.3.0', ...v5 }));
+await page.goto(BASE + '#/settings'); await settle(300);
+await page.setInputFiles('#impFile', '/tmp/catmig-v5.json'); await page.locator('.sheet [data-ok]').tap(); await settle(400);
+d = await db(); ok('importing an old D>M (2.3.0) backup works and un-archives striking', d.sessions.length === 3 && d.sessions.some(s => s.category === 'striking') && d.sessions.some(s => s.category === 'mma') && !d.archive);
+/* export from 3.0 */
 const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#exp').tap()]);
 const path = '/tmp/catmig-export.json'; await dl.saveAs(path); const exp = JSON.parse(fs.readFileSync(path, 'utf8'));
-ok('export includes the archived striking sessions', exp.schema === 5 && exp.archive.striking.length === 2 && exp.sessions.length === 2);
-await page.locator('#clr').tap(); await page.locator('.sheet [data-ok]').tap(); await settle(400);
-d = await db(); ok('clear data clears the archive too', !d.archive?.striking?.length && d.sessions.length === 0);
-await page.goto(BASE + '#/settings'); await settle(300);
-await page.setInputFiles('#impFile', path); await page.locator('.sheet [data-ok]').tap(); await settle(400);
-d = await db(); ok('import restores the archive', d.archive.striking.length === 2 && d.sessions.length === 2 && JSON.stringify(d.archive.striking[0]) === JSON.stringify(strike1));
-// an old (v4) backup file with striking in sessions also lands in the archive
-fs.writeFileSync('/tmp/catmig-v4.json', JSON.stringify(v4));
-await page.goto(BASE + '#/settings'); await settle(300);
-await page.setInputFiles('#impFile', '/tmp/catmig-v4.json'); await page.locator('.sheet [data-ok]').tap(); await settle(400);
-d = await db(); ok('importing an old backup archives its striking sessions', d.sessions.length === 2 && d.archive.striking.length === 2 && !d.sessions.some(s => s.category === 'striking'));
-// sample data has no striking
-await page.goto(BASE + '#/settings'); await settle(300); await page.locator('#ldS').tap(); await settle(500);
-d = await db(); ok('sample data: no striking, only BJJ/Weights/Cardio', !d.sessions.some(s => s.category === 'striking') && new Set(d.sessions.filter(s => s.sample).map(s => s.category)).size === 3 && d.sessions.filter(s => s.category === 'grappling' && s.sample).every(s => s.discipline === 'bjj'));
+ok('export: app forged, schema 6, all sessions, no archive', exp.app === 'forged' && exp.schema === 6 && exp.sessions.length === 3 && !exp.archive);
+ok('storage key unchanged (dm.bjj.v1)', await page.evaluate(() => !!localStorage.getItem('dm.bjj.v1')));
+/* sample data covers every category */
+await page.locator('#ldS').tap(); await settle(500);
+d = await db(); const cats = new Set(d.sessions.filter(s => s.sample).map(s => s.category));
+ok('sample data: grappling, striking, MMA, weights, cardio, mobility', ['grappling','striking','mma','weights','cardio','mobility'].every(c => cats.has(c)), JSON.stringify([...cats]));
 await page.goto(BASE + '#/history'); await settle(400);
 const filt = await page.locator('.filters button, .filters a').evaluateAll(xs => xs.map(x => x.textContent.trim()));
-ok('history filters: BJJ, Weights, Cardio (+Gi/No-Gi), no Striking', !filt.includes('Striking') && filt.includes('BJJ') && filt.includes('Gi'), JSON.stringify(filt));
+ok('history filters include all six sports + Gi/No-Gi', ['Grappling','Striking','MMA','Weights','Cardio','Mobility','Gi','No-Gi'].every(x => filt.includes(x)), JSON.stringify(filt));
+await page.locator('.filters button, .filters a', { hasText:/^Mobility$/ }).first().tap(); await settle(300);
+ok('Mobility filter shows only mobility sessions', await page.locator('.sess').count() > 0 && (await page.locator('.sess').evaluateAll(xs => xs.every(x => /yoga|stretching|foam rolling|mobility flow|recovery/i.test(x.innerText)))));
+await page.goto(BASE + '#/stats'); await page.waitForSelector('#catCard'); await settle(300);
+const st = await page.locator('#catCard').innerText();
+ok('stats hours-by-category include MMA and Mobility', /MMA/.test(st) && /Mobility/.test(st) && /Striking/.test(st));
 await page.goto(BASE + '#/'); await settle(300);
-ok('quick log has no striking entries', !/Muay|Striking|Boxing/.test(await page.locator('.quick').innerText()));
+ok('belt card still shown (BJJ)', await page.locator('#beltCard').count() === 1);
 ok('no console errors', errors.length === 0, JSON.stringify(errors));
 console.log(results.join('\n'));
 await browser.close();

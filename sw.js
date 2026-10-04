@@ -1,11 +1,11 @@
 /* Forged service worker: caches the app shell for offline use. */
-const CACHE = 'forged-shell-v3.1.0';
+const CACHE = 'forged-shell-v3.2.0';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'programs.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'icons/icon-maskable-192.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png', 'icons/favicon-32.png', 'icons/favicon-16.png',
-  'brand/forged/wordmark-header.svg', 'brand/forged/wordmark.svg', 'brand/forged/BarlowCondensed-ExtraBold.ttf',
+  'brand/forged/wordmark-header.svg', 'brand/forged/wordmark.svg', 'brand/forged/forged-mark.svg', 'brand/forged/BarlowCondensed-ExtraBold.ttf',
   'brand/fonts/Oswald.ttf', 'brand/fonts/Barlow-Regular.ttf', 'brand/fonts/Barlow-SemiBold.ttf'
 ];
 self.addEventListener('install', e => {

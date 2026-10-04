@@ -21,6 +21,17 @@ Weigh-ins and workout body weight merge into one history (latest entry per day).
 progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
 projected goal date.
 
+## 3.2.0: challenges, ranks, badges, looks, share cards, belt + stripe dates
+- **Challenges** (Home shows only the rank chip + one challenge; See all → `#/challenges`): 3 daily, 3 weekly, 3 monthly (one easy/medium/hard each), picked deterministically from the date + your enabled sports. Progress comes from logged workouts; entries backfilled more than 7 days later do not count toward challenges.
+- **XP, levels, ranks** (`#/rank`): 10 XP per workout (max 30/day), +20 per week continuing a streak, +25 per PR (est. 1RM beats your previous best), +50 per strength goal hit, +100 per monthly goal hit, plus challenge XP (daily 30/50/75, weekly 100/150/200, monthly 300/400/500). Level curve: level L needs 100·L·(L−1) XP. Ranks: Apprentice 1, Striker 5, Journeyman 10, Smith 15, Blacksmith 20, Master Smith 25, Forgemaster 30, Forged 35. XP is recomputed from your history, so existing users start at the rank they have already earned (recorded silently, no fake rank-up).
+- **Pro week**: reaching Master Smith grants 7 days of Pro once (`game.proUntil`). Everything is still free in this build.
+- **Badges** (`#/badges`): 20, locked ones show how to earn them. **Looks** (Profile → Rank, badges & looks): accent colours, share-card frames and rank flair, unlocked by rank and badges.
+- **Share cards**: canvas PNG, square 1080×1080 or story 1080×1920, with a Show numbers toggle. Uses Web Share with files when available, otherwise downloads the image. Available for sessions, goal hits, rank-ups, challenges, streaks and monthly rings.
+- **Friend challenge links** (no server): `#/join/<code>` carries the challenge in the URL; progress is tracked locally from each person's own workouts. `window.ForgedSync` is the seam for future sync (see `docs/social-plan.md`).
+- **BJJ belt + stripe events**: belt promotions and stripe promotions are separate dated entries ("Belt earned" / "Stripe earned", default today, backdatable). The Belt card and History → Belts show current belt + stripes, time at belt, time since last stripe and a timeline. A new belt resets stripes to 0; "+ Add missing stripe N date" fills gaps; tap any entry to edit or delete. Older entries are migrated: a stripe-count change under the same belt becomes a stripe event; a belt entry that started with stripes gets stripe events marked "date not recorded".
+- Monthly workout goal helper text now reads "Total workouts per month, any type (BJJ, weights, cardio, etc.). Fills the ring on Home."
+- No real-world rewards and no social feed. `docs/social-plan.md` covers the future accounts/backend plan (recommendation: Supabase).
+
 ## 3.1.0: training features, goals, onboarding
 - **Onboarding (2 steps)**: Step 1 of 2 *What do you train?*; Step 2 of 2 *Set your goals* shows only what applies: daily calories/protein/carbs/fat/water (Food on; protein hint 0.8–1 g per lb), current/goal weight + date (Weight goal on), strength goals (Weights on), monthly workout target, usual training days per chosen sport, optional next competition. Every field optional; *Done*, *Skip for now*, Back to step 1. Goals stay editable in Profile.
 - **Set goal links** (Food screen, water card, Home nutrition/weight/week cards) first ask *Leave this page? You'll go to Profile to set your goals.* (Cancel / Go to goals) and warn when unsaved input (half-filled food entry or workout) will be discarded. Profile then shows *← Back to <page>*.
@@ -95,7 +106,7 @@ On every release, bump `APP_VERSION` in `app.js` **and** the `CACHE` name in `sw
     ./restart-preview.sh                            # optional: server + Cloudflare quick tunnel (temporary preview URL, changes on restart)
 
 ## Tests (Playwright, iPhone 13 emulation)
-`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
+`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/game.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 

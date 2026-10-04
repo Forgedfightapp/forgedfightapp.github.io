@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.2.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -24,7 +24,7 @@ const INTENSITY = ['', 'Light','Easy','Moderate','Hard','All-out'];
 const SCHEMA = 7;
 const defaultProfile = () => ({ name:'', belt:'white', stripes:0, promotedOn:'', goalWeight:'', startWeight:'', goalDate:'', unit:'lb', distUnit:'mi', maxHR:'', sampleProfile:false, setupDone:false, schedule:{}, challengeTarget:8,
   enabled:{ grappling:true, striking:false, mma:false, weights:false, cardio:false, mobility:false, food:true } });
-const emptyDb = () => ({ schema:SCHEMA, sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[], water:[] }, weights:[], belts:[], comps:[], benchmarks:[], strength:[], injuries:[], challenges:[], program:null });
+const emptyDb = () => ({ schema:SCHEMA, sessions:[], profile:defaultProfile(), nutrition:{ entries:[], foods:[], water:[] }, weights:[], belts:[], comps:[], benchmarks:[], strength:[], game:sanitizeGame(null), injuries:[], challenges:[], program:null });
 /* 2.3.0 archived striking sessions (archive.striking); 3.0.0 brings striking back, so they return to the normal session
    list unchanged. Old striking sessions whose style was "MMA" become the new MMA category (all their data kept). */
 function dropArchive(d, k){ if (!d.archive) return; delete d.archive[k]; if (!Object.keys(d.archive).length) delete d.archive; }
@@ -103,8 +103,8 @@ function migrate(d){
 }
 function load(){
   try{
-    let d = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (d && Array.isArray(d.sessions)) { const before = d.schema; d = migrate(d); if (before !== d.schema) setTimeout(() => { try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch(e){} }, 0);
+    let d = JSON.parse(lastRaw = localStorage.getItem(STORE_KEY));
+    if (d && Array.isArray(d.sessions)) { const before = d.schema, oldBelts = (d.belts||[]).some(x => x && !x.kind); d = migrate(d); if (before !== d.schema || oldBelts) setTimeout(() => { try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch(e){} }, 0);
       return { schema:d.schema, sessions:d.sessions, profile:{...defaultProfile(), ...(d.profile||{})}, nutrition:{ entries:d.nutrition?.entries||[], foods:d.nutrition?.foods||[], water:sanitizeWater(d.nutrition?.water) }, weights:sanitizeWeights(d.weights), belts:sanitizeBelts(d.belts), ...extrasOf(d) }; }
   }catch(e){ console.warn('Could not read saved data', e);
     // never silently lose data: keep the unreadable copy before starting fresh
@@ -112,8 +112,10 @@ function load(){
   return emptyDb();
 }
 let db; // loaded just before the first render (after every helper is defined)
+let lastRaw = null; // what this tab last read/wrote, so background saves never clobber changes made elsewhere
+const saveDb = () => save();
 function save(){
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
+  try { localStorage.setItem(STORE_KEY, lastRaw = JSON.stringify(db)); }
   catch(e){ toast('Storage full or unavailable'); console.warn(e); }
 }
 
@@ -471,11 +473,26 @@ function hbars(rows, cls){
 /* ---------------- belt & stripe promotion history ---------------- */
 function beltOf(k){ return BELTS.find(x => x[0] === k) || BELTS[0]; }
 function maxStripes(belt){ return belt === 'black' ? 6 : 4; }
+/* 3.2.0: belt history is a list of dated events: kind 'belt' (belt earned, stripes reset to 0) or kind 'stripe' (stripe/degree n earned
+   at that belt). Older entries were rank snapshots; they migrate here: same belt with a changed stripe count = stripe event, otherwise a
+   belt event. A belt that starts with stripes already on it gets its belt event plus stripe events on the same date (marked approx). */
 function sanitizeBelts(list){
-  return (Array.isArray(list) ? list : []).filter(x => x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.date)) && BELTS.some(b => b[0] === x.belt))
+  const base = (Array.isArray(list) ? list : []).filter(x => x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.date)) && BELTS.some(b => b[0] === x.belt))
     .map(x => ({ id:String(x.id || ('b' + Date.now().toString(36) + Math.random().toString(36).slice(2,8))), date:String(x.date), belt:x.belt,
-      stripes:Math.max(0, Math.min(maxStripes(x.belt), Math.round(Number(x.stripes) || 0))), instructor:String(x.instructor||''), academy:String(x.academy||''), notes:String(x.notes||''),
-      createdAt:Number(x.createdAt) || 0, ...(x.sample ? { sample:true } : {}) }));
+      stripes:Math.max(0, Math.min(maxStripes(x.belt), Math.round(Number(x.stripes) || 0))), ...(x.kind === 'belt' || x.kind === 'stripe' ? { kind:x.kind } : {}),
+      instructor:String(x.instructor||''), academy:String(x.academy||''), notes:String(x.notes||''),
+      createdAt:Number(x.createdAt) || 0, ...(x.approx ? { approx:true } : {}), ...(x.sample ? { sample:true } : {}) }));
+  if (base.every(x => x.kind)) return base.map(x => x.kind === 'belt' ? { ...x, stripes:0 } : { ...x, stripes:Math.max(1, x.stripes) });
+  const sorted = base.slice().sort((a,b) => a.date.localeCompare(b.date) || (a.createdAt||0) - (b.createdAt||0)), out = [];
+  let prev = null;
+  sorted.forEach(e => {
+    if (e.kind) { out.push(e.kind === 'belt' ? { ...e, stripes:0 } : { ...e, stripes:Math.max(1, e.stripes) }); prev = e; return; }
+    if (prev && prev.belt === e.belt) { if (e.stripes !== prev.stripes && e.stripes > 0) out.push({ ...e, kind:'stripe' }); else if (e.stripes !== prev.stripes) out.push({ ...e, kind:'belt' }); else out.push({ ...e, kind:'stripe', stripes:Math.max(1, e.stripes) }); }
+    else { out.push({ ...e, kind:'belt', stripes:0 });
+      for (let n = 1; n <= e.stripes; n++) out.push({ ...e, id:`${e.id}-s${n}`, kind:'stripe', stripes:n, approx:true, notes:'Stripe date not recorded. Tap to set it.', createdAt:(e.createdAt||0) + n / 10 }); }
+    prev = e;
+  });
+  return out;
 }
 /* months added with the day clamped to the month's end (Jan 31 + 1 mo = Feb 28/29) */
 function addMonthsClamp(d, n){ const y = d.getFullYear(), m = d.getMonth() + n, last = new Date(y, m + 1, 0).getDate(); return new Date(y, m, Math.min(d.getDate(), last)); }
@@ -493,10 +510,17 @@ function fmtSpan(x){
   if (x.m) return `${x.m} mo${x.d ? ` ${x.d} d` : ''}`;
   return `${x.d} d`;
 }
-const beltHistory = () => [...(db.belts||[])].sort((a,b) => a.date.localeCompare(b.date) || (a.createdAt||0) - (b.createdAt||0));
-const currentRank = () => { const h = beltHistory(); return h.length ? h[h.length-1] : null; };
+const beltHistory = () => [...(db.belts||[])].sort((a,b) => a.date.localeCompare(b.date) || (a.kind === 'belt' ? 0 : 1) - (b.kind === 'belt' ? 0 : 1) || a.stripes - b.stripes || (a.createdAt||0) - (b.createdAt||0));
+/* current rank: latest belt event + the highest stripe earned at that belt since; dates for "time at belt" and "since last stripe" */
+const currentRank = () => { const h = beltHistory(); if (!h.length) return null;
+  const be = [...h].reverse().find(e => e.kind === 'belt') || h[0], st = h.filter(e => e.kind === 'stripe' && e.belt === be.belt && e.date >= be.date);
+  const top = st.reduce((a, e) => !a || e.stripes > a.stripes || (e.stripes === a.stripes && e.date > a.date) ? e : a, null), last = st.reduce((a, e) => !a || e.date > a.date ? e : a, null);
+  return { ...be, stripes:top ? top.stripes : 0, date:last ? last.date : be.date, beltDate:be.date, lastStripe:last ? last.date : null, sample:be.sample }; };
+const fmtYM = x => x.y ? `${x.y} yr${x.y > 1 ? 's' : ''} ${x.m} mo${x.m === 1 ? '' : 's'}` : x.m ? `${x.m} mo${x.m === 1 ? '' : 's'}` : `${x.d} day${x.d === 1 ? '' : 's'}`;
+const stripeWord = (belt, n) => belt === 'black' ? `${n}${['','st','nd','rd'][n] || 'th'} degree` : `Stripe ${n}`;
+const eventLabel = e => e.kind === 'stripe' ? `${stripeWord(e.belt, e.stripes)} earned` : `${beltOf(e.belt)[1]} belt earned`;
 const rankLabel = (e, short) => e.stripes ? (e.belt === 'black' ? `${e.stripes}${['','st','nd','rd'][e.stripes] || 'th'} degree` : `${e.stripes} stripe${e.stripes > 1 ? 's' : ''}`) : (short ? 'No stripes' : `Promoted to ${beltOf(e.belt)[1].toLowerCase()} belt`);
-function syncProfileRank(){ const c = currentRank(); db.profile = { ...db.profile, belt:c ? c.belt : 'white', stripes:c ? c.stripes : 0, promotedOn:c ? c.date : '' }; }
+function syncProfileRank(){ const c = currentRank(); db.profile = { ...db.profile, belt:c ? c.belt : 'white', stripes:c ? c.stripes : 0, promotedOn:c ? c.beltDate : '' }; }
 /* mat time logged in [from, to) (to inclusive when it is today) */
 function matIn(from, to, inclusive){ const ss = db.sessions.filter(s => catOf(s) === 'grappling' && s.date >= from && (inclusive ? s.date <= to : s.date < to)); return { n:ss.length, min:ss.reduce((a,s) => a + (Number(s.duration)||0), 0) }; }
 /* consecutive entries at the same belt form one group; a group runs until the next belt's first entry (or today) */
@@ -533,11 +557,11 @@ const beltEmpty = () => `<div class="belt empty-belt">${beltSVG('white', 0, 'lg'
 function beltCard(){
   const cur = currentRank();
   if (!cur) return `<div class="card" id="beltCard"><h2>Belt</h2>${beltEmpty()}<button type="button" class="btn primary block" data-promo>Log promotion</button></div>`;
-  const g = beltGroups(), cg = g[g.length-1], b = beltOf(cur.belt), sinceLast = diffYMD(cur.date, today()), m = matIn(cur.date, today(), true);
-  const stripeLine = cur.date === cg.start ? `<span>Last stripe <b>none yet</b></span>` : `<span>Since last ${cur.belt === 'black' ? 'degree' : 'stripe'} <b data-b="since">${fmtSpan(sinceLast)}</b></span>`;
+  const b = beltOf(cur.belt), atBelt = diffYMD(cur.beltDate, today()), m = matIn(cur.date, today(), true), sw = cur.belt === 'black' ? 'degree' : 'stripe';
   return `<div class="card tappable" id="beltCard" data-href="#/belts"><h2>${esc(b[1])} belt${cur.stripes ? ` · ${rankLabel(cur)}` : ''} ${cur.sample ? '<span class="pill sample">Sample</span>' : ''}<a class="lnk" href="#/belts">Timeline ›</a></h2>
     <div class="belt">${beltBar(cur.belt, cur.stripes)}</div>
-    <div class="belt-meta"><span>At ${esc(b[1].toLowerCase())} belt <b data-b="rank">${fmtSpan(cg.span)}</b></span>${stripeLine}</div>
+    <div class="belt-meta"><span>Time at belt <b data-b="rank">${fmtYM(atBelt)}</b></span><span>Time since last ${sw} <b data-b="since">${cur.lastStripe ? fmtYM(diffYMD(cur.lastStripe, today())) : `no ${sw}s yet`}</b></span></div>
+    <div class="belt-meta" style="margin-top:4px"><span>Belt earned <b data-b="beltdate">${fmtShort(cur.beltDate)}</b></span>${cur.lastStripe ? `<span>Last ${sw} <b data-b="stripedate">${fmtShort(cur.lastStripe)}</b></span>` : ''}</div>
     <div class="belt-meta" style="margin-top:4px"><span><b>${m.n}</b> session${m.n === 1 ? '' : 's'} · <b>${hrs(m.min)}</b> h since last promotion</span></div>
     <button type="button" class="btn block" data-promo style="margin-top:12px">Log promotion</button></div>`;
 }
@@ -545,6 +569,7 @@ function wireBelt(root){
   root.querySelectorAll('[data-promo]').forEach(x => x.onclick = e => { e.stopPropagation(); promoSheet(null); });
   const c = root.querySelector('#beltCard.tappable'); if (c) c.onclick = e => { if (!e.target.closest('a,button')) go('#/belts'); };
   root.querySelectorAll('[data-pid]').forEach(x => x.onclick = () => promoSheet(x.dataset.pid));
+  root.querySelectorAll('[data-addstripe]').forEach(x => x.onclick = e => { e.stopPropagation(); promoSheet(null, { kind:'stripe', belt:x.dataset.addstripe, stripes:Number(x.dataset.n) || 1 }); });
 }
 /* the next likely promotion, so logging is usually just "Log promotion" -> "Save" */
 function nextRank(cur){
@@ -554,41 +579,51 @@ function nextRank(cur){
   const ai = ADULT_BELTS.indexOf(cur.belt), ki = KIDS_BELTS.indexOf(cur.belt);
   return { belt: ai >= 0 ? ADULT_BELTS[ai+1] : KIDS_BELTS[ki+1] || 'blue', stripes:0 };
 }
-function promoSheet(id){
-  const ex = id ? db.belts.find(x => x.id === id) : null;
-  const f = ex ? { ...ex } : { ...nextRank(currentRank()), date:today(), instructor:currentRank()?.instructor || '', academy:currentRank()?.academy || '', notes:'' };
+/* missing stripe numbers at a belt (e.g. stripes 1 and 3 logged, 2 missing) */
+function missingStripes(belt){ const have = new Set((db.belts||[]).filter(e => e.kind === 'stripe' && e.belt === belt).map(e => e.stripes)), top = Math.max(0, ...have); return Array.from({ length:top }, (_, i) => i + 1).filter(n => !have.has(n)); }
+function promoSheet(id, preset){
+  const ex = id ? db.belts.find(x => x.id === id) : null, cur = currentRank(), nx = nextRank(cur);
+  const f = ex ? { ...ex } : preset ? { instructor:cur?.instructor || '', academy:cur?.academy || '', notes:'', date:today(), ...preset }
+    : { kind: cur && nx.belt === cur.belt ? 'stripe' : 'belt', belt:nx.belt, stripes: cur && nx.belt === cur.belt ? nx.stripes : 0, date:today(), instructor:cur?.instructor || '', academy:cur?.academy || '', notes:'' };
+  if (!f.kind) f.kind = f.stripes ? 'stripe' : 'belt';
   let kids = KIDS_BELTS.includes(f.belt);
-  const el = h(`<div><h3>${ex ? 'Edit promotion' : 'Log promotion'}</h3>
-    <div class="field"><label>Belt</label><div class="beltpick" id="beltPick"></div><button type="button" class="btn sm ghost" id="kidsT" style="margin-top:8px">Kids belts</button></div>
+  const el = h(`<div><h3>${ex ? (ex.kind === 'stripe' ? 'Edit stripe' : 'Edit belt') : 'Log promotion'}</h3>
+    <div class="field" id="kindF"></div>
+    <div class="field"><label id="beltLbl">Belt</label><div class="beltpick" id="beltPick"></div><button type="button" class="btn sm ghost" id="kidsT" style="margin-top:8px">Kids belts</button></div>
     <div class="field" id="stripeF"></div>
-    <div class="field"><label>Date</label><input class="input" type="date" id="pDate" max="${today()}" value="${esc(f.date)}"></div>
-    <details class="details" ${ex && (ex.instructor || ex.academy || ex.notes) ? 'open' : ''}><summary><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add details <small>optional</small></summary><div class="det-body">
+    <div class="field"><label id="dateLbl">Belt earned</label><input class="input" type="date" id="pDate" max="${today()}" value="${esc(f.approx ? '' : f.date)}"><div class="hint" id="dateHint">Defaults to today. Pick an earlier date to add a past promotion.</div></div>
+    <details class="details" ${ex && (ex.instructor || ex.academy || (ex.notes && !ex.approx)) ? 'open' : ''}><summary><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add details <small>optional</small></summary><div class="det-body">
       <div class="field"><label>Instructor</label><input class="input" id="pInst" autocapitalize="words" value="${esc(f.instructor)}" placeholder="e.g. Prof. Silva"></div>
       <div class="field"><label>Academy</label><input class="input" id="pAcad" autocapitalize="words" value="${esc(f.academy)}" placeholder="e.g. Riverside BJJ"></div>
-      <div class="field"><label>Notes</label><textarea class="input" id="pNotes" rows="2" placeholder="How it happened, what to work on next…">${esc(f.notes)}</textarea></div></div></details>
-    <div style="display:flex;gap:10px;margin-top:6px">${ex ? '<button type="button" class="btn danger" id="pDel">Delete</button>' : ''}<button type="button" class="btn primary" style="flex:1" id="pSave">${ex ? 'Save changes' : 'Save promotion'}</button></div></div>`);
-  const pick = el.querySelector('#beltPick'), sf = el.querySelector('#stripeF'), kt = el.querySelector('#kidsT');
-  const drawStripes = () => { if (f.stripes > maxStripes(f.belt)) f.stripes = maxStripes(f.belt); sf.innerHTML = `<label>${f.belt === 'black' ? 'Degree' : 'Stripes'}</label>`;
-    sf.appendChild(seg(Array.from({length:maxStripes(f.belt)+1}, (_, i) => [i, String(i)]), f.stripes, x => { f.stripes = x; })); };
+      <div class="field"><label>Notes</label><textarea class="input" id="pNotes" rows="2" placeholder="How it happened, what to work on next…">${esc(f.approx ? '' : f.notes)}</textarea></div></div></details>
+    <div style="display:flex;gap:10px;margin-top:6px">${ex ? '<button type="button" class="btn danger" id="pDel">Delete</button>' : ''}<button type="button" class="btn primary" style="flex:1" id="pSave">${ex ? 'Save changes' : 'Save'}</button></div></div>`);
+  if (f.approx) el.querySelector('#pDate').value = f.date;
+  const pick = el.querySelector('#beltPick'), sf = el.querySelector('#stripeF'), kt = el.querySelector('#kidsT'), kf = el.querySelector('#kindF');
+  const sync = () => { const st = f.kind === 'stripe'; el.querySelector('#dateLbl').textContent = st ? `${f.belt === 'black' ? 'Degree' : 'Stripe'} earned` : 'Belt earned'; el.querySelector('#beltLbl').textContent = st ? 'At belt' : 'New belt'; sf.hidden = !st; };
+  const drawKind = () => { kf.innerHTML = '<label>What happened?</label>'; kf.appendChild(seg([['belt','New belt'],['stripe', f.belt === 'black' ? 'Degree' : 'Stripe']], f.kind, x => { f.kind = x; if (x === 'stripe' && !f.stripes) f.stripes = (missingStripes(f.belt)[0]) || Math.min(maxStripes(f.belt), (cur && cur.belt === f.belt ? cur.stripes : 0) + 1); drawStripes(); sync(); })); kf.querySelector('.seg').id = 'pKind'; };
+  const drawStripes = () => { if (f.stripes > maxStripes(f.belt)) f.stripes = maxStripes(f.belt); if (f.stripes < 1) f.stripes = 1; sf.innerHTML = `<label>${f.belt === 'black' ? 'Which degree' : 'Which stripe'}</label>`;
+    sf.appendChild(seg(Array.from({length:maxStripes(f.belt)}, (_, i) => [i + 1, String(i + 1)]), f.stripes, x => { f.stripes = x; })); sf.querySelector('.seg').id = 'pStripe';
+    const miss = missingStripes(f.belt).filter(n => !ex || n !== ex.stripes); if (miss.length) sf.appendChild(h(`<div class="hint">Missing a date for stripe ${miss.join(', ')} at ${beltOf(f.belt)[1].toLowerCase()} belt.</div>`)); };
   const drawPick = () => { const list = kids ? ADULT_BELTS.concat(KIDS_BELTS) : ADULT_BELTS; kt.textContent = kids ? 'Hide kids belts' : 'Kids belts';
     pick.innerHTML = list.map(k => `<button type="button" data-belt="${k}" class="${f.belt === k ? 'on' : ''}" aria-pressed="${f.belt === k}"><i style="background:${beltOf(k)[2]}"></i>${beltOf(k)[1]}</button>`).join('');
-    pick.querySelectorAll('button').forEach(x => x.onclick = () => { f.belt = x.dataset.belt; drawPick(); drawStripes(); }); };
+    pick.querySelectorAll('button').forEach(x => x.onclick = () => { f.belt = x.dataset.belt; drawPick(); drawKind(); drawStripes(); sync(); }); };
   kt.onclick = () => { kids = !kids; if (!kids && KIDS_BELTS.includes(f.belt)) f.belt = 'white'; drawPick(); drawStripes(); };
-  drawPick(); drawStripes();
+  drawKind(); drawPick(); drawStripes(); sync();
   el.querySelector('#pSave').onclick = () => {
     const date = el.querySelector('#pDate').value;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today()) { toast('Pick a date (today or earlier)'); return; }
+    if (f.kind === 'stripe' && (db.belts||[]).some(e => e.id !== f.id && e.kind === 'stripe' && e.belt === f.belt && e.stripes === f.stripes)) { toast(`${stripeWord(f.belt, f.stripes)} at ${beltOf(f.belt)[1].toLowerCase()} belt is already logged. Tap it on the timeline to edit.`); return; }
+    if (f.kind === 'belt' && (db.belts||[]).some(e => e.id !== f.id && e.kind === 'belt' && e.belt === f.belt)) { toast(`${beltOf(f.belt)[1]} belt is already logged. Tap it on the timeline to edit.`); return; }
     const before = JSON.parse(JSON.stringify(db.belts));
-    const rec = sanitizeBelts([{ ...f, id:ex ? ex.id : uid(), date, instructor:el.querySelector('#pInst').value.trim(), academy:el.querySelector('#pAcad').value.trim(), notes:el.querySelector('#pNotes').value.trim(), createdAt:ex ? ex.createdAt : Date.now() }])[0];
-    if (ex && ex.notes.startsWith('Date unknown') && rec.notes === ex.notes && date !== ex.date) rec.notes = '';
-    delete rec.sample;
+    const rec = sanitizeBelts([{ ...f, stripes:f.kind === 'belt' ? 0 : f.stripes, id:ex ? ex.id : uid(), date, instructor:el.querySelector('#pInst').value.trim(), academy:el.querySelector('#pAcad').value.trim(), notes:el.querySelector('#pNotes').value.trim(), createdAt:ex ? ex.createdAt : Date.now() }])[0];
+    delete rec.sample; delete rec.approx;
     db.belts = db.belts.filter(x => x.id !== rec.id).concat(rec); syncProfileRank(); save(); closeSheet();
-    undoToast(`${ex ? 'Updated' : 'Logged'}: ${beltOf(rec.belt)[1]} belt${rec.stripes ? ', ' + rankLabel(rec) : ''}`, () => { db.belts = before; syncProfileRank(); save(); route(); });
+    undoToast(`${ex ? 'Updated' : 'Logged'}: ${eventLabel(rec)} · ${fmtShort(rec.date)}`, () => { db.belts = before; syncProfileRank(); save(); route(); });
     whenSettled(route);
   };
   const del = el.querySelector('#pDel');
   if (del) del.onclick = () => { const before = JSON.parse(JSON.stringify(db.belts)); db.belts = db.belts.filter(x => x.id !== ex.id); syncProfileRank(); save(); closeSheet();
-    undoToast('Promotion deleted', () => { db.belts = before; syncProfileRank(); save(); route(); }); whenSettled(route); };
+    undoToast(`${eventLabel(ex)} deleted`, () => { db.belts = before; syncProfileRank(); save(); route(); }); whenSettled(route); };
   openSheet(el, null, { closeLabel:'Cancel' });
 }
 function histSeg(which){
@@ -598,17 +633,19 @@ function histSeg(which){
 function viewBelts(){
   setHeader('History', `<a class="btn sm" href="#/stats">Stats</a>`);
   const v = $('#view'), groups = beltGroups().reverse();
-  const items = g => [...g.items].reverse().map(e => `<button type="button" class="tl-item" data-pid="${esc(e.id)}"><i class="tl-dot"></i><div class="grow"><b>${esc(rankLabel(e))}</b>
+  const items = g => [...g.items].reverse().map(e => `<button type="button" class="tl-item ${e.kind}${e.approx ? ' approx' : ''}" data-pid="${esc(e.id)}" data-kind="${e.kind}"><i class="tl-dot"></i><div class="grow"><b>${esc(eventLabel(e))}</b>
       <small>${fmtShort(e.date)}${e.instructor ? ` · ${esc(e.instructor)}` : ''}${e.academy ? ` · ${esc(e.academy)}` : ''}${e.sample ? ' · sample' : ''}</small>${e.notes ? `<small class="tl-note">${esc(e.notes)}</small>` : ''}</div>
       <span class="tl-took">${e.took ? `<b>${fmtSpan(e.took)}</b><small>after previous</small>` : '<small>start</small>'}</span></button>`).join('');
   v.innerHTML = `${histSeg('belts')}
+    ${currentRank() ? beltCard().replace('card tappable', 'card').replace(/<button type="button" class="btn block" data-promo[^>]*>Log promotion<\/button>/, '').replace(/<a class="lnk" href="#\/belts">Timeline ›<\/a>/, '') : ''}
     <button type="button" class="btn primary block" data-promo style="margin-bottom:14px"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Log promotion</button>
     ${groups.length ? `<div class="timeline" id="timeline">${groups.map(g => { const b = beltOf(g.belt); return `<section class="tl-group ${g.current ? 'current' : ''}" data-belt="${g.belt}" style="--belt:${b[2]}">
       <div class="tl-head">${beltBar(g.belt, g.items[g.items.length-1].stripes, 'mini')}<div class="grow"><b>${esc(b[1])} belt</b><small>${fmtShort(g.start)} – ${g.current ? 'today' : fmtShort(g.end)}</small></div>
         <div class="tl-dur"><b data-span>${fmtSpan(g.span)}</b><small>${g.current ? 'so far' : 'at this belt'}</small></div></div>
       ${g.mat.n ? `<div class="tl-meta">${g.mat.n} session${g.mat.n > 1 ? 's' : ''} · ${hrs(g.mat.min)} h on the mat logged</div>` : ''}
-      <div class="tl-items">${items(g)}</div></section>`; }).join('')}</div>
-      <div class="hint" style="text-align:center;margin-top:8px">Tap an entry to edit or delete it. Add past promotions in any order — they're sorted by date.</div>`
+      <div class="tl-items">${items(g)}</div>${(() => { const miss = missingStripes(g.belt), top = Math.max(0, ...g.items.filter(e => e.kind === 'stripe').map(e => e.stripes)), n = miss[0] || (top < maxStripes(g.belt) ? top + 1 : 0);
+        return n ? `<button type="button" class="btn sm ghost addstripe" data-addstripe="${g.belt}" data-n="${n}">+ ${miss.length ? 'Add missing' : 'Add'} ${g.belt === 'black' ? 'degree' : 'stripe'} ${n} date</button>` : ''; })()}</section>`; }).join('')}</div>
+      <div class="hint" style="text-align:center;margin-top:8px">Tap a belt or stripe to change its date or delete it. Add past belts and stripes in any order; they're sorted by date. A new belt starts at 0 stripes.</div>`
     : `<div class="empty" style="padding:30px 10px">No promotions yet. Log your current belt (and past ones if you like) to see your journey.</div>`}`;
   wireBelt(v);
 }
@@ -740,7 +777,7 @@ function viewSetupGoals(){
     [['bench','Bench press', 'e.g. 225'],['squat','Squat','e.g. 315'],['deadlift','Deadlift','e.g. 405'],['ohp','Overhead press','e.g. 135'],['pullups','Pull-ups (reps)','e.g. 15'],['pushups','Push-ups (reps)','e.g. 50'],['hang','Dead hang (sec)','e.g. 90']].forEach(([k, l, ph]) => {
       sgIn[k] = inp(`setupSG-${k}`, ph); g.appendChild(field(sgKindOf(k) === 'lift' ? `${l} (${lu()})` : l, sgIn[k])); });
     sgDate = h(`<input class="input" type="date" min="${today()}" id="setupSGDate">`); g.appendChild(field('Target date', sgDate)); c.appendChild(g); }
-  { const c = sec('Monthly workout goal', 'The ring on Home. 8 a month (2 a week) is a good start.');
+  { const c = sec('Monthly workout goal', 'Total workouts per month, any type (BJJ, weights, cardio, etc.). Fills the ring on Home.');
     c.appendChild(stepper(target, { min:1, max:31, unitLabel:'/ month', onChange:x => target = x })); }
   { const c = sec('Usual training days', 'Tap the days you normally train. Home shows planned vs done.');
     cats.forEach(k => { const row = h(`<div class="schedrow"><span>${catDot(k)}${CATS[k].label}</span><div class="daypick" role="group">${DOW_MON.map(d => `<button type="button" data-d="${d}" aria-pressed="false" aria-label="${CATS[k].label} ${DOW[d]}">${DOW1[d]}</button>`).join('')}</div></div>`);
@@ -795,6 +832,7 @@ function viewHome(){
   const hasSample = hasSampleData();
   v.innerHTML = `
     ${hasSample ? `<div class="banner"><span>📋 <b>Sample data</b> is loaded for the demo.</span><button class="btn sm" id="rmSample">Remove</button></div>` : ''}
+    ${rankChip()}
     <div class="statrow three">
       <div class="stat hero"><div class="v">${st.week}</div><div class="l">Sessions this week</div></div>
       <div class="stat"><div class="v">${hrs(st.weekMin)}<small>h</small></div><div class="l">Hours this week</div></div>
@@ -803,6 +841,7 @@ function viewHome(){
     ${compCard()}
     ${injuryCards()}
     ${weekCard()}
+    ${challengeHome()}
     ${progCard()}
     ${strengthHomeLine()}
     <div class="card quick"><h2>Quick log</h2>${repeatButtons() || '<div class="empty" style="padding:2px 0 10px">Your recent workouts will show here for one-tap logging.</div>'}
@@ -815,6 +854,7 @@ function viewHome(){
   v.querySelectorAll('.tappable[data-comp]').forEach(c => c.onclick = e => { if (!e.target.closest('a,button')) compSheet(c.dataset.comp); });
   const rm = $('#rmSample'); if (rm) rm.onclick = removeSample;
   checkChallenge();
+  gameCheck();
 }
 
 function sessSub(s){
@@ -899,7 +939,8 @@ function viewSession(id){
     ${body}${hrBlock(s.hr)}
     ${s.weight ? `<div class="card" style="display:flex;justify-content:space-between;align-items:center"><span style="color:var(--muted);font-weight:650">Body weight</span><b style="font-size:20px">${esc(s.weight)} ${unit()}</b></div>` : ''}
     ${s.notes ? `<div class="card"><h2>Notes</h2><div style="white-space:pre-wrap">${esc(s.notes)}</div></div>` : ''}
-    <div style="display:flex;gap:10px;margin-top:6px"><a class="btn primary" style="flex:1" href="#/edit/${esc(s.id)}">Edit</a><button class="btn danger" id="del">Delete</button></div>`;
+    <div style="display:flex;gap:10px;margin-top:6px"><a class="btn primary" style="flex:1" href="#/edit/${esc(s.id)}">Edit</a><button class="btn" id="shareSession" style="flex:1">Share</button><button class="btn danger" id="del">Delete</button></div>`;
+  $('#shareSession').onclick = () => shareSheet('session', s);
   $('#del').onclick = async () => { if (await confirmSheet('Delete this workout?', `${fmtDate(s.date)} · ${sessTitle(s)}. This can't be undone.`)) { db.sessions = db.sessions.filter(x => x.id !== s.id); save(); toast('Workout deleted'); go('#/history'); } };
 }
 
@@ -1749,6 +1790,7 @@ function viewSettings(){
   const ic = injuryProfileCard(); wireInjuries(ic); v.appendChild(ic);
   if (isPro()) v.appendChild(programProfileCard());
   if (enabled('weights') || db.strength.length) { const sc = strengthProfileCard(); wireStrength(sc); v.appendChild(sc); }
+  v.appendChild(gameProfileCard());
 
   const wcard = h('<div class="card"><h2>Weight</h2></div>');
   wcard.appendChild(field('Units', seg([['lb','lb'],['kg','kg']], unit(), x => { if (x === unit()) return; const from = unit(), cv = v => v === '' || v == null || !(Number(v) > 0) ? v : Math.round(convW(Number(v), from, x)*10)/10;
@@ -1819,7 +1861,7 @@ function viewSettings(){
 }
 
 function exportData(){
-  const payload = { app:'forged', version:APP_VERSION, schema:SCHEMA, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition, weights:db.weights, belts:db.belts, comps:db.comps, benchmarks:db.benchmarks, strength:db.strength, injuries:db.injuries, challenges:db.challenges, program:db.program, ...(db.archive ? { archive:db.archive } : {}) };
+  const payload = { app:'forged', version:APP_VERSION, schema:SCHEMA, exportedAt:new Date().toISOString(), profile:db.profile, sessions:db.sessions, nutrition:db.nutrition, weights:db.weights, belts:db.belts, comps:db.comps, benchmarks:db.benchmarks, strength:db.strength, game:db.game, injuries:db.injuries, challenges:db.challenges, program:db.program, ...(db.archive ? { archive:db.archive } : {}) };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = `dm-backup-${today()}.json`;
@@ -1836,7 +1878,7 @@ async function importData(file){
     const valid = src.sessions.filter(s => s && typeof s.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.date)).map(sanitizeSession);
     const nut = sanitizeNutrition(d.nutrition), wts = sanitizeWeights(src.weights), blt = sanitizeBelts(src.belts), ex = extrasOf(src);
     if (await confirmSheet(`Import ${valid.length} sessions and ${nut.entries.length} food entries?`, `This replaces the ${db.sessions.length} sessions, ${db.nutrition.entries.length} food entries and ${db.weights.length} weigh-ins currently on this device.`, 'Replace & import', false)) {
-      db = { schema:SCHEMA, sessions:valid, profile:{ ...defaultProfile(), ...(src.profile||{}), setupDone:true }, nutrition:nut, weights:wts, belts:blt, ...ex }; syncProfileRank(); save(); toast(`Imported ${valid.length} sessions`); route();
+      db = { schema:SCHEMA, sessions:valid, profile:{ ...defaultProfile(), ...(src.profile||{}), setupDone:true }, nutrition:nut, weights:wts, belts:blt, ...ex }; syncProfileRank(); save(); gameCheck(true); toast(`Imported ${valid.length} sessions`); route();
     }
   } catch(e) { console.warn(e); toast('That file isn\'t a valid backup'); }
   finally { const f = $('#impFile'); if (f) f.value = ''; }
@@ -1935,7 +1977,7 @@ function loadSample(){
   if (!db.profile.targets) db.profile = { ...db.profile, targets:{ cal:2300, p:190, c:220, f:75 } };
   if (!db.profile.sampleProfile && !db.profile.goalWeight) db.profile = { ...db.profile, goalWeight:'195', sampleProfile:true };
   if (!db.profile.startWeight && !(db.weights||[]).some(x => !x.sample)) db.profile = { ...db.profile, goalWeight: db.profile.goalWeight || String(Math.round(convW(195, 'lb', unit())*10)/10), startWeight: String(Math.round(convW(215, 'lb', unit())*10)/10), goalDate: db.profile.goalDate || iso(addDays(new Date(), 70)) };
-  save(); toast(`Loaded ${sessions.length} sample sessions`); route();
+  save(); gameCheck(true); toast(`Loaded ${sessions.length} sample sessions`); route();
 }
 function sampleWeights(){
   // morning weigh-ins ~4x a week, trending from ~215 lb toward the 195 lb goal with day-to-day noise
@@ -1952,8 +1994,9 @@ function sampleWeights(){
 function sampleBelts(){
   // white belt (4 stripes) to blue belt 1 stripe over ~3 years, Riverside BJJ
   const d = n => iso(addDays(new Date(), -n));
-  return [[1150,'white',0,'Started BJJ'],[965,'white',1,''],[800,'white',2,''],[640,'white',3,'First competition the week before.'],[480,'white',4,''],[300,'blue',0,'Promoted at the end-of-year seminar.'],[115,'blue',1,'']]
+  const raw = [[1150,'white',0,'Started BJJ'],[965,'white',1,''],[800,'white',2,''],[640,'white',3,'First competition the week before.'],[480,'white',4,''],[300,'blue',0,'Promoted at the end-of-year seminar.'],[115,'blue',1,'']]
     .map(([n, belt, stripes, notes], i) => ({ id:'sb' + i, date:d(n), belt, stripes, instructor:'Prof. Ana Silva', academy:'Riverside BJJ', notes, createdAt:i + 1, sample:true }));
+  return sanitizeBelts(raw);
 }
 function removeSample(){
   const n = db.sessions.filter(s => s.sample).length;
@@ -1965,11 +2008,11 @@ function removeSample(){
   db.nutrition = { entries: db.nutrition.entries.filter(e => !e.sample), foods: db.nutrition.foods.filter(f => !f.sample), water:(db.nutrition.water||[]).filter(x => !x.sample) };
   if (db.profile.sampleProfile) db.profile = { ...defaultProfile(), unit:db.profile.unit };
   syncProfileRank();
-  save(); toast(`Removed ${n} sample sessions`); route();
+  save(); gameCheck(true); toast(`Removed ${n} sample sessions`); route();
 }
 
 /* ================= 3.1.0: schedule, effort & load, competitions, benchmarks, injuries, monthly challenge, programs ================= */
-const isPro = () => true; // the one gate for Pro features (lifting programs). Everything is free for now.
+const isPro = () => true || proActive(); // the one gate for Pro features. Everything is free for now; a earned Pro week (db.game.proUntil) will count once Pro is paid.
 const PROG = window.FORGED_PROGRAMS || { library:{}, templates:[], finishers:[], disclaimer:'', rpeNote:'' };
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 const isoOk = x => /^\d{4}-\d{2}-\d{2}$/.test(String(x||''));
@@ -2063,7 +2106,7 @@ function scheduleCard(){
   const tgt = h(`<div class="field" style="margin-top:12px"></div>`);
   tgt.appendChild(h(`<label>Monthly workout goal</label>`));
   tgt.appendChild(stepper(Number(db.profile.challengeTarget) || 8, { min:1, max:31, unitLabel:'/ month', onChange:x => { db.profile.challengeTarget = x; save(); } }));
-  tgt.appendChild(h(`<div class="hint">The ring on Home. Default 8.</div>`));
+  tgt.appendChild(h(`<div class="hint">Total workouts per month, any type (BJJ, weights, cardio, etc.). Fills the ring on Home.</div>`));
   card.appendChild(tgt);
   return card;
 }
@@ -2095,7 +2138,7 @@ function celebrate(){
 }
 function challengeHistory(){
   const list = db.challenges.slice().sort((a,b) => b.month.localeCompare(a.month));
-  return `<div class="card" id="challengeHist"><h2>Monthly goal <small>${list.length} month${list.length === 1 ? '' : 's'} achieved</small></h2>${list.length ? list.slice(0, 12).map(x => { const [y, m] = x.month.split('-').map(Number); return `<div class="list-row"><div class="grow"><b>${MONTHS[m-1]} ${y}</b><small>${x.n} workouts · goal ${x.target}</small></div><span>🏅</span></div>`; }).join('') : '<div class="empty" style="padding:4px 0">Hit your monthly goal to start a streak of months.</div>'}</div>`;
+  return `<div class="card" id="challengeHist"><h2>Monthly goal <small>${list.length} month${list.length === 1 ? '' : 's'} achieved</small></h2>${list.length ? list.slice(0, 12).map(x => { const [y, m] = x.month.split('-').map(Number); return `<div class="list-row"><div class="grow"><b>${MONTHS[m-1]} ${y}</b><small>${x.n} workouts · goal ${x.target}</small></div><button type="button" class="btn sm" data-sharering="${x.month}" aria-label="Share ${MONTHS[m-1]} ${y}">Share</button></div>`; }).join('') : '<div class="empty" style="padding:4px 0">Hit your monthly goal to start a streak of months.</div>'}</div>`;
 }
 
 /* ---- competitions ---- */
@@ -2471,8 +2514,9 @@ function showGoalHits(hits){
   if (!hits || !hits.length) return;
   const m = sgMethod(), el = h(`<div id="goalHit" class="goalhit"><div class="big">🏆</div><h3>Goal hit! New PR</h3>
     ${hits.map(g => `<div class="list-row"><div class="grow"><b>${esc(sgLabel(g))}</b><small>Target ${sgTarget(g)} ${sgUnit(g)} · you hit <b>${g.achieved.value}</b>${g.kind === 'lift' ? (m === 'single' ? ' (heaviest set)' : ' (est. 1RM)') : ''} on ${fmtShort(g.achieved.date)}</small></div><span class="pill res-win">✓</span></div>`).join('')}
-    <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px"><button type="button" class="btn primary block" id="nextTarget">Set next target${hits.length === 1 ? ` (${nextTarget(hits[0])} ${sgUnit(hits[0])})` : ''}</button><button type="button" class="btn block ghost" data-cancel>Done</button></div></div>`);
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px"><button type="button" class="btn block" id="shareGoal">Share</button><button type="button" class="btn primary block" id="nextTarget">Set next target${hits.length === 1 ? ` (${nextTarget(hits[0])} ${sgUnit(hits[0])})` : ''}</button><button type="button" class="btn block ghost" data-cancel>Done</button></div></div>`);
   el.querySelector('[data-cancel]').onclick = () => closeSheet();
+  el.querySelector('#shareGoal').onclick = () => { closeSheet(); whenSettled(() => shareSheet('goal', hits[0])); };
   el.querySelector('#nextTarget').onclick = () => { const g = hits[0]; closeSheet(); whenSettled(() => strengthSheet(null, { kind:g.kind, key:g.key, name:g.name, target:nextTarget(g), date:'' })); };
   openSheet(el);
   if (!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) { const box = h('<div class="confetti" aria-hidden="true"></div>'), cols = ['#F2711C','#F5C542','#FFFFFF','#B48CF2','#6FD3A8'];
@@ -2551,7 +2595,7 @@ function strengthSheet(id, preset){
 }
 
 function extrasOf(d){
-  return { comps:sanitizeComps(d.comps), benchmarks:sanitizeBench(d.benchmarks), strength:sanitizeStrength(d.strength), injuries:sanitizeInjuries(d.injuries),
+  return { comps:sanitizeComps(d.comps), benchmarks:sanitizeBench(d.benchmarks), strength:sanitizeStrength(d.strength), game:sanitizeGame(d.game), injuries:sanitizeInjuries(d.injuries),
     challenges:(Array.isArray(d.challenges) ? d.challenges : []).filter(x => x && /^\d{4}-\d{2}$/.test(x.month)).filter((x, i, a) => a.findIndex(y => y.month === x.month) === i).map(x => ({ month:x.month, n:Math.max(0, Number(x.n)||0), target:Math.max(1, Number(x.target)||8), ...(x.sample ? { sample:true } : {}) })),
     program:sanitizeProgram(d.program), ...(d.archive && Object.keys(d.archive).length ? { archive:d.archive } : {}) };
 }
@@ -2569,6 +2613,481 @@ function sampleExtras(){
   const G = (id, key, target, extra={}) => ({ id, key, target, u, sample:true, createdAt:Date.now() - 90*864e5, ...extra });
   const strength = [G('sg1','deadlift',W(405),{ date:d(60) }), G('sg2','bench',W(245),{ date:d(90) }), G('sg3','pullups',15,{ u:undefined }), G('sg4','pushups',40,{ u:undefined, achieved:{ date:d(-3), value:41 } })];
   return { comps, benchmarks, injuries, strength };
+}
+
+/* Forged 3.2.0: challenges, XP + ranks, badges, unlockable looks, share cards, friend challenge links.
+   Loaded before app.js; everything here runs at call time and uses app.js helpers (db, iso, parse, ...).
+   XP, challenge results and badges are recomputed from the saved data (pure functions), so existing users
+   get credit for their history and nothing can drift. Only "seen" markers, the chosen look and the Pro week
+   are stored in db.game. A future sync layer plugs in through ForgedSync (see docs/social-plan.md). */
+
+/* ---------- sync seam (no server today) ---------- */
+window.ForgedSync = window.ForgedSync || { enabled:false, adapter:null,
+  emit(type, payload){ if (this.enabled && this.adapter && this.adapter.push) try { this.adapter.push({ type, payload, at:Date.now() }); } catch(e) { console.warn('sync', e); } } };
+
+/* ---------- small helpers ---------- */
+const G_DAY = 864e5;
+const gHash = s => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+const gRand = seed => () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const gMonthEnd = m => { const [y, mo] = m.split('-').map(Number); return iso(new Date(y, mo, 0)); };
+const gWeekKey = d => iso(weekStart(typeof d === 'string' ? parse(d) : d));
+const sessMin = s => Number(s.duration) || 0;
+/* anti-abuse-light: entries logged more than 7 days after their date don't count toward challenges */
+const gFair = s => !s.createdAt || (s.createdAt - (parse(s.date).getTime() + G_DAY)) <= 7 * G_DAY;
+function sanitizeGame(g){
+  g = g && typeof g === 'object' ? g : {};
+  const arr = a => Array.isArray(a) ? a : [];
+  return { ...(Number.isFinite(g.rankSeen) ? { rankSeen:g.rankSeen } : {}), ...(Number.isFinite(g.levelSeen) ? { levelSeen:g.levelSeen } : {}),
+    seenDone:arr(g.seenDone).map(String).slice(-400), seenBadges:arr(g.seenBadges).map(String),
+    look:{ accent:String(g.look?.accent || 'flame'), frame:String(g.look?.frame || 'classic'), flair:String(g.look?.flair || 'none') },
+    ...(isoOk(g.proUntil) ? { proUntil:g.proUntil, proGranted:isoOk(g.proGranted) ? g.proGranted : g.proUntil } : {}),
+    friend:arr(g.friend).filter(x => x && x.code && x.title).slice(-20) };
+}
+const game = () => (db.game = db.game && db.game.look ? db.game : sanitizeGame(db.game));
+
+/* ---------- challenge pool ----------
+   period d/w/m, tier 1-3 (Easy/Medium/Hard), need(): eligible for this user, val(ctx): progress value. */
+const TIER = ['', 'Easy', 'Medium', 'Hard'];
+const CH_XP = { d:[0, 30, 50, 75], w:[0, 100, 150, 200], m:[0, 300, 400, 500] };
+const has = c => enabled(c);
+const combat = () => ['grappling','striking','mma'].some(has);
+const sumBy = (l, f) => l.reduce((a, x) => a + (f(x) || 0), 0);
+const grRounds = s => s.category === 'grappling' ? (Number(s.rounds) || (s.rolls||[]).length || 0) : s.category === 'mma' ? (s.strike?.mix?.grappling || 0) : 0;
+const sparRounds = s => (s.category === 'striking' || s.category === 'mma') ? (s.strike?.mix?.sparring || 0) : 0;
+const setsOf = s => (s.exercises||[]).reduce((a, e) => a + (e.sets||[]).filter(x => Number(x.reps) > 0).length, 0);
+const daysMeeting = (from, to, f) => { let n = 0; for (let d = parse(from); iso(d) <= to; d = addDays(d, 1)) if (f(iso(d))) n++; return n; };
+const waterOk = day => waterGoalMl() && waterOn(day) >= waterGoalMl();
+const protOk = day => goals().p && totals(entriesOn(day)).p >= goals().p;
+const CH_POOL = [
+  // daily
+  { id:'d-log', p:'d', tier:1, t:'Log a workout today', goal:1, val:c => c.s.length },
+  { id:'d-feel', p:'d', tier:1, t:'Log how a session felt', goal:1, val:c => c.s.filter(s => s.feel).length },
+  { id:'d-mob', p:'d', tier:1, need:() => has('mobility'), t:'Log a mobility session', goal:1, val:c => c.s.filter(s => s.category === 'mobility').length },
+  { id:'d-water', p:'d', tier:1, need:() => has('food') && waterGoalMl(), t:'Hit your water goal today', goal:1, val:c => waterOk(c.from) ? 1 : 0 },
+  { id:'d-cardio', p:'d', tier:1, need:() => has('cardio'), t:'20 minutes of cardio', goal:20, unit:'min', val:c => sumBy(c.s.filter(s => s.category === 'cardio'), sessMin) },
+  { id:'d-roll5', p:'d', tier:2, need:() => has('grappling') || has('mma'), t:'Roll 5 rounds today', goal:5, unit:'rounds', val:c => sumBy(c.s, grRounds) },
+  { id:'d-spar3', p:'d', tier:2, need:() => has('striking') || has('mma'), t:'Spar 3 rounds today', goal:3, unit:'rounds', val:c => sumBy(c.s, sparRounds) },
+  { id:'d-60', p:'d', tier:2, t:'Train 60 minutes today', goal:60, unit:'min', val:c => sumBy(c.s, sessMin) },
+  { id:'d-sets', p:'d', tier:2, need:() => has('weights'), t:'Log 15 working sets', goal:15, unit:'sets', val:c => sumBy(c.s, setsOf) },
+  { id:'d-protein', p:'d', tier:2, need:() => has('food') && goals().p, t:'Hit your protein goal today', goal:1, val:c => protOk(c.from) ? 1 : 0 },
+  { id:'d-hard', p:'d', tier:3, t:'Go hard: a session at effort 8+', goal:1, val:c => c.s.filter(s => rpeOf(s) >= 8).length },
+  { id:'d-double', p:'d', tier:3, t:'Two sessions in one day', goal:2, val:c => c.s.length },
+  { id:'d-90', p:'d', tier:3, need:combat, t:'90 minutes on the mats', goal:90, unit:'min', val:c => sumBy(c.s.filter(s => ['grappling','striking','mma'].includes(s.category)), sessMin) },
+  // weekly
+  { id:'w-3', p:'w', tier:1, t:'3 sessions this week', goal:3, val:c => c.s.length },
+  { id:'w-mob2', p:'w', tier:1, need:() => has('mobility'), t:'2 mobility sessions', goal:2, val:c => c.s.filter(s => s.category === 'mobility').length },
+  { id:'w-weigh3', p:'w', tier:1, need:() => has('weight'), t:'Weigh in 3 times', goal:3, val:c => weightSeries().filter(x => x.date >= c.from && x.date <= c.to).length },
+  { id:'w-4', p:'w', tier:2, t:'4 sessions this week', goal:4, val:c => c.s.length },
+  { id:'w-5h', p:'w', tier:2, t:'5 training hours', goal:300, unit:'min', fmt:v => `${hrs(v)} / 5 h`, val:c => sumBy(c.s, sessMin) },
+  { id:'w-water5', p:'w', tier:2, need:() => has('food') && waterGoalMl(), t:'Drink your water goal 5 days', goal:5, unit:'days', val:c => daysMeeting(c.from, c.to, waterOk) },
+  { id:'w-roll20', p:'w', tier:2, need:() => has('grappling') || has('mma'), t:'20 rounds of rolling', goal:20, unit:'rounds', val:c => sumBy(c.s, grRounds) },
+  { id:'w-spar8', p:'w', tier:2, need:() => has('striking') || has('mma'), t:'8 sparring rounds', goal:8, unit:'rounds', val:c => sumBy(c.s, sparRounds) },
+  { id:'w-cardio60', p:'w', tier:2, need:() => has('cardio'), t:'60 minutes of cardio', goal:60, unit:'min', val:c => sumBy(c.s.filter(s => s.category === 'cardio'), sessMin) },
+  { id:'w-3cat', p:'w', tier:3, need:() => CAT_KEYS.filter(has).length >= 3, t:'Hit 3 different categories', goal:3, unit:'categories', val:c => new Set(c.s.map(s => s.category)).size },
+  { id:'w-pr', p:'w', tier:3, need:() => has('weights'), t:'Hit a new PR', goal:1, unit:'PR', val:c => c.prs },
+  { id:'w-6', p:'w', tier:3, t:'6 sessions this week', goal:6, val:c => c.s.length },
+  // monthly
+  { id:'m-ring', p:'m', tier:1, t:'Hit your monthly workout goal', goal:() => clamp(Math.round(Number(db.profile.challengeTarget) || 8), 1, 31), val:c => c.s.length },
+  { id:'m-bench', p:'m', tier:1, t:'Log a benchmark test', goal:1, val:c => db.benchmarks.filter(b => b.key !== 'bw' && b.date >= c.from && b.date <= c.to).length },
+  { id:'m-12', p:'m', tier:2, t:'12 sessions this month', goal:12, val:c => c.s.length },
+  { id:'m-water20', p:'m', tier:2, need:() => has('food') && waterGoalMl(), t:'Water goal on 20 days', goal:20, unit:'days', val:c => daysMeeting(c.from, c.to, waterOk) },
+  { id:'m-2pr', p:'m', tier:2, need:() => has('weights'), t:'2 new PRs this month', goal:2, unit:'PRs', val:c => c.prs },
+  { id:'m-20h', p:'m', tier:3, need:combat, t:'20 mat hours this month', goal:1200, unit:'min', fmt:v => `${hrs(v)} / 20 h`, val:c => sumBy(c.s.filter(s => ['grappling','striking','mma'].includes(s.category)), sessMin) },
+  { id:'m-all', p:'m', tier:3, need:() => CAT_KEYS.filter(has).length >= 2, t:'Train every category you track', goal:() => CAT_KEYS.filter(has).length, unit:'categories', val:c => new Set(c.s.map(s => s.category).filter(has)).size },
+  { id:'m-16', p:'m', tier:3, t:'16 sessions this month', goal:16, val:c => c.s.length }
+];
+const CH_COUNT = { d:3, w:3, m:3 };
+const chGoal = t => typeof t.goal === 'function' ? t.goal() : t.goal;
+function periodOf(p, day = today()){
+  if (p === 'd') return { key:day, from:day, to:day };
+  if (p === 'w') { const f = gWeekKey(day); return { key:'w' + f, from:f, to:iso(addDays(parse(f), 6)) }; }
+  const m = day.slice(0, 7); return { key:'m' + m, from:m + '-01', to:gMonthEnd(m) };
+}
+/* deterministic pick: same date + same sports = same challenges; one per tier first */
+function pickChallenges(p, key){
+  const pool = CH_POOL.filter(t => t.p === p && (!t.need || t.need())), r = gRand(gHash(key + '|' + CAT_KEYS.filter(has).join(',')));
+  const sh = pool.map(t => [r(), t]).sort((a, b) => a[0] - b[0]).map(x => x[1]), out = [];
+  [1, 2, 3].forEach(tier => { const t = sh.find(x => x.tier === tier && !out.includes(x)); if (t) out.push(t); });
+  sh.forEach(t => { if (out.length < CH_COUNT[p] && !out.includes(t)) out.push(t); });
+  return out.slice(0, CH_COUNT[p]).sort((a, b) => a.tier - b.tier);
+}
+/* PR events: a weights set beating your previous best est. 1RM for that exercise (fair-logged only) */
+function prEvents(){
+  const best = {}, ev = [];
+  db.sessions.filter(s => s.exercises && s.exercises.length).slice().sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt||0) - (b.createdAt||0)).forEach(s => {
+    let n = 0;
+    s.exercises.forEach(e => { const k = String(e.name||'').trim().toLowerCase(); if (!k) return; const v = Math.max(0, ...(e.sets||[]).map(x => e1rm(Number(x.weight)||0, Number(x.reps)||0)));
+      if (!v) return; if (best[k] && v > best[k] + 0.01 && n < 3) { n++; ev.push({ date:s.date, name:e.name, v:Math.round(v), fair:gFair(s), id:s.id }); } best[k] = Math.max(best[k] || 0, v); });
+  });
+  return ev;
+}
+function evalChallenge(t, per, prs){
+  const s = db.sessions.filter(x => x.date >= per.from && x.date <= per.to && gFair(x));
+  const goal = chGoal(t), v = t.val({ s, from:per.from, to:per.to, prs:prs.filter(e => e.fair && e.date >= per.from && e.date <= per.to).length }) || 0;
+  return { id:t.id, key:`${per.key}:${t.id}`, p:t.p, tier:t.tier, title:t.t, goal, value:v, pct:Math.min(100, Math.round(v / goal * 100)), done:v >= goal, xp:CH_XP[t.p][t.tier],
+    progress:t.fmt ? t.fmt(v) : `${Math.min(v, goal) === v ? Math.round(v * 10) / 10 : Math.round(v)} / ${goal}${t.unit ? ' ' + t.unit : ''}`, from:per.from, to:per.to, period:per.key };
+}
+function currentChallenges(){ const prs = prEvents(); return ['d','w','m'].flatMap(p => { const per = periodOf(p); return pickChallenges(p, per.key).map(t => evalChallenge(t, per, prs)); }); }
+function timeLeft(to){
+  const end = addDays(parse(to), 1).getTime(), ms = Math.max(0, end - Date.now()), d = Math.floor(ms / G_DAY), hh = Math.floor(ms % G_DAY / 36e5), mm = Math.floor(ms % 36e5 / 6e4);
+  return d >= 2 ? `${d} days left` : d === 1 ? `1 day ${hh}h left` : hh ? `${hh}h ${mm}m left` : `${mm}m left`;
+}
+
+/* ---------- XP (recomputed from history) ---------- */
+const XP_LOG = 10, XP_LOG_CAP = 30, XP_STREAK = 20, XP_PR = 25, XP_GOAL = 50, XP_RING = 100;
+const RANKS = [['Apprentice',1],['Striker',5],['Journeyman',10],['Smith',15],['Blacksmith',20],['Master Smith',25],['Forgemaster',30],['Forged',35]];
+const PRO_RANK = 5; // reaching Master Smith grants 7 days of Pro
+const xpForLevel = L => 100 * L * (L - 1);
+const levelOf = xp => { let L = 1; while (xpForLevel(L + 1) <= xp) L++; return L; };
+const rankIdx = L => RANKS.reduce((a, r, i) => L >= r[1] ? i : a, 0);
+let gCache = null, gCacheKey = '';
+function gameState(){
+  const key = JSON.stringify([db.sessions.length, db.sessions.reduce((a, s) => a + (s.updatedAt || s.createdAt || 0) % 1e7 + (s.duration||0), 0), db.strength.length, db.strength.filter(g => g.achieved).length, db.benchmarks.length, (db.nutrition.water||[]).length, db.nutrition.entries.length, db.weights.length, db.profile.challengeTarget, JSON.stringify(db.profile.enabled), db.profile.waterGoal, JSON.stringify(db.profile.targets||{}), db.comps.length, (db.belts||[]).length, today()]);
+  if (gCache && gCacheKey === key) return gCache;
+  const parts = { log:0, challenges:0, streak:0, pr:0, goals:0, ring:0 }, done = [];
+  // logging: 10 XP per workout, max 30 XP per day
+  const perDay = countBy(db.sessions.map(s => s.date));
+  perDay.forEach(([, n]) => parts.log += Math.min(XP_LOG_CAP, n * XP_LOG));
+  // week streaks: every week that continues a streak
+  const weeks = new Set(db.sessions.map(s => gWeekKey(s.date)));
+  weeks.forEach(w => { if (weeks.has(iso(addDays(parse(w), -7)))) parts.streak += XP_STREAK; });
+  // PRs + strength goals hit
+  const prs = prEvents(); parts.pr = prs.length * XP_PR;
+  parts.goals = db.strength.filter(g => g.achieved).length * XP_GOAL;
+  // monthly target
+  const months = countBy(db.sessions.map(s => s.date.slice(0, 7))), tgt = clamp(Math.round(Number(db.profile.challengeTarget) || 8), 1, 31);
+  months.forEach(([m, n]) => { const rec = db.challenges.find(x => x.month === m); if (n >= (rec ? rec.target : tgt)) parts.ring += XP_RING; });
+  // challenges: every day/week/month since the first workout (only finished ones, or current ones already complete)
+  const dates = db.sessions.map(s => s.date).sort();
+  if (dates.length) {
+    const first = dates[0] < iso(addDays(new Date(), -730)) ? iso(addDays(new Date(), -730)) : dates[0], t0 = today(), seen = new Set();
+    for (let d = parse(first); iso(d) <= t0; d = addDays(d, 1)) {
+      const day = iso(d);
+      ['d','w','m'].forEach(p => { const per = periodOf(p, day); if (seen.has(per.key)) return; seen.add(per.key);
+        pickChallenges(p, per.key).forEach(t => { const r = evalChallenge(t, per, prs); if (r.done) { done.push(r); parts.challenges += r.xp; } }); });
+    }
+  }
+  const xp = Object.values(parts).reduce((a, b) => a + b, 0), level = levelOf(xp), ri = rankIdx(level);
+  gCache = { xp, parts, level, rank:RANKS[ri][0], rankIdx:ri, next:xpForLevel(level + 1), cur:xpForLevel(level), done, prs,
+    nextRank: RANKS[ri + 1] ? { name:RANKS[ri + 1][0], level:RANKS[ri + 1][1], xp:xpForLevel(RANKS[ri + 1][1]) } : null };
+  gCache.pct = Math.min(100, Math.round((xp - gCache.cur) / Math.max(1, gCache.next - gCache.cur) * 100));
+  gCacheKey = key; return gCache;
+}
+const proActive = () => !!(game().proUntil && game().proUntil >= today());
+
+/* ---------- badges ---------- */
+function dayStreakMax(){
+  const days = [...new Set(db.sessions.map(s => s.date))].sort(); let best = 0, run = 0, prev = null;
+  days.forEach(d => { run = prev && iso(addDays(parse(prev), 1)) === d ? run + 1 : 1; best = Math.max(best, run); prev = d; });
+  return best;
+}
+const BADGES = [
+  { id:'first', icon:'🔨', name:'First strike', how:'Log your first workout', test:s => s.n >= 1 },
+  { id:'s10', icon:'🔥', name:'10 sessions', how:'Log 10 workouts', test:s => s.n >= 10 },
+  { id:'s50', icon:'⚒️', name:'50 sessions', how:'Log 50 workouts', test:s => s.n >= 50 },
+  { id:'s100', icon:'🛡️', name:'100 sessions', how:'Log 100 workouts', test:s => s.n >= 100 },
+  { id:'s250', icon:'🏛️', name:'250 sessions', how:'Log 250 workouts', test:s => s.n >= 250 },
+  { id:'d7', icon:'📅', name:'7-day streak', how:'Train 7 days in a row', test:s => s.ds >= 7 },
+  { id:'d30', icon:'🗓️', name:'30-day streak', how:'Train 30 days in a row', test:s => s.ds >= 30 },
+  { id:'d100', icon:'💯', name:'100-day streak', how:'Train 100 days in a row', test:s => s.ds >= 100 },
+  { id:'comp', icon:'🥋', name:'Competitor', how:'Compete once (add a past competition or log a Competition session)', test:s => s.comp },
+  { id:'medal', icon:'🥇', name:'On the podium', how:'Win a medal at a competition', test:() => db.comps.some(c => c.result === 'medal') },
+  { id:'pr', icon:'📈', name:'First PR', how:'Beat a lift you logged before', test:s => s.prs >= 1 },
+  { id:'goal', icon:'🎯', name:'Goal crusher', how:'Hit a strength goal', test:() => db.strength.some(g => g.achieved) },
+  { id:'belt', icon:'🎖️', name:'Promoted', how:'Log a belt or stripe promotion', test:() => (db.belts||[]).length >= 2 },
+  { id:'allcats', icon:'🌐', name:'All-rounder', how:'Try all six workout types', test:() => CAT_KEYS.every(c => db.sessions.some(s => s.category === c)) },
+  { id:'ch1', icon:'⭐', name:'Challenger', how:'Complete a challenge', test:s => s.ch >= 1 },
+  { id:'ch25', icon:'🌟', name:'Challenge hunter', how:'Complete 25 challenges', test:s => s.ch >= 25 },
+  { id:'ring', icon:'⭕', name:'Ring closed', how:'Hit your monthly workout goal', test:s => s.ring },
+  { id:'bench', icon:'📏', name:'Tested', how:'Log a benchmark test', test:() => db.benchmarks.some(b => b.key !== 'bw') },
+  { id:'h100', icon:'⏱️', name:'100 hours', how:'Train 100 hours in total', test:s => s.min >= 6000 },
+  { id:'lv10', icon:'⚙️', name:'Journeyman', how:'Reach level 10', test:s => s.level >= 10 }
+];
+function badgeState(){
+  const gs = gameState(), st = { n:db.sessions.length, ds:dayStreakMax(), comp:db.comps.some(c => c.date < today()) || db.sessions.some(s => s.type === 'comp'), prs:gs.prs.length, ch:gs.done.length, ring:gs.parts.ring > 0, min:sumBy(db.sessions, sessMin), level:gs.level };
+  return BADGES.map(b => ({ ...b, earned:!!b.test(st) }));
+}
+
+/* ---------- unlockable looks ---------- */
+const LOOKS = {
+  accent:[
+    { id:'flame', name:'Flame', col:'#F2711C', how:'Default' },
+    { id:'ember', name:'Ember', col:'#E5484D', how:'Reach Striker (level 5)', unlock:g => g.level >= 5 },
+    { id:'steel', name:'Steel', col:'#8FB0D9', how:'Reach Journeyman (level 10)', unlock:g => g.level >= 10 },
+    { id:'gold', name:'Molten gold', col:'#F5C542', how:'Reach Smith (level 15)', unlock:g => g.level >= 15 },
+    { id:'jade', name:'Jade', col:'#6FD3A8', how:'Earn the 50 sessions badge', unlock:(g, b) => b.s50 },
+    { id:'violet', name:'Damascus violet', col:'#B48CF2', how:'Reach Blacksmith (level 20)', unlock:g => g.level >= 20 }
+  ],
+  frame:[
+    { id:'classic', name:'Classic', how:'Default' },
+    { id:'ember', name:'Ember glow', how:'Earn the Challenger badge', unlock:(g, b) => b.ch1 },
+    { id:'gold', name:'Gold edge', how:'Earn the First PR badge', unlock:(g, b) => b.pr },
+    { id:'damascus', name:'Damascus', how:'Reach Master Smith (level 25)', unlock:g => g.level >= 25 }
+  ],
+  flair:[
+    { id:'none', name:'None', sym:'', how:'Default' },
+    { id:'flame', name:'Flame', sym:'🔥', how:'Earn the 10 sessions badge', unlock:(g, b) => b.s10 },
+    { id:'hammer', name:'Hammers', sym:'⚒️', how:'Earn the 7-day streak badge', unlock:(g, b) => b.d7 },
+    { id:'medal', name:'Medal', sym:'🥇', how:'Earn the Competitor badge', unlock:(g, b) => b.comp },
+    { id:'crown', name:'Crown', sym:'👑', how:'Reach Forgemaster (level 30)', unlock:g => g.level >= 30 }
+  ]
+};
+function lookUnlocked(kind, id){ const it = LOOKS[kind].find(x => x.id === id); if (!it) return false; if (!it.unlock) return true;
+  const b = Object.fromEntries(badgeState().map(x => [x.id, x.earned])); return !!it.unlock(gameState(), b); }
+function currentLook(){ const l = game().look; return { accent: lookUnlocked('accent', l.accent) ? l.accent : 'flame', frame: lookUnlocked('frame', l.frame) ? l.frame : 'classic', flair: lookUnlocked('flair', l.flair) ? l.flair : 'none' }; }
+function applyLook(){ try { const a = currentLook().accent; if (a === 'flame') delete document.documentElement.dataset.look; else document.documentElement.dataset.look = a; } catch(e) {} }
+const flairSym = () => (LOOKS.flair.find(x => x.id === currentLook().flair) || {}).sym || '';
+
+/* ---------- celebrations: run after renders; first run after upgrade/sample load records silently ---------- */
+function gameCheck(silent){
+  // storage changed outside this tab's view of it (another tab, a restore): never overwrite it from a background check
+  try { const raw = localStorage.getItem(STORE_KEY); if (!silent && lastRaw != null && raw != null && raw !== lastRaw) return; } catch(e) {}
+  const before = JSON.stringify(db.game || null);
+  const save = () => { if (JSON.stringify(db.game) !== before) saveDb(); };
+  const g = game(), gs = gameState(), cur = currentChallenges(), doneNow = cur.filter(c => c.done).map(c => c.key);
+  const allDone = gs.done.map(c => c.key), bs = badgeState().filter(b => b.earned).map(b => b.id);
+  if (silent || g.rankSeen == null) {
+    gPending = null;   // sample load / import / first run: drop celebrations queued for the old data
+    const first = g.rankSeen == null && !silent && db.sessions.some(s => !s.sample);
+    g.rankSeen = gs.rankIdx; g.levelSeen = gs.level; g.seenDone = [...new Set([...g.seenDone, ...allDone, ...doneNow])].slice(-400); g.seenBadges = bs;
+    if (gs.rankIdx >= PRO_RANK && !g.proUntil && !silent && db.sessions.some(s => !s.sample)) grantPro();
+    save(); if (first) toast(`You start at ${gs.rank} · level ${gs.level} (${gs.xp.toLocaleString()} XP from your history)`); return;
+  }
+  const fresh = doneNow.filter(k => !g.seenDone.includes(k)), newBadges = bs.filter(b => !g.seenBadges.includes(b));
+  g.seenDone = [...new Set([...g.seenDone, ...allDone, ...doneNow])].slice(-400); g.seenBadges = bs;
+  let rankUp = null;
+  if (gs.rankIdx > g.rankSeen) { rankUp = gs; if (gs.rankIdx >= PRO_RANK && !g.proUntil) grantPro(); }
+  const lvlUp = gs.level > (g.levelSeen || 0); g.rankSeen = Math.max(g.rankSeen, gs.rankIdx); g.levelSeen = Math.max(g.levelSeen || 0, gs.level); save();
+  fresh.forEach(k => { const c = cur.find(x => x.key === k); ForgedSync.emit('challenge.done', { key:k, xp:c.xp }); });
+  newBadges.forEach(b => ForgedSync.emit('badge.earned', { id:b }));
+  // queue celebrations (merged with any not yet shown); a later reset of the data drops them
+  if (!(rankUp || fresh.length || newBadges.length || lvlUp)) return;
+  const q = gPending && gPending.db === db ? gPending : { db, fresh:[], badges:[] };
+  if (rankUp) q.rankUp = rankUp; if (lvlUp) q.lvl = gs;
+  q.fresh.push(...fresh.map(k => cur.find(x => x.key === k))); q.badges.push(...newBadges);
+  const scheduled = gPending === q; gPending = q; if (scheduled) return;
+  const run = () => {
+    const p = gPending; gPending = null; if (!p || p.db !== db) return;
+    if (p.rankUp) return rankUpSheet(p.rankUp);
+    if (p.fresh.length) { const c = p.fresh[0]; return actionToast(`Challenge complete: ${c.title} · +${c.xp} XP`, 'Share', () => shareSheet('challenge', c)); }
+    if (p.badges.length) { const b = BADGES.find(x => x.id === p.badges[0]); return actionToast(`Badge earned: ${b.icon} ${b.name}`, 'See', () => go('#/badges')); }
+    if (p.lvl) toast(`Level ${p.lvl.level} · ${p.lvl.rank}`);
+  };
+  // wait for open sheets and undo toasts so a celebration never replaces them
+  const tryRun = (n = 0) => { if (gPending !== q) return; if (!$('#sheet').hidden || $('#toast').classList.contains('act')) { if (n < 12) setTimeout(() => tryRun(n + 1), 1200); else gPending = null; return; } run(); };
+  setTimeout(() => whenSettled(() => tryRun()), 700);
+}
+let gPending = null;
+function grantPro(){ const g = game(); g.proGranted = today(); g.proUntil = iso(addDays(new Date(), 7)); ForgedSync.emit('pro.granted', { until:g.proUntil }); }
+function actionToast(msg, label, fn){
+  const t = $('#toast'); t.innerHTML = `${esc(msg)} <button type="button" class="tbtn">${esc(label)}</button>`; t.classList.add('show', 'act');
+  t.querySelector('.tbtn').onclick = () => { t.classList.remove('show','act'); fn(); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show','act'), 5000);
+}
+function confettiBurst(){
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const box = h('<div class="confetti" aria-hidden="true"></div>'), cols = ['#F2711C','#F5C542','#FFFFFF','#E5484D','#B48CF2'];
+  for (let i = 0; i < 44; i++) box.appendChild(h(`<i style="left:${Math.random()*100}%;background:${cols[i % cols.length]};animation-delay:${(Math.random()*.35).toFixed(2)}s;animation-duration:${(1.3 + Math.random()*.9).toFixed(2)}s"></i>`));
+  document.body.appendChild(box); setTimeout(() => box.remove(), 2600);
+}
+function rankEmblem(ri, size = 96){
+  const col = ['#9AA3AE','#F2711C','#E5484D','#8FB0D9','#F5C542','#6FD3A8','#B48CF2','#FFFFFF'][ri] || '#F2711C';
+  return `<svg class="emblem" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 4 90 22v28c0 24-17 40-40 46C27 90 10 74 10 50V22z" fill="#141416" stroke="${col}" stroke-width="5"/><path d="M30 56h40l-6 8H36zM34 46h32v8H34zM46 64h8v12h-8z" fill="${col}"/><path d="M50 18c6 8 10 12 4 22 8-3 10-9 8-14 6 6 6 16-2 20H40c-8-5-6-14 2-20-1 5 1 9 5 11-3-8 1-13 3-19z" fill="${col}" opacity=".9"/><text x="50" y="94" text-anchor="middle" font-size="0">${ri}</text></svg>`;
+}
+function rankUpSheet(gs){
+  const el = h(`<div class="rankup" id="rankUp">${rankEmblem(gs.rankIdx, 120)}<div class="eyebrow">Rank up</div><h3>${esc(gs.rank)}</h3><p class="dim">Level ${gs.level} · ${gs.xp.toLocaleString()} XP</p>
+    ${gs.rankIdx >= PRO_RANK && game().proUntil ? `<div class="pronote" id="proNote">🎁 <b>Pro week earned.</b> 7 days of Pro, until ${fmtShort(game().proUntil)}.</div>` : ''}
+    ${unlocksAt(gs.level).length ? `<div class="hint">Unlocked: ${unlocksAt(gs.level).map(esc).join(', ')}. Pick them in Profile → Looks.</div>` : ''}
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px"><button type="button" class="btn primary block" id="shareRank">Share</button><button type="button" class="btn block ghost" data-cancel>Nice</button></div></div>`);
+  el.querySelector('[data-cancel]').onclick = () => closeSheet();
+  el.querySelector('#shareRank').onclick = () => { closeSheet(); whenSettled(() => shareSheet('rank', gs)); };
+  openSheet(el); confettiBurst(); ForgedSync.emit('rank.up', { rank:gs.rank, level:gs.level });
+}
+const unlocksAt = L => ['accent','frame','flair'].flatMap(k => LOOKS[k].filter(x => x.unlock && x.how.includes(`level ${L})`)).map(x => x.name));
+
+/* ---------- Home pieces (max: rank chip + one challenge card) ---------- */
+function rankChip(){
+  const gs = gameState();
+  return `<a class="rankchip" id="rankChip" href="#/rank"><span class="rc-l">${flairSym() ? `<i class="flair">${flairSym()}</i>` : ''}<b>Lv ${gs.level}</b> ${esc(gs.rank)}</span><span class="sgbar"><i style="width:${gs.pct}%"></i></span><em>${gs.xp.toLocaleString()} XP</em></a>`;
+}
+function challengeHome(){
+  const cur = currentChallenges(), open = cur.filter(c => !c.done).sort((a, b) => b.pct - a.pct || a.to.localeCompare(b.to));
+  const c = open[0]; const doneN = cur.filter(x => x.done).length;
+  if (!c) return `<div class="card chcard" id="challengeHome"><h2>Challenges <a class="lnk" href="#/challenges">See all ›</a></h2><div class="hint">All ${cur.length} current challenges done. New ones tomorrow.</div></div>`;
+  return `<div class="card chcard" id="challengeHome"><h2>Challenges <small>${doneN}/${cur.length} done</small><a class="lnk" href="#/challenges">See all ›</a></h2>
+    <div class="list-row chrow"><div class="grow"><b>${esc(c.title)}</b><small>${esc(c.progress)} · <span data-left>${timeLeft(c.to)}</span></small><span class="sgbar"><i style="width:${c.pct}%"></i></span></div><span class="pill xp">+${c.xp} XP</span></div></div>`;
+}
+
+/* ---------- Challenges screen ---------- */
+function chRow(c){
+  return `<div class="list-row chrow${c.done ? ' done' : ''}" data-ch="${esc(c.key)}"><div class="grow"><b>${esc(c.title)} <span class="pill tier t${c.tier}">${TIER[c.tier]}</span></b>
+    <small data-prog>${esc(c.progress)}${c.done ? ' · ✓ done' : ''}</small><span class="sgbar"><i style="width:${c.pct}%"></i></span></div>
+    ${c.done ? `<button type="button" class="btn sm" data-sharech="${esc(c.key)}">Share</button>` : `<span class="pill xp">+${c.xp} XP</span>`}</div>`;
+}
+function viewChallenges(){
+  setHeader('Challenges', '', { parent:'#/' });
+  const cur = currentChallenges(), gs = gameState(), v = $('#view');
+  const sec = (p, title) => { const l = cur.filter(c => c.p === p); return l.length ? `<div class="card" id="ch-${p}"><h2>${title} <small data-left>${timeLeft(l[0].to)}</small></h2>${l.map(chRow).join('')}</div>` : ''; };
+  const fr = game().friend.filter(x => x.to >= iso(addDays(new Date(), -7)));
+  v.innerHTML = `${rankChip()}${sec('d','Daily')}${sec('w','Weekly')}${sec('m','Monthly')}
+    <div class="card" id="friendCard"><h2>Friend challenges</h2>${fr.length ? fr.map(friendRow).join('') : '<div class="hint" style="margin:-4px 0 8px">Send a challenge link. Your friend joins on their own phone and tracks it with their own workouts (self-reported, no accounts).</div>'}
+      <button type="button" class="btn block" id="challengeFriend" style="margin-top:8px">Challenge a friend</button></div>
+    <div class="hint" style="padding:0 6px 20px">New daily challenges at midnight, weekly on Monday, monthly on the 1st. Progress comes from what you log. Workouts added more than 7 days late don't count toward challenges. ${gs.done.length} completed so far.</div>`;
+  v.querySelectorAll('[data-sharech]').forEach(b => b.onclick = () => shareSheet('challenge', cur.find(c => c.key === b.dataset.sharech)));
+  $('#challengeFriend').onclick = friendSheet;
+}
+
+/* ---------- friend challenge links (no server: the challenge rides in the URL) ---------- */
+const b64u = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = s => decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))));
+function friendCode(t, days, from){ return b64u(JSON.stringify({ v:1, id:t.id, d:days, f:String(from||'').slice(0, 30), s:today() })); }
+function readFriendCode(code){
+  try { const o = JSON.parse(unb64u(code)); const t = CH_POOL.find(x => x.id === o.id); if (!t || o.v !== 1 || !isoOk(o.s)) return null;
+    const days = clamp(Number(o.d) || 7, 1, 31); return { code, tid:t.id, title:t.t, from:o.f || 'A friend', days }; } catch(e) { return null; }
+}
+function friendRow(x){
+  const t = CH_POOL.find(c => c.id === x.tid); if (!t) return '';
+  const r = evalChallenge(t, { key:'f' + x.code.slice(0, 8), from:x.start, to:x.to }, prEvents());
+  return `<div class="list-row chrow${r.done ? ' done' : ''}" data-friend="${esc(x.code)}"><div class="grow"><b>${esc(x.title)}</b><small>From ${esc(x.from)} · ${esc(r.progress)}${r.done ? ' · ✓ done' : ` · ${timeLeft(x.to)}`}</small><span class="sgbar"><i style="width:${r.pct}%"></i></span></div></div>`;
+}
+function friendSheet(){
+  const pool = CH_POOL.filter(t => t.p !== 'd' && (!t.need || t.need()));
+  let tid = pool[0].id, days = 7;
+  const el = h(`<div><h3>Challenge a friend</h3><div class="hint" style="margin:-6px 0 12px">They open the link on their phone and track it with their own workouts. No accounts, nothing uploaded.</div></div>`);
+  const list = h(`<div class="focuschips" id="friendPick">${pool.map(t => `<button type="button" data-tid="${t.id}" class="${t.id === tid ? 'on' : ''}">${esc(t.t)}</button>`).join('')}</div>`);
+  list.querySelectorAll('button').forEach(b => b.onclick = () => { tid = b.dataset.tid; list.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+  el.appendChild(field('Challenge', list));
+  el.appendChild(field('Time to do it', seg([[7,'1 week'],[14,'2 weeks'],[30,'30 days']], days, x => days = x)));
+  const name = h(`<input class="input" type="text" id="friendFrom" placeholder="Your name (shown to them)" value="${esc(db.profile.name||'')}">`); el.appendChild(field('From', name));
+  const btn = h('<button type="button" class="btn primary block" id="friendSend" style="margin-top:12px">Share challenge link</button>'); el.appendChild(btn);
+  btn.onclick = async () => {
+    const t = CH_POOL.find(x => x.id === tid), url = location.href.split('#')[0] + '#/join/' + friendCode(t, days, name.value.trim()), text = `${name.value.trim() || 'I'} challenged you on Forged: ${t.t} (${days} days)`;
+    window.__lastFriendUrl = url;
+    try { if (navigator.share) { await navigator.share({ title:'Forged challenge', text, url }); toast('Challenge sent'); }
+      else if (navigator.clipboard) { await navigator.clipboard.writeText(`${text}\n${url}`); toast('Link copied. Paste it to your friend'); }
+      else { prompt('Copy this link', url); } } catch(e) { if (e && e.name !== 'AbortError') toast('Could not share'); }
+  };
+  openSheet(el, null, { closeLabel:'Cancel' });
+}
+function viewJoin(code){
+  const x = readFriendCode(code || '');
+  if (!x) { toast('That challenge link is not valid'); replacing = true; location.replace('#/challenges'); return; }
+  setHeader('Challenge', '', { parent:'#/challenges' });
+  const already = game().friend.some(f => f.code === x.code);
+  $('#view').innerHTML = `<div class="card" id="joinCard"><h2>${esc(x.from)} challenged you</h2><div class="joint">${esc(x.title)}</div><div class="hint">${x.days} days from when you accept. Progress comes from your own logged workouts and stays on your phone.</div>
+    <button type="button" class="btn primary block" id="joinGo" style="margin-top:14px">${already ? 'Already joined: see challenges' : 'Accept challenge'}</button></div>`;
+  $('#joinGo').onclick = () => { if (!already) { game().friend.push({ code:x.code, tid:x.tid, title:x.title, from:x.from, start:today(), to:iso(addDays(new Date(), x.days - 1)) }); save(); toast('Challenge accepted'); ForgedSync.emit('friend.join', { tid:x.tid }); } go('#/challenges'); };
+}
+
+/* ---------- Rank screen ---------- */
+function viewRank(){
+  setHeader('Rank', '', { parent:'#/' });
+  const gs = gameState(), g = game(), p = gs.parts, v = $('#view');
+  v.innerHTML = `<div class="card rankhero" id="rankHero">${rankEmblem(gs.rankIdx, 88)}<div><div class="eyebrow">Level ${gs.level}</div><h2 class="rk">${flairSym() ? flairSym() + ' ' : ''}${esc(gs.rank)}</h2>
+      <div class="dim" id="xpLine">${gs.xp.toLocaleString()} XP · ${(gs.next - gs.xp).toLocaleString()} to level ${gs.level + 1}</div><span class="sgbar big"><i style="width:${gs.pct}%"></i></span>
+      ${gs.nextRank ? `<div class="hint" id="nextRank">${esc(gs.nextRank.name)} at level ${gs.nextRank.level} (${(gs.nextRank.xp - gs.xp).toLocaleString()} XP to go)</div>` : '<div class="hint">Top rank. Forged.</div>'}</div></div>
+    ${proActive() ? `<div class="card pronote" id="proNote">🎁 <b>Pro week earned</b> for reaching ${RANKS[PRO_RANK][0]}. Pro until ${fmtShort(g.proUntil)}.</div>` : g.proUntil ? `<div class="hint" style="padding:0 6px 10px">Pro week earned ${fmtShort(g.proGranted)} (ended ${fmtShort(g.proUntil)}).</div>` : `<div class="hint" style="padding:0 6px 10px">Reach ${RANKS[PRO_RANK][0]} (level ${RANKS[PRO_RANK][1]}) to earn 7 days of Pro.</div>`}
+    <div class="card" id="xpBreak"><h2>Where your XP comes from</h2>${[['Challenges', p.challenges],['Logging workouts', p.log],['Week streaks', p.streak],['PRs', p.pr],['Strength goals hit', p.goals],['Monthly goal', p.ring]].map(([l, x]) => `<div class="list-row"><div class="grow">${l}</div><b>${x.toLocaleString()}</b></div>`).join('')}
+      <div class="hint" style="margin-top:8px">Logging: ${XP_LOG} XP per workout (max ${XP_LOG_CAP} a day). Challenges: Easy/Medium/Hard daily ${CH_XP.d.slice(1).join('/')}, weekly ${CH_XP.w.slice(1).join('/')}, monthly ${CH_XP.m.slice(1).join('/')}. Week streak +${XP_STREAK}, PR +${XP_PR}, strength goal +${XP_GOAL}, monthly goal +${XP_RING}.</div></div>
+    <div class="card" id="ladder"><h2>Ranks</h2>${RANKS.map(([n, L], i) => `<div class="list-row ladder${i === gs.rankIdx ? ' cur' : ''}${i > gs.rankIdx ? ' locked' : ''}"><span class="lvl">Lv ${L}+</span><div class="grow"><b>${n}</b>${i === PRO_RANK ? '<small>🎁 7 days of Pro</small>' : ''}</div>${i <= gs.rankIdx ? '✓' : ''}</div>`).join('')}</div>
+    <div class="btnrow" style="display:flex;gap:10px;padding:0 0 20px"><button type="button" class="btn primary" id="shareRank" style="flex:1">Share rank</button><a class="btn" href="#/badges" style="flex:1">Badges</a></div>${weekStreak() >= 2 ? `<button type="button" class="btn block" data-sharestreak id="shareStreak" style="margin-bottom:20px">Share your ${weekStreak()}-week streak</button>` : ''}`;
+  $('#shareRank').onclick = () => shareSheet('rank', gs);
+}
+
+/* ---------- Badges screen ---------- */
+function viewBadges(){
+  setHeader('Badges', '', { parent:'#/settings' });
+  const bs = badgeState(), n = bs.filter(b => b.earned).length;
+  $('#view').innerHTML = `<div class="card" id="badgeCase"><h2>Badge case <small>${n} of ${bs.length}</small></h2><div class="badgegrid">${bs.map(b => `<div class="badge${b.earned ? ' on' : ' locked'}" data-badge="${b.id}"><span class="bi">${b.earned ? b.icon : '🔒'}</span><b>${esc(b.name)}</b><small>${esc(b.earned ? 'Earned' : b.how)}</small></div>`).join('')}</div></div>
+    <div class="hint" style="padding:0 6px 20px">Badges come from your history and update as you log. Locked badges show how to earn them.</div>`;
+}
+
+/* ---------- Profile card: rank, badges, looks, Pro week ---------- */
+function gameProfileCard(){
+  const gs = gameState(), bs = badgeState(), n = bs.filter(b => b.earned).length, lk = currentLook();
+  const card = h(`<div class="card" id="gameProfile"><h2>Rank, badges &amp; looks</h2>
+    <a class="list-row" href="#/rank" style="text-decoration:none;color:inherit"><div class="grow"><b>${flairSym() ? flairSym() + ' ' : ''}${esc(gs.rank)} · level ${gs.level}</b><small>${gs.xp.toLocaleString()} XP${proActive() ? ` · 🎁 Pro week earned (until ${fmtShort(game().proUntil)})` : ''}</small></div>›</a>
+    <a class="list-row" href="#/badges" id="badgesLink" style="text-decoration:none;color:inherit"><div class="grow"><b>Badge case</b><small>${n} of ${bs.length} earned</small></div><span class="badgepeek">${bs.filter(b => b.earned).slice(-4).map(b => b.icon).join('')}</span>›</a>
+    <div id="looks"></div></div>`);
+  const L = card.querySelector('#looks');
+  const picker = (kind, label) => {
+    const wrap = h(`<div class="field"><label>${label}</label><div class="lookgrid" data-kind="${kind}">${LOOKS[kind].map(x => { const un = lookUnlocked(kind, x.id);
+      return `<button type="button" data-look="${x.id}" class="${lk[kind] === x.id ? 'on' : ''}${un ? '' : ' locked'}" aria-pressed="${lk[kind] === x.id}" ${un ? '' : 'aria-disabled="true"'} title="${esc(x.how)}">${kind === 'accent' ? `<i class="sw" style="background:${x.col}"></i>` : kind === 'flair' ? `<i class="sy">${x.sym || '–'}</i>` : `<i class="fr fr-${x.id}"></i>`}<span>${esc(x.name)}</span>${un ? '' : `<small>🔒 ${esc(x.how)}</small>`}</button>`; }).join('')}</div></div>`);
+    wrap.querySelectorAll('button').forEach(b => b.onclick = () => { if (b.classList.contains('locked')) { toast(`Locked: ${b.title}`); return; }
+      game().look = { ...game().look, [kind]:b.dataset.look }; save(); applyLook(); toast(`${label}: ${b.querySelector('span').textContent}`); route(); });
+    L.appendChild(wrap);
+  };
+  picker('accent', 'Accent colour'); picker('frame', 'Share card frame'); picker('flair', 'Rank flair');
+  L.appendChild(h('<div class="hint">The log form still uses each workout type\'s colour.</div>'));
+  return card;
+}
+
+document.addEventListener('click', e => {
+  const r = e.target.closest && e.target.closest('[data-sharering]'); if (r) { const x = db.challenges.find(c => c.month === r.dataset.sharering); if (x) { const [y, m] = x.month.split('-').map(Number); shareSheet('ring', { label:`${MONTHS[m-1]} ${y}`, n:x.n, target:x.target }); } return; }
+  const st = e.target.closest && e.target.closest('[data-sharestreak]'); if (st) shareSheet('streak', { weeks:weekStreak(), sessions:db.sessions.filter(s => s.date >= iso(addDays(weekStart(new Date()), -7 * (weekStreak() - 1)))).length });
+});
+/* ---------- share cards (canvas → Web Share with files, or download) ---------- */
+const SHARE_FMT = { square:[1080, 1080], story:[1080, 1920] };
+let shareImgCache = null;
+function loadShareImg(){ if (shareImgCache) return shareImgCache; shareImgCache = new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = 'brand/forged/forged-mark.svg'; }); return shareImgCache; }
+function shareContent(kind, x, showNums){
+  const hide = v => showNums ? v : '•••', u = unit();
+  if (kind === 'session') { const c = catOf(x), st = [];
+    st.push([hide(`${x.duration || 0}`), 'min']); if (rpeOf(x)) st.push([hide(`${rpeOf(x)}/10`), 'effort']);
+    if (c === 'weights') { const v = volumeOf(x); if (v) st.push([hide(Math.round(v).toLocaleString()), `${u} volume`]); }
+    else if (x.rounds) st.push([hide(String(x.rounds)), 'rounds']);
+    if (c === 'cardio' && x.cardio?.dist) st.push([hide(String(x.cardio.dist)), distU()]);
+    return { eyebrow:'Workout logged', title:sessTitle(x), sub:fmtShort(x.date), stats:st.slice(0, 3), color:CATS[c]?.color || '#F2711C', foot:x.feel ? `Felt: ${(FEELS[x.feel-1]||[])[2] || ''}` : '' }; }
+  if (kind === 'goal') return { eyebrow:'Goal hit · New PR', title:sgLabel(x), sub:x.achieved ? fmtShort(x.achieved.date) : fmtShort(today()), stats:[[hide(String(x.achieved ? x.achieved.value : sgTarget(x))), sgUnit(x)], [hide(String(sgTarget(x))), 'target']], color:'#F5C542' };
+  if (kind === 'rank') return { eyebrow:`Level ${x.level}`, title:x.rank, sub:'Rank on Forged', stats:[[hide(x.xp.toLocaleString()), 'XP'], [String(badgeState().filter(b => b.earned).length), 'badges']], color:'#F2711C', emblem:x.rankIdx };
+  if (kind === 'challenge') return { eyebrow:`${{ d:'Daily', w:'Weekly', m:'Monthly' }[x.p]} challenge complete`, title:x.title, sub:fmtShort(today()), stats:[[`+${x.xp}`, 'XP'], [TIER[x.tier], 'tier']], color:'#6FD3A8' };
+  if (kind === 'streak') return { eyebrow:'Streak', title:`${x.weeks}-week streak`, sub:'Training every week', stats:[[String(x.weeks), 'weeks'], [hide(String(x.sessions)), 'sessions']], color:'#F2711C' };
+  if (kind === 'ring') return { eyebrow:'Monthly goal hit', title:x.label, sub:'Ring closed', stats:[[hide(`${x.n}`), 'workouts'], [hide(`${x.target}`), 'goal']], color:'#F2711C', ring:true };
+  return { eyebrow:'Forged', title:'For the fight', sub:'', stats:[], color:'#F2711C' };
+}
+async function renderShareCard(kind, x, fmt = 'square', showNums = true){
+  const [W, H] = SHARE_FMT[fmt] || SHARE_FMT.square, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'), c = shareContent(kind, x, showNums), frame = currentLook().frame, accent = (LOOKS.accent.find(a => a.id === currentLook().accent) || LOOKS.accent[0]).col;
+  try { await Promise.all([document.fonts.load('800 120px "Barlow Condensed"'), document.fonts.load('600 40px "Barlow"')]); } catch(e) {}
+  g.fillStyle = '#0B0B0C'; g.fillRect(0, 0, W, H);
+  const glow = g.createRadialGradient(W * .5, H * 1.05, 40, W * .5, H * 1.05, H * .9); glow.addColorStop(0, 'rgba(242,113,28,.55)'); glow.addColorStop(.45, 'rgba(242,113,28,.12)'); glow.addColorStop(1, 'rgba(242,113,28,0)'); g.fillStyle = glow; g.fillRect(0, 0, W, H);
+  // frame
+  const fcol = { classic:accent, ember:'#E5484D', gold:'#F5C542', damascus:'#B48CF2' }[frame] || accent;
+  g.lineWidth = frame === 'classic' ? 6 : 14; g.strokeStyle = fcol; if (frame === 'ember') { g.shadowColor = '#F2711C'; g.shadowBlur = 40; }
+  g.strokeRect(36, 36, W - 72, H - 72); g.shadowBlur = 0;
+  if (frame === 'damascus') { g.globalAlpha = .12; g.strokeStyle = '#B48CF2'; g.lineWidth = 3; for (let i = -H; i < W; i += 46) { g.beginPath(); g.moveTo(i, 0); g.bezierCurveTo(i + 120, H * .3, i - 120, H * .6, i + 60, H); g.stroke(); } g.globalAlpha = 1; }
+  // category accent bar
+  g.fillStyle = c.color; g.fillRect(36, 36, W - 72, 18);
+  const top = fmt === 'story' ? 260 : 130, img = await loadShareImg();
+  if (img) g.drawImage(img, 90, top - 40, 150, 150);
+  g.fillStyle = '#FFFFFF'; g.font = '800 92px "Barlow Condensed", Impact, sans-serif'; g.textBaseline = 'alphabetic'; g.fillText('FORGED', 260, top + 52);
+  g.fillStyle = '#9AA3AE'; g.font = '600 30px "Barlow", sans-serif'; g.fillText('F O R   T H E   F I G H T', 264, top + 96);
+  const midY = fmt === 'story' ? 760 : 430;
+  g.fillStyle = c.color; g.font = '600 40px "Barlow", sans-serif'; g.fillText(c.eyebrow.toUpperCase(), 90, midY);
+  g.fillStyle = '#FFFFFF'; let fs = 120; g.font = `800 ${fs}px "Barlow Condensed", Impact, sans-serif`;
+  const title = String(c.title || '').toUpperCase(); while (g.measureText(title).width > W - 180 && fs > 60) { fs -= 6; g.font = `800 ${fs}px "Barlow Condensed", Impact, sans-serif`; }
+  g.fillText(title, 90, midY + fs + 10);
+  g.fillStyle = '#C7CDD4'; g.font = '600 38px "Barlow", sans-serif'; if (c.sub) g.fillText(c.sub, 90, midY + fs + 70);
+  const sy = fmt === 'story' ? 1300 : 790, cw = (W - 180) / Math.max(1, c.stats.length);
+  c.stats.forEach(([v, l], i) => { const x0 = 90 + i * cw; g.fillStyle = '#FFFFFF'; g.font = '800 110px "Barlow Condensed", Impact, sans-serif'; g.fillText(String(v), x0, sy);
+    g.fillStyle = '#9AA3AE'; g.font = '600 32px "Barlow", sans-serif'; g.fillText(String(l).toUpperCase(), x0 + 4, sy + 50); });
+  if (c.foot) { g.fillStyle = '#C7CDD4'; g.font = '600 34px "Barlow", sans-serif'; g.fillText(c.foot, 90, sy + 120); }
+  g.fillStyle = '#6B7280'; g.font = '600 28px "Barlow", sans-serif'; g.textAlign = 'right'; g.fillText('forgedfightapp.github.io', W - 90, H - 80); g.textAlign = 'left';
+  return cv;
+}
+function shareSheet(kind, x){
+  let fmt = 'square', nums = true;
+  const el = h(`<div id="shareSheet"><h3>Share</h3><div class="sharepv"><img id="sharePreview" alt="Share card preview"></div></div>`);
+  const draw = async () => { const cv = await renderShareCard(kind, x, fmt, nums); el.querySelector('#sharePreview').src = cv.toDataURL('image/png'); el.querySelector('#sharePreview').dataset.w = cv.width; el.querySelector('#sharePreview').dataset.h = cv.height; el._cv = cv; };
+  el.appendChild(field('Size', seg([['square','Square 1080×1080'],['story','Story 1080×1920']], fmt, v => { fmt = v; draw(); })));
+  const tg = h(`<label class="toggle"><span><b>Show numbers</b><small>Weights, times and other numbers on the card</small></span><input type="checkbox" role="switch" id="shareNums" checked><i></i></label>`);
+  tg.querySelector('input').onchange = e => { nums = e.target.checked; draw(); }; el.appendChild(tg);
+  const btn = h('<button type="button" class="btn primary block" id="shareGo" style="margin-top:14px">Share image</button>'); el.appendChild(btn);
+  btn.onclick = async () => { if (!el._cv) await draw(); const blob = await new Promise(r => el._cv.toBlob(r, 'image/png')), name = `forged-${kind}-${today()}.png`;
+    try { const file = new File([blob], name, { type:'image/png' });
+      if (navigator.canShare && navigator.canShare({ files:[file] })) { await navigator.share({ files:[file], title:'Forged' }); return; } } catch(e) { if (e && e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); toast('Image saved'); };
+  openSheet(el, null, { closeLabel:'Close' }); draw();
 }
 
 /* In-context 'Set goal' links: confirm before leaving for Profile, warn about unsaved input, remember where to come back to. */
@@ -2625,13 +3144,17 @@ function route(){
   const [, a, b] = hash.split('/');
   curRoute = a || ''; curHash = hash;
   if (a !== 'log' && a !== 'edit') delete document.body.dataset.theme;
-  const tab = { '':'home', history:'history', belts:'history', comps:'history', session:'history', benchmarks:'home', programs:'settings', program:'settings', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
+  const tab = { '':'home', challenges:'home', rank:'home', join:'home', badges:'settings', history:'history', belts:'history', comps:'history', session:'history', benchmarks:'home', programs:'settings', program:'settings', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
   document.querySelectorAll('.tabbar a').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   if (a !== 'log' && a !== 'edit') form = (a === 'session' ? null : form && !form.id ? form : null);
   switch (a || '') {
     case 'history': viewHistory(); break;
     case 'belts': viewBelts(); break;
     case 'comps': viewComps(); break;
+    case 'challenges': viewChallenges(); break;
+    case 'rank': viewRank(); break;
+    case 'badges': viewBadges(); break;
+    case 'join': viewJoin(b); break;
     case 'benchmarks': viewBenchmarks(); break;
     case 'programs': viewPrograms(); break;
     case 'program': viewProgram(b || ''); break;
@@ -2650,7 +3173,7 @@ function route(){
   if (a === 'settings' && b === 'goals') { const g = $('#targetsCard'); if (g) g.scrollIntoView({ block:'start' }); }
   if (a === 'settings' && b === 'schedule') { const g = $('#scheduleCard'); if (g) g.scrollIntoView({ block:'start' }); }
 }
-window.DM_TEST = { strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, get db(){ return db; } };
+window.DM_TEST = { gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, get db(){ return db; } };
 window.addEventListener('hashchange', route);
 // Bottom nav: always closes whatever is open (sheet or form) and goes to that screen.
 document.querySelector('.tabbar').addEventListener('click', e => {
@@ -2660,8 +3183,9 @@ document.querySelector('.tabbar').addEventListener('click', e => {
   if (same) { if (!$('#sheet').hidden) closeSheet(); else if (!onForm()) route(); window.scrollTo(0, 0); return; }
   guardLeave(() => { if (!$('#sheet').hidden) closeSheet(); go(href); });
 });
-window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load(); route(); } });
-db = load();
+window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load(); if (db.belts.length) syncProfileRank(); applyLook(); route(); } });
+db = load(); if (db.belts.length) syncProfileRank();   // profile rank always follows the event log (covers migrated logs)
+applyLook();
 route();
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {

@@ -1,7 +1,7 @@
 import { chromium, devices } from 'playwright';
 import fs from 'fs';
 const BASE = process.env.BASE || 'http://localhost:8787/';
-const SHOTS = '/workspace/bjj-tracker/screenshots';
+const SHOTS = process.env.SHOTS || '/workspace/bjj-tracker/screenshots';
 fs.mkdirSync(SHOTS, { recursive: true });
 const errors = [], results = [];
 const ok = (name, cond, extra='') => { results.push(`${cond ? 'PASS' : 'FAIL'} ${name} ${extra}`); if (!cond) process.exitCode = 1; };

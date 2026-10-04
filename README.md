@@ -71,9 +71,16 @@ is hidden there, and every screen pads for nav + home-indicator inset.
 Grappling (BJJ gi/no-gi + belt, Wrestling, Judo, Sambo, Submission grappling; rolls, subs), Striking and MMA (rounds by type, sparring notes), Mobility, Weights (sets × reps × weight, RPE, PRs/e1RM, volume),
 Cardio (distance/time, pace/speed), heart rate + zones on all, GPX/TCX/FIT/CSV import, nutrition, supplements, JSON export/import, sample data.
 
-## Run
+## Live app & deploy (GitHub Pages)
+Live: **https://forgedfightapp.github.io/** (repo: https://github.com/Forgedfightapp/forgedfightapp.github.io, public, Pages from `main` / root, HTTPS enforced).
+`.nojekyll` makes Pages serve files as they are. All paths are relative (manifest `start_url`/`scope` `./`, `sw.js` registered as `sw.js`), so the app runs at the site root.
+
+To deploy from now on: commit in `/workspace/bjj-tracker`, then run `git push`. Pages rebuilds in about 1 minute.
+On every release, bump `APP_VERSION` in `app.js` **and** the `CACHE` name in `sw.js` (e.g. `forged-shell-v3.0.1`) so installed apps pick up the update when reopened.
+
+## Run locally (optional)
     python3 -m http.server 8787 --directory .      # then open http://localhost:8787
-    ./restart-preview.sh                            # server + Cloudflare quick tunnel (prints public URL)
+    ./restart-preview.sh                            # optional: server + Cloudflare quick tunnel (temporary preview URL, changes on restart)
 
 ## Tests (Playwright, iPhone 13 emulation)
 `tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/supplements.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/multi.test.mjs` (run with `node`, needs

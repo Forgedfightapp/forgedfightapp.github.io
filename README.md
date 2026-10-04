@@ -21,6 +21,38 @@ Weigh-ins and workout body weight merge into one history (latest entry per day).
 progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
 projected goal date.
 
+## 3.3.0: food calculator, calorie/macro calculator, bodyweight challenges, water presets
+**Food calculator** (Add breakfast/lunch/dinner/snack):
+- Search box matches as you type against a bundled offline list of 425 common foods (`foods.js`, USDA-style values per 100 g, common units like 1 egg, 1 cup, 1 scoop, 1 slice, oz). Everyday staples rank first.
+- Online search for branded and restaurant items via the free Open Food Facts API (no key; only when you tap "Search online" or press Enter). Barcode button uses the BarcodeDetector camera API when available, otherwise a typed barcode.
+- Picking a food opens a serving picker: amount + unit (the food's own units, g, oz, branded serving size). Calories, protein, carbs and fat update live; then Add. "Save to My foods" is optional.
+- Recent and saved foods appear first; one tap re-adds them (with Undo). "Enter manually" keeps the old form as a fallback.
+- Offline: the food list ships in the offline app shell; online search and barcode lookup fail with a friendly message.
+- Entries keep `per100`, `amt`, `unit`, `src` and `code` (export/import keeps them).
+
+**Calorie + macro calculator:**
+- **Calculate for me** in onboarding (goals step, when Food or Weight goal is on), Profile → Daily nutrition goals, and the Food screen (when no calorie goal is set).
+- One short screen: sex (for the formula), age, height (ft/in or cm), current weight, goal weight (prefilled from the weight goal), activity (5 levels with plain descriptions; training days count) and pace (slow / steady / aggressive, shown only when the goal differs).
+- Math: Mifflin-St Jeor BMR × activity (1.2 / 1.375 / 1.55 / 1.725 / 1.9) = maintenance. Losing: −250 / −500 / −750, never below BMR or 1200 (women) / 1500 (men). Gaining: +250 / +350 / +500. Same weight (within 1 lb): maintenance. Calories rounded to 10.
+- Macros: protein 1 g per lb of goal weight (max 250 g and 40% of calories), fat 0.35 g per lb kept within 25–30% of calories, carbs the rest.
+- Result card: calories, protein, carbs, fat, maintenance, estimated weekly change (3500 kcal per lb / 7700 per kg) and goal date. **Use these** fills the goals (still editable, undoable); **Adjust** goes back to the inputs.
+- Inputs are stored in `profile.calc`. When logged body weight moves more than 5 lb from the weight used, Profile and Food offer **Recalculate?** ("Not now" waits for another 5 lb).
+- "Estimates only, not medical advice."
+
+**Bodyweight daily challenges + rep log:**
+- Daily challenges are now 15 no-equipment workouts in three tiers (e.g. 30 push-ups, 50 squats, 3 min plank, 100 squats, 30 burpees, 5 rounds combo). Each shows how to do it and an easier scaling option.
+- **Log reps** (Home, Challenges, each challenge) opens a quick rep log: +5/+10/+25 per exercise (push-ups, squats, sit-ups, lunges, burpees, dips, pull-ups, plank/wall sit seconds, mobility minutes), with Undo. Bodyweight sets logged in a workout count too (weighted squats/lunges/dips don't).
+- **Done** fills in the remaining reps for that challenge (undoable). Stored in `db.reps` (export/import included).
+- New weeklies (e.g. 100 push-ups 5 days, 100 squats 5 days, 3-min plank 5 days, 50 pull-ups, 2 sessions at effort 8+, 60 working sets, protein goal 5 days, two sessions in one day) and monthlies (1,000 push-ups, 90 minutes on the mats in one day).
+- Note: XP from old session-based dailies isn't counted anymore, so recomputed XP can be a bit lower.
+
+**Water, easier:**
+- Buttons say their size: Glass 8 oz, Bottle 16.9 oz (metric: 250 ml / 500 ml).
+- Daily total in gallons ("0.4 of 1 gal · ¾ gal to go (80 oz)"); Home shows "… gal to go". Helper: 1 gallon = 128 oz · 1 bottle ≈ 16.9 oz · 1 glass = 8 oz.
+- Goal presets ½ gal (64 oz), ¾ gal (96 oz), 1 gal (128 oz) + Custom (metric 2/3/4 L) in Profile → Daily nutrition goals and onboarding, plus a suggestion of half your body weight (lb) in oz.
+
+**Belt card:** shows "N sessions since last promotion" (grappling sessions since the latest belt or stripe date) instead of mat hours.
+
 ## 3.2.0: challenges, ranks, badges, looks, share cards, belt + stripe dates
 - **Challenges** (Home shows only the rank chip + one challenge; See all → `#/challenges`): 3 daily, 3 weekly, 3 monthly (one easy/medium/hard each), picked deterministically from the date + your enabled sports. Progress comes from logged workouts; entries backfilled more than 7 days later do not count toward challenges.
 - **XP, levels, ranks** (`#/rank`): 10 XP per workout (max 30/day), +20 per week continuing a streak, +25 per PR (est. 1RM beats your previous best), +50 per strength goal hit, +100 per monthly goal hit, plus challenge XP (daily 30/50/75, weekly 100/150/200, monthly 300/400/500). Level curve: level L needs 100·L·(L−1) XP. Ranks: Apprentice 1, Striker 5, Journeyman 10, Smith 15, Blacksmith 20, Master Smith 25, Forgemaster 30, Forged 35. XP is recomputed from your history, so existing users start at the rank they have already earned (recorded silently, no fake rank-up).
@@ -106,7 +138,7 @@ On every release, bump `APP_VERSION` in `app.js` **and** the `CACHE` name in `sw
     ./restart-preview.sh                            # optional: server + Cloudflare quick tunnel (temporary preview URL, changes on restart)
 
 ## Tests (Playwright, iPhone 13 emulation)
-`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/game.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
+`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/game.test.mjs`, `tests/macro-calc.test.mjs`, `tests/food-calc.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 

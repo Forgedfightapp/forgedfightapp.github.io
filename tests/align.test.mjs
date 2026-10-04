@@ -34,7 +34,7 @@ for (const [w, big] of [[390,false],[375,false],[375,true],[320,true]]) {
      await settle(200);
     await run(`Log workout (${c})`);
   }
-  await nav('#/food'); await page.waitForSelector('[data-add="dinner"]'); await page.locator('[data-add="dinner"]').tap(); await page.waitForSelector('.foodform'); await settle(400);
+  await nav('#/food'); await page.waitForSelector('[data-add="dinner"]'); await page.locator('[data-add="dinner"]').tap(); await page.locator('#fpManual').tap(); await page.waitForSelector('.foodform'); await settle(400);
   await page.locator('details.more summary').tap(); await settle(); await run('Food entry sheet');
   if (w === 375 && big) console.log(screens.filter(s => s.wrapped).map(s => `  wrapped: ${s.name}: ${s.labels}`).join('\n'));
   await ctx.close();

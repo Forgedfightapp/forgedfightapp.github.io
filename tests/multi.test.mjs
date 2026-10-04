@@ -51,7 +51,7 @@ ok('no goals set: Food screen shows link instead of progress', await page.locato
 await page.locator('.nutri-top #setGoals').tap(); await page.waitForSelector('.sheet [data-ok]');
 ok('Food screen: leave confirm, no discard warning when nothing typed', /Leave this page\?/i.test(await page.locator('.sheet').innerText()) && !/discarded/.test(await page.locator('.sheet').innerText()));
 await page.locator('.sheet [data-cancel]').tap(); await page.waitForTimeout(350);
-await page.locator('[data-add]').first().tap(); await page.waitForSelector('.foodform');
+await page.locator('[data-add]').first().tap(); await page.locator('#fpManual').tap(); await page.waitForSelector('.foodform');
 await page.locator('.foodform input[placeholder="e.g. Chicken breast"]').fill('Half-typed food');
 await page.evaluate(() => document.querySelector('.nutri-top #setGoals').click()); await page.waitForTimeout(500);
 ok('half-filled food entry: confirm warns it will be discarded', /Leave this page\?/i.test(await page.locator('.sheet').innerText()) && /will be discarded/.test(await page.locator('.sheet').innerText()));

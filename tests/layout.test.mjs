@@ -36,7 +36,7 @@ for (const [name, hash] of [['Home','#/'],['History','#/history'],['Belts','#/be
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#targetsCard');
 const tl = await page.locator('#targetsCard label').evaluateAll(ls => ls.map(x => x.textContent));
 ok('Profile goals: clearer labels', tl[0] === 'Calories' && tl[1] === 'Protein (g)', JSON.stringify(tl));
-ok('Profile goals: helper text', (await page.locator('#targetsCard .hint').textContent()).startsWith('Used to track your progress on the Nutrition screen. You can change these anytime in Profile.'));
+ok('Profile goals: helper text', (await page.locator('#targetsCard .hint:not(.calchint):not(.wtip):not(.wsuggest)').textContent()).startsWith('Used to track your progress on the Nutrition screen. You can change these anytime in Profile.'));
 ok('no console errors', errors.length === 0, JSON.stringify(errors));
 console.log(results.join('\n'));
 await browser.close();

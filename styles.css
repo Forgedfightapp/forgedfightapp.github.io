@@ -736,3 +736,67 @@ html[data-look="violet"]{--brand:#B48CF2;--accent:#BF9CF5;--accent-fill:#B48CF2;
 .tl-item.stripe b{font-weight:650}
 .tl-item.approx small{color:#F5C542}
 .addstripe{margin:6px 0 2px 22px}
+/* 3.2.1 calorie + macro calculator */
+.calcbtn{margin:0 0 6px;border:1px dashed var(--accent);color:var(--accent);background:transparent;font-weight:800}
+.calchint{margin:0 0 12px}.calchint.ok{color:var(--good,#6FD3A8)}
+.calcfood{margin-top:8px}
+#macroCalc .input.big{font-size:20px;min-height:52px}
+#macroCalc .hrow{display:flex;gap:8px}#macroCalc .hrow .input{min-width:0;flex:1}
+#macroCalc .lnk.hu{background:none;border:0;color:var(--accent);font-weight:700;padding:6px 0 0;font-size:13px;cursor:pointer}
+.actlist{display:flex;flex-direction:column;gap:8px}
+.actlist button{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:2px;padding:12px 14px;border-radius:14px;border:1.5px solid var(--line);background:var(--surface2);color:inherit;cursor:pointer;min-height:56px}
+.actlist button b{font-size:16px}.actlist button small{color:var(--muted);font-size:13px}
+.actlist button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
+#macroCalc .btn.big{min-height:54px;font-size:17px}
+.mcres{text-align:center}.mcres .list-row{text-align:left}
+.mccal b{display:block;font-family:"Barlow Condensed","Barlow",sans-serif;font-size:64px;line-height:1;font-weight:800;color:var(--accent)}.mccal span{color:var(--muted)}
+.mcmac{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0 8px}
+.mcmac div{background:var(--surface2);border-radius:14px;padding:12px 6px}.mcmac b{display:block;font-size:26px;font-weight:800}.mcmac small{color:var(--muted)}
+.mcbtns{display:flex;flex-direction:column;gap:10px;margin:14px 0 8px}
+.mcnote{text-align:center;margin-top:12px}
+.card.recalc{display:flex;flex-direction:column;gap:10px;border:1px solid color-mix(in srgb,var(--accent) 45%,transparent)}
+.card.recalc small{display:block;color:var(--muted);margin-top:2px}.recalc .rc-btns{display:flex;gap:8px}
+#targetsCard .card.recalc{margin:0 0 12px}
+#macroCalc .grid2{align-items:start}
+/* 3.3.0 food calculator */
+.fpbar{display:flex;gap:8px;align-items:center}.fpbar .grow{flex:1;min-width:0}
+.fpscan svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.foodpick .label.sect{margin:16px 0 6px}.foodpick .label.sect small{text-transform:none;letter-spacing:0;color:var(--dim);font-weight:500;margin-left:6px}
+.fprow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--surface2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px;color:inherit;cursor:pointer;min-height:58px}
+.fprow b{display:block;font-size:15px;line-height:1.25}.fprow small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.fprow .fpadd{width:34px;height:34px;border-radius:50%;background:var(--accent);color:#111;display:grid;place-items:center;font-weight:900;font-size:20px;flex:none}
+.fprow .chev{color:var(--dim);font-size:22px}
+.fphint{padding:6px 2px 10px}.fperr{color:#F5A524}
+.fponline{margin:4px 0 8px}
+#fpManual{margin-top:14px}
+.fpback{background:none;border:0;color:var(--accent);font-weight:700;padding:0 0 8px;cursor:pointer;font-size:15px}
+.sptotal{background:var(--surface2);border:1px solid var(--line);border-radius:16px;padding:14px;text-align:center;margin-bottom:14px}
+.spcal b{font-family:"Barlow Condensed","Barlow",sans-serif;font-size:56px;line-height:1;font-weight:800;color:var(--accent)}.spcal span{color:var(--muted);margin-left:6px}
+.spmac{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.spmac b{display:block;font-size:24px;font-weight:800}.spmac small{color:var(--muted)}
+.spg{margin:8px 0 0}
+.sprow .stepper{max-width:240px}
+.unitchips{display:flex;flex-wrap:wrap;gap:8px}
+.unitchips button{border:1.5px solid var(--line);background:var(--surface2);color:inherit;border-radius:999px;padding:8px 14px;min-height:42px;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;line-height:1.1}
+.unitchips button small{font-weight:500;color:var(--muted);font-size:11px}
+.unitchips button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.scanbox{position:relative;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:4/3}.scanbox video{width:100%;height:100%;object-fit:cover}
+.scanline{position:absolute;left:10%;right:10%;top:50%;height:2px;background:var(--accent);box-shadow:0 0 12px var(--accent)}
+/* 3.3.0 bodyweight challenges + rep log */
+.chhow{font-size:13px;color:var(--text);opacity:.85;margin:4px 0 2px;line-height:1.35}.chscale{color:var(--muted);display:block;margin-top:2px}
+.chact{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.chact .btn{min-height:38px}
+.chintro{margin:-4px 0 8px}
+.reprow{display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line)}.reprow:first-child{border-top:0}
+.reprow b{display:block;font-size:16px}.reprow small{color:var(--muted)}.reprow.met small{color:#6FD3A8}
+.reprow.focus b{color:var(--accent)}
+.repbtns{display:flex;gap:6px;align-items:center;flex:none}.repbtns .btn{min-width:56px;min-height:42px;font-weight:800}
+.repbtns .iconbtn{width:38px;height:38px;font-size:18px}.repbtns .iconbtn:disabled{opacity:.3}
+.chrow{padding-top:12px;padding-bottom:12px}.chrow .chact{margin-bottom:2px}
+/* 3.3.0 water conversions + presets */
+.wconv{font-size:13.5px;color:var(--muted);margin:6px 0 10px}
+.wtip{margin-top:8px;font-size:12px}
+.wpresets{margin-top:-4px}.wchips{display:flex;flex-wrap:wrap;gap:8px}
+.wchips .chip{border:1.5px solid var(--line);background:var(--surface2);color:inherit;border-radius:999px;padding:8px 12px;min-height:40px;font-weight:700;font-size:13.5px;cursor:pointer}
+.wchips .chip.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.wsuggest .lnk{background:none;border:0;padding:0;color:var(--accent);font-weight:800;cursor:pointer;font-size:inherit}
+.wline .wgal{color:var(--muted);margin-left:6px;font-size:12px}
+.wbtns .btn b{white-space:nowrap}

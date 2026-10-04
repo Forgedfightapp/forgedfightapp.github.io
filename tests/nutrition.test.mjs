@@ -27,7 +27,7 @@ const calBefore = Number(await page.locator('.ring-v').textContent());
 await page.screenshot({ path:`${SHOTS}/09-nutrition-daily.png` });
 await page.screenshot({ path:`${SHOTS}/09b-nutrition-daily-full.png`, fullPage:true });
 // add new food (custom)
-await page.locator('[data-add="dinner"]').tap();
+await page.locator('[data-add="dinner"]').tap(); await page.locator('#fpManual').tap();
 await page.waitForSelector('.foodform');
 await page.locator('.foodform input[placeholder="e.g. Chicken breast"]').fill('Test Steak');
 await page.locator('.foodform input[placeholder="e.g. 100 g, 1 cup"]').fill('8 oz');
@@ -49,7 +49,7 @@ ok('food entry saved', steak && steak.qty === 1.5 && steak.cal === 500 && steak.
 ok('saved to My foods', d.nutrition.foods.some(f => f.name === 'Test Steak'));
 ok('daily total updated', Number(await page.locator('.ring-v').textContent()) === calBefore + 750, `${calBefore} -> ${await page.locator('.ring-v').textContent()}`);
 // autocomplete from saved foods
-await page.locator('[data-add="snack"]').tap();
+await page.locator('[data-add="snack"]').tap(); await page.locator('#fpManual').tap();
 await page.locator('.foodform input[placeholder="e.g. Chicken breast"]').fill('stea');
 const sug = page.locator('.foodform .sugg button', { hasText:'Test Steak' });
 ok('autocomplete suggests saved food', await sug.count() === 1);

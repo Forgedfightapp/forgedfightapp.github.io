@@ -1,7 +1,7 @@
 import { chromium, devices } from 'playwright';
 import fs from 'fs';
 const BASE = process.env.BASE || 'http://localhost:8787/';
-const SHOTS = '/workspace/bjj-tracker/screenshots';
+const SHOTS = process.env.SHOTS || '/workspace/bjj-tracker/screenshots';
 const errors = [], results = [];
 const ok = (n, c, x='') => { results.push(`${c?'PASS':'FAIL'} ${n} ${x}`); if (!c) process.exitCode = 1; };
 const browser = await chromium.launch();

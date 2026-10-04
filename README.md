@@ -1,14 +1,14 @@
 # Forged — For the fight (PWA)
 
 Offline-first, iPhone-first training tracker. Vanilla JS, no build step, no CDNs. All data stays in
-`localStorage` (key `dm.bjj.v1`, schema 6; older data auto-migrates and backups are kept at `dm.bjj.v1.backup.v1` / `.backup.v2` / `.backup.v3` / `.backup.v4` / `.backup.v5`; the storage key is unchanged from the Discipline > Motivation releases, and old D>M backup files import fine; an unreadable store is copied to `dm.bjj.v1.unreadable` before starting fresh).
+`localStorage` (key `dm.bjj.v1`, schema 7; older data auto-migrates and backups are kept at `dm.bjj.v1.backup.v1` / `.backup.v2` / `.backup.v3` / `.backup.v4` / `.backup.v5` / `.backup.v6`; the storage key is unchanged from the Discipline > Motivation releases, and old D>M backup files import fine; an unreadable store is copied to `dm.bjj.v1.unreadable` before starting fresh).
 
 ## Design priority: simple first
-- **Quick log**: Home → `+` → Save = 3 taps (category + last-used duration + today pre-filled). The Save button stays pinned above the nav. All other fields are always visible under a **Details (optional)** heading, with Notes right after the main type/technique fields, then the rest, ending with Intensity → Body weight → Import from device (GPX/TCX/FIT/CSV) → Heart rate.
+- **Quick log**: Home → `+` → Save = 3 taps (category + last-used duration + today pre-filled). The Save button stays pinned above the nav. All other fields are always visible under a **Details (optional)** heading, with Notes right after the main type/technique fields, then the rest, ending with Effort (RPE) → Body weight → Import from device (GPX/TCX/FIT/CSV) → Heart rate.
 - **Log again**: one tap on Home repeats a recent workout per category (with Undo).
-- **Food quick add** (1 tap from recent/saved foods) and **Mark all taken** per supplement time block.
+- **Food quick add** (1 tap from recent/saved foods).
 - Home shows essentials only; deeper charts are under **See all stats** (`#/stats`).
-- First-run screen picks what you train; Profile → *What I track* hides unused sections. Bottom nav: Home · History · + · Food/Supplements/Nutrition · Profile.
+- First run is two steps: *What do you train?* (sports + Food + Weight goal), then *Set your goals* showing only the goals that apply (all optional, Skip for now). Profile → *What I track* hides unused sections. Bottom nav: Home · History · + · Food (Stats when Food is off) · Profile.
 
 ## Navigation
 Every non-tab screen has a big Back/Cancel button top-left (below the iOS safe area); every sheet has Close/Cancel, closes on swipe-down,
@@ -20,6 +20,18 @@ Start weight (defaults to first weigh-in), goal weight, optional goal date, lb/k
 Weigh-ins and workout body weight merge into one history (latest entry per day). Home card: current, goal, lost/gained so far, left to go,
 progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
 projected goal date.
+
+## 3.1.0: training features, goals, onboarding
+- **Onboarding (2 steps)**: Step 1 of 2 *What do you train?*; Step 2 of 2 *Set your goals* shows only what applies: daily calories/protein/carbs/fat/water (Food on; protein hint 0.8–1 g per lb), current/goal weight + date (Weight goal on), strength goals (Weights on), monthly workout target, usual training days per chosen sport, optional next competition. Every field optional; *Done*, *Skip for now*, Back to step 1. Goals stay editable in Profile.
+- **Set goal links** (Food screen, water card, Home nutrition/weight/week cards) first ask *Leave this page? You'll go to Profile to set your goals.* (Cancel / Go to goals) and warn when unsaved input (half-filled food entry or workout) will be discarded. Profile then shows *← Back to <page>*.
+- **Weekly schedule** per sport (Profile) + Home *This week* strip (planned vs done dots); warnings for back-to-back hard days (effort ≥8) and weekly load >30% above the 4-week average.
+- **Effort & feel**: Effort (RPE 1–10) replaces Intensity (old 1–5 values are kept; RPE = intensity × 2), *How did it feel?* emoji picker after Notes. Load = minutes × RPE; Stats shows a 12-week load chart and acute:chronic ratio (Fresh / Building / High load).
+- **Competitions**: countdown card with taper tips in the last 7 days; past comps get a result (win/loss/medal) + notes; History → Comps.
+- **Benchmarks**: pull-ups, push-ups, dead hang, plank, est. 1RM squat/bench/deadlift (entered or Epley from logs), body weight; latest/best/sparkline, retest reminder every 6 weeks; rows show the related strength goal.
+- **Strength goals**: PR targets for bench/squat/deadlift/overhead press or any exercise from your list, and rep goals (pull-ups, push-ups, dead hang seconds), each with an optional date. Progress uses est. 1RM (Epley, default) or heaviest set (Profile choice); Stats card with bars + %, compact Home line for the closest goal. A logged set or benchmark test that beats a target shows *Goal hit! New PR*, records the date and offers the next target (+5% lifts, +2 reps, +15 s hang).
+- **Category colours on the log form**: picking Grappling/Striking/MMA/Weights/Cardio/Mobility re-themes the whole form (selected chips, session type, Effort, toggles, focus rings, pinned Save, the + button) via CSS variables on `body[data-theme]`; it switches instantly and resets when you leave. Fills use dark text (≥5:1 on every colour).
+- **Injury log** (Home card while active, severity chart, reminder on the log form), **monthly challenge ring** (target in Profile, confetti), **programs** (templates in `programs.js`, swaps, progression, today's workout on Home; behind a single `isPro()` check, currently free).
+- **Supplements removed**: existing real supplement data is kept untouched in `archive.supps` (stored, exported, re-imported; a note in Profile → Your data). **Drilling** is no longer a session type; stored `drill` sessions are kept and shown/edited as Class (MMA's Drilling rounds remain). **Pad work** replaces Open mat for Striking and MMA (Class, Pad work, Private, Competition, Seminar, Other); stored Striking/MMA `open` sessions migrate (and import) as `pads`. Grappling keeps Open mat.
 
 ## 3.0.0: FORGED + six sports
 - **Rebrand: FORGED, "For the fight".** Anvil and orange/white flame mark, FORGED wordmark (Barlow Condensed ExtraBold, as outlines). Name/short_name
@@ -69,7 +81,7 @@ is hidden there, and every screen pads for nav + home-indicator inset.
 
 ## Features
 Grappling (BJJ gi/no-gi + belt, Wrestling, Judo, Sambo, Submission grappling; rolls, subs), Striking and MMA (rounds by type, sparring notes), Mobility, Weights (sets × reps × weight, RPE, PRs/e1RM, volume),
-Cardio (distance/time, pace/speed), heart rate + zones on all, GPX/TCX/FIT/CSV import, nutrition, supplements, JSON export/import, sample data.
+Cardio (distance/time, pace/speed), heart rate + zones on all, GPX/TCX/FIT/CSV import, nutrition + water, schedule, effort/load, competitions, benchmarks, strength goals, injuries, monthly ring, programs, JSON export/import, sample data.
 
 ## Live app & deploy (GitHub Pages)
 Live: **https://forgedfightapp.github.io/** (repo: https://github.com/Forgedfightapp/forgedfightapp.github.io, public, Pages from `main` / root, HTTPS enforced).
@@ -83,7 +95,7 @@ On every release, bump `APP_VERSION` in `app.js` **and** the `CACHE` name in `sw
     ./restart-preview.sh                            # optional: server + Cloudflare quick tunnel (temporary preview URL, changes on restart)
 
 ## Tests (Playwright, iPhone 13 emulation)
-`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/supplements.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
+`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 

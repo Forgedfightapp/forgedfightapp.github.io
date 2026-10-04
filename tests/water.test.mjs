@@ -11,7 +11,7 @@ const settle = (ms=300) => page.waitForTimeout(ms);
 const hideToast = async () => { await page.evaluate(() => document.querySelector('#toast').classList.remove('show','act')); await page.waitForTimeout(450); };
 const total = async () => Number(await page.locator('#waterTotal').innerText());
 
-await page.goto(BASE); await page.waitForSelector('#catTiles'); await page.locator('#go').tap(); await page.waitForSelector('.statrow');
+await page.goto(BASE); await page.waitForSelector('#catTiles'); await page.locator('#go').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('.statrow');
 ok('Home nutrition card has a water line', (await page.locator('#homeWater').innerText()).includes('Water') && (await page.locator('#homeWater').innerText()).includes('oz'));
 await page.goto(BASE + '#/food'); await page.waitForSelector('#waterCard');
 ok('no water goal: shows Set goal link, no bar', await page.locator('#waterCard #setWaterGoal').count() === 1 && await page.locator('#waterCard .mbar').count() === 0);
@@ -24,7 +24,9 @@ ok('undo removes the last add', await total() === 8 && (await db()).nutrition.wa
 await page.locator('#waterCustom').tap(); await page.waitForSelector('#waterAmt'); await page.locator('#waterAmt').fill('12'); await page.locator('#waterAdd').tap(); await settle();
 ok('custom amount', await total() === 20);
 // goal in Profile
-await page.locator('#setWaterGoal').tap(); await page.waitForSelector('#waterGoal');
+await page.locator('#setWaterGoal').tap(); await page.waitForSelector('.sheet [data-ok]');
+ok('water Set goal link asks before leaving', /Leave this page\?/i.test(await page.locator('.sheet').innerText()));
+await page.locator('.sheet [data-ok]').tap(); await page.waitForSelector('#waterGoal');
 await page.locator('#waterGoal').fill('80'); await page.locator('#waterGoal').dispatchEvent('change'); await settle();
 ok('water goal saved (ml) from Profile', Math.round((await db()).profile.waterGoal) === Math.round(80 * 29.5735));
 await page.goto(BASE + '#/food'); await page.waitForSelector('#waterCard');

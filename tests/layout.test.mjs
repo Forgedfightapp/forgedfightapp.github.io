@@ -12,7 +12,7 @@ const settle = (ms=300) => page.waitForTimeout(ms);
 
 /* first-run: nav hidden, last button fully visible above the home indicator */
 await page.goto(BASE); await page.waitForSelector('#catTiles');
-await page.locator('.tile[data-k="weight"]').tap(); await page.locator('.tile[data-k="supps"]').tap();
+await page.locator('.tile[data-k="weight"]').tap();
 ok('first-run hides the bottom nav', !(await page.locator('.tabbar').isVisible()));
 ok('first-run is minimal: no calorie/protein goal fields', await page.locator('#setupCal, #setupPro, #tgtWrap').count() === 0);
 await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await settle();
@@ -24,7 +24,7 @@ ok('nav returns after setup', await page.locator('.tabbar').isVisible());
 
 /* every screen: the last control scrolls fully clear of the nav (incl. the raised + button) */
 const ids = await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); return { s:d.sessions[0].id }; });
-for (const [name, hash] of [['Home','#/'],['History','#/history'],['Belts','#/belts'],['Stats','#/stats'],['Food','#/food'],['Supplements','#/supps'],['Profile','#/settings'],['Log workout','#/log'],['Workout detail',`#/session/${ids.s}`]]) {
+for (const [name, hash] of [['Home','#/'],['History','#/history'],['Belts','#/belts'],['Stats','#/stats'],['Food','#/food'],['Comps','#/comps'],['Benchmarks','#/benchmarks'],['Programs','#/programs'],['Program','#/program/full2'],['Profile','#/settings'],['Log workout','#/log'],['Workout detail',`#/session/${ids.s}`]]) {
   await page.goto(BASE + hash); await settle(400);
   if (await page.locator('.sheet [data-ok]').count()) { await page.locator('.sheet [data-ok]').tap(); await settle(300); }
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); await settle(250);

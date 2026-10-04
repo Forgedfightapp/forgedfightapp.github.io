@@ -19,15 +19,46 @@ ok('first-run screen shown on empty app', await page.locator('.welcome.setup').c
 await page.screenshot({ path:`${SHOTS}/00-first-run.png` });
 await page.locator('.tile[data-k="weights"]').tap();
 await page.locator('.tile[data-k="cardio"]').tap();
-ok('first-run has no calorie/protein goal fields', await page.locator('#setupCal, #setupPro, #tgtWrap').count() === 0);
-await page.locator('#go').tap(); await page.waitForSelector('.statrow');
+ok('step 1: "What do you train?" with Step 1 of 2, no goal fields yet', /What do you train/i.test(await page.locator('.welcome > h2').innerText()) && /Step 1 of 2/.test(await page.locator('#setupStep').innerText()) && await page.locator('#setupT-cal, #setupW, #setupSG-bench').count() === 0);
+await page.locator('#go').tap(); await page.waitForSelector('#setupDone');
+ok('step 2: "Set your goals" with Step 2 of 2', /Set your goals/i.test(await page.locator('.welcome > h2').innerText()) && /Step 2 of 2/.test(await page.locator('#setupStep').innerText()));
+const secs = await page.locator('.goalsec h2').allInnerTexts();
+ok('step 2 shows only relevant goals: nutrition (Food on), strength (Weights), no weight goal (off)', await page.locator('#setupT-cal').count() === 1 && await page.locator('#setupWater').count() === 1 && await page.locator('#setupSG-bench').count() === 1 && await page.locator('#setupW').count() === 0, JSON.stringify(secs));
+ok('step 2: schedule rows only for chosen disciplines (BJJ, Weights, Cardio) + monthly target + optional comp', await page.locator('.goalsec .schedrow').count() === 3 && await page.locator('#goalForm .stepper').count() === 1 && await page.locator('#setupComp').count() === 1);
+ok('protein placeholder hint 0.8–1 g per lb', /0\.8–1 g per lb/.test(await page.locator('#goalForm').innerText()));
+ok('step 2 has Done, Skip for now and Back', await page.locator('#setupDone').isVisible() && await page.locator('#skipGoals').isVisible() && await page.locator('#setupBack').isVisible());
+await page.screenshot({ path:`${SHOTS}/00c-first-run-goals.png` });
+await page.locator('#setupBack').tap(); await page.waitForSelector('#catTiles');
+ok('Back returns to step 1 with picks kept', await page.locator('.tile[data-k="weights"].on').count() === 1 && await page.locator('.tile[data-k="cardio"].on').count() === 1);
+await page.locator('#go').tap(); await page.waitForSelector('#skipGoals');
+await page.locator('#skipGoals').tap(); await page.waitForSelector('.statrow');
 let d = await db();
-ok('setup saves choices', d.profile.setupDone && d.profile.enabled.weights && d.profile.enabled.cardio && !d.profile.enabled.striking && !d.profile.enabled.supps && !d.profile.targets, JSON.stringify(d.profile.enabled));
+ok('setup saves choices (Skip for now: no goals)', d.profile.setupDone && d.profile.enabled.weights && d.profile.enabled.cardio && !d.profile.enabled.striking && !d.profile.enabled.supps && !d.profile.targets && !d.strength.length, JSON.stringify(d.profile.enabled));
 ok('no goals set: Home nutrition card links to Profile goals', await page.locator('#nutriCard #setGoalsHome').count() === 1 && !(await page.locator('#nutriCard').innerText()).includes(' / '));
-await page.locator('#setGoalsHome').tap(); await page.waitForSelector('#targetsCard'); await page.waitForTimeout(200);
-ok('Set your goals opens the Profile goals section', await page.evaluate(() => location.hash) === '#/settings/goals' && await page.evaluate(() => { const r = document.querySelector('#targetsCard').getBoundingClientRect(); return r.top >= 0 && r.top < 400; }));
+await page.locator('#setGoalsHome').tap(); await page.waitForSelector('.sheet [data-ok]');
+ok('Set your goals asks first: Leave this page? (Cancel / Go to goals)', /Leave this page\?/i.test(await page.locator('.sheet').innerText()) && /You'll go to Profile to set your goals/.test(await page.locator('.sheet').innerText()) && (await page.locator('.sheet [data-ok]').innerText()) === 'Go to goals' && await page.locator('.sheet [data-cancel]').count() === 1);
+await page.locator('.sheet [data-cancel]').tap(); await page.waitForTimeout(350);
+ok('Cancel stays on the page', (await page.evaluate(() => location.hash)) === '' || (await page.evaluate(() => location.hash)) === '#/');
+await page.locator('#setGoalsHome').tap(); await page.waitForSelector('.sheet [data-ok]'); await page.locator('.sheet [data-ok]').tap(); await page.waitForSelector('#targetsCard'); await page.waitForTimeout(250);
+ok('Go to goals opens the Profile goals section', await page.evaluate(() => location.hash) === '#/settings/goals' && await page.evaluate(() => { const r = document.querySelector('#targetsCard').getBoundingClientRect(); return r.top >= 0 && r.top < 400; }));
+ok('Profile offers a way back (Back to Home)', /Back to Home/.test(await page.locator('#goalsBack').innerText()) && !(await page.locator('#backRow').isHidden()));
+await page.locator('#targetsCard [data-target="cal"]').fill('2500'); await page.locator('#targetsCard [data-target="cal"]').blur(); await page.waitForTimeout(200);
+await page.locator('#goalsBack').tap(); await page.waitForSelector('.statrow');
+ok('after saving, Back returns to the page you came from', (await page.evaluate(() => location.hash)) === '#/' && (await db()).profile.targets.cal === 2500);
+await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); delete d.profile.targets; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }); await page.reload(); await page.waitForSelector('.statrow');
 await page.goto(BASE + '#/food'); await page.waitForSelector('.nutri-top');
 ok('no goals set: Food screen shows link instead of progress', await page.locator('.nutri-top #setGoals').count() === 1 && !(await page.locator('.nutri-top').innerText()).includes('left'));
+await page.locator('.nutri-top #setGoals').tap(); await page.waitForSelector('.sheet [data-ok]');
+ok('Food screen: leave confirm, no discard warning when nothing typed', /Leave this page\?/i.test(await page.locator('.sheet').innerText()) && !/discarded/.test(await page.locator('.sheet').innerText()));
+await page.locator('.sheet [data-cancel]').tap(); await page.waitForTimeout(350);
+await page.locator('[data-add]').first().tap(); await page.waitForSelector('.foodform');
+await page.locator('.foodform input[placeholder="e.g. Chicken breast"]').fill('Half-typed food');
+await page.evaluate(() => document.querySelector('.nutri-top #setGoals').click()); await page.waitForTimeout(500);
+ok('half-filled food entry: confirm warns it will be discarded', /Leave this page\?/i.test(await page.locator('.sheet').innerText()) && /will be discarded/.test(await page.locator('.sheet').innerText()));
+await page.locator('.sheet [data-ok]').tap(); await page.waitForSelector('#targetsCard'); await page.waitForTimeout(200);
+ok('goes to Profile goals with Back to Food', /Back to Food/.test(await page.locator('#goalsBack').innerText()));
+await page.locator('#goalsBack').tap(); await page.waitForSelector('.nutri-top');
+ok('Back returns to Food, unsaved food discarded', (await page.evaluate(() => location.hash)) === '#/food' && !(await db()).nutrition.entries.some(e => e.name === 'Half-typed food'));
 await page.goto(BASE); await page.waitForSelector('.statrow');
 ok('hidden section stays hidden (no supplements card)', await page.locator('#suppCard').count() === 0 && await page.locator('#nutriCard').count() === 1);
 ok('nav label plain', (await page.locator('.tabbar a[data-tab="food"] span').innerText()) === 'Food');
@@ -181,7 +212,7 @@ ok('CSV bulk import adds 4 workouts', d.sessions.length === before + 4 && added.
 /* 7. stats view (dashboard depth) with sample data */
 await page.goto(BASE + '#/settings'); await page.locator('#ldS').tap(); await page.waitForTimeout(300);
 await page.goto(BASE); await page.waitForSelector('.statrow');
-ok('home essentials: week, hours, streak, quick log, nutrition, supps, belt', await page.locator('.statrow .stat').count() === 3 && await page.locator('.quick [data-rep]').count() >= 3 && await page.locator('#nutriCard').count() === 1 && await page.locator('#suppCard').count() === 1 && await page.locator('#beltCard svg.beltsvg.lg').count() === 1);
+ok('home essentials: week, hours, streak, quick log, nutrition, belt, week strip, ring', await page.locator('#weekStrip .wday').count() === 7 && await page.locator('#challenge svg.mring').count() === 1 && await page.locator('.statrow .stat').count() === 3 && await page.locator('.quick [data-rep]').count() >= 3 && await page.locator('#nutriCard').count() === 1 && await page.locator('#suppCard').count() === 0 && await page.locator('#beltCard svg.beltsvg.lg').count() === 1);
 await hideToast(); await page.screenshot({ path:`${SHOTS}/01-dashboard.png` });
 await page.screenshot({ path:`${SHOTS}/01b-dashboard-full.png`, fullPage:true });
 await page.locator('#seeStats').tap(); await page.waitForSelector('#catCard');
@@ -194,20 +225,12 @@ ok('history category filter', (await page.locator('.sess').count()) > 0 && (awai
 await page.locator('.filters button[data-f="all"]').tap(); await hideToast();
 await page.screenshot({ path:`${SHOTS}/04-history.png` });
 
-/* 8. food quick-add + supplements mark-all */
+/* 8. food quick-add */
 await page.goto(BASE + '#/food'); await page.waitForSelector('.qfb');
 const n0 = (await db()).nutrition.entries.length;
 taps = 0; await tap(page.locator('.qfb').first());
 ok('food quick-add = 1 tap', (await db()).nutrition.entries.length === n0 + 1 && taps === 1);
 await hideToast(); await page.screenshot({ path:`${SHOTS}/09-nutrition-daily.png` });
-await page.goto(BASE + '#/supps'); await page.waitForSelector('.supp-item');
-const grp = page.locator('.supp-group', { has: page.locator('[data-all]') }).first();
-const pendingInGroup = await grp.locator('.supp-item:not(.done)').count();
-await grp.locator('[data-all]').tap();
-ok('supplements: mark all in a time block (1 tap)', pendingInGroup > 0 && await page.locator('.supp-group .alldone').count() >= 1);
-await page.locator('#toast .undo').tap(); await page.waitForTimeout(150);
-ok('mark-all undo', await page.locator('[data-all]').count() >= 1);
-await hideToast(); await page.screenshot({ path:`${SHOTS}/13-supplement-checklist.png` });
 
 /* 9. export -> clear -> import round trip of multi-discipline data */
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#exp');
@@ -222,7 +245,7 @@ const af = await db();
 const canon = v => Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => [k, canon(v[k])])) : v;
 const S = x => JSON.stringify(canon([...x.sessions].sort((a,b) => a.id.localeCompare(b.id))));
 if (S(af) !== S(b4)) { const A = canon(af.sessions), B = canon(b4.sessions); const bad = A.find(e => JSON.stringify(e) !== JSON.stringify(B.find(x => x.id === e.id))); console.log('DIFF', JSON.stringify(bad), JSON.stringify(B.find(x => x.id === bad?.id))); }
-ok('export/import round-trips all workout types', S(af) === S(b4) && af.schema === 6 && JSON.stringify(af.weights) === JSON.stringify(b4.weights), `${af.sessions.length}/${b4.sessions.length}`);
+ok('export/import round-trips all workout types', S(af) === S(b4) && af.schema === 7 && JSON.stringify(af.weights) === JSON.stringify(b4.weights), `${af.sessions.length}/${b4.sessions.length}`);
 await ctx.close();
 
 /* 10. schema v1 -> v2 migration (existing BJJ-only user) */
@@ -231,7 +254,7 @@ await page.goto(BASE);
 await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ sessions:[{ id:'old1', date:'2026-09-01', gi:'nogi', type:'open', duration:90, rounds:6, intensity:4, techniques:['Leg drag'], rolls:[{ id:'r1', partner:'Jake', result:'win', subsLanded:['Armbar'], subsTapped:[], stuck:[] }], weight:200, notes:'old', createdAt:1 }], profile:{ belt:'blue', stripes:1, unit:'lb' }, nutrition:{ entries:[], foods:[] } })); });
 await page.reload(); await page.waitForSelector('.statrow, .welcome'); await page.waitForTimeout(200);
 const m = await page.evaluate(() => ({ d:JSON.parse(localStorage.getItem('dm.bjj.v1')), b:localStorage.getItem('dm.bjj.v1.backup.v1') }));
-ok('v1 data migrates to schema 6 as Grappling/BJJ', m.d.schema === 6 && Array.isArray(m.d.weights) && m.d.sessions[0].category === 'grappling' && m.d.sessions[0].discipline === 'bjj' && m.d.sessions[0].rolls[0].subsLanded[0] === 'Armbar' && m.d.profile.belt === 'blue');
+ok('v1 data migrates to schema 7 as Grappling/BJJ', m.d.schema === 7 && Array.isArray(m.d.weights) && m.d.sessions[0].category === 'grappling' && m.d.sessions[0].discipline === 'bjj' && m.d.sessions[0].rolls[0].subsLanded[0] === 'Armbar' && m.d.profile.belt === 'blue');
 ok('pre-migration backup kept', !!m.b && JSON.parse(m.b).sessions[0].id === 'old1' && !JSON.parse(m.b).schema);
 ok('migrated user skips first-run', await page.locator('.welcome.setup').count() === 0 && await page.locator('.statrow').count() === 1);
 await page.goto(BASE + '#/session/old1'); await page.waitForSelector('#del');

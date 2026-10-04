@@ -86,9 +86,6 @@ const sheetCase = async (name, open, label) => {
 await page.goto(BASE + '#/food'); await page.waitForSelector('[data-add]');
 await sheetCase('add food', () => page.locator('[data-add]').first().tap(), 'Cancel');
 await sheetCase('my foods', () => page.locator('#savedFoods').tap(), 'Close');
-await page.goto(BASE + '#/supps'); await page.waitForSelector('#manageStack');
-await sheetCase('my stack', () => page.locator('#manageStack').tap(), 'Close');
-await sheetCase('add supplement', async () => { await page.locator('#manageStack').tap(); await page.waitForSelector('#addSupp'); await page.locator('#addSupp').tap(); }, 'Cancel');
 await page.goto(BASE + '#/log'); await page.waitForSelector('.cats');
 await page.locator('.cats button[data-c="grappling"]').tap();
 
@@ -144,9 +141,11 @@ await ctx.close();
 ({ ctx, page } = await mk());
 await page.goto(BASE); await page.waitForSelector('#catTiles');
 await page.locator('.tile[data-k="weight"]').tap();
-ok('setup: weight goal fields appear when picked', await page.locator('#setupW').isVisible() && await page.locator('#setupGoal').isVisible());
+ok('setup step 1: no weight fields yet', await page.locator('#setupW').count() === 0);
+await page.locator('#go').tap(); await page.waitForSelector('#setupStep');
+ok('setup step 2: weight goal fields appear when picked', await page.locator('#setupW').isVisible() && await page.locator('#setupGoal').isVisible());
 await page.locator('#setupW').fill('215'); await page.locator('#setupGoal').fill('195');
-await page.locator('#go').tap(); await page.waitForSelector('#weightCard');
+await page.locator('#setupDone').tap(); await page.waitForSelector('#weightCard');
 let d = await db();
 ok('setup saves start/goal and first weigh-in', d.profile.startWeight === '215' && d.profile.goalWeight === '195' && d.weights.length === 1 && d.weights[0].w === 215 && d.profile.enabled.weight === true);
 const wv = async k => (await page.locator(`#weightCard [data-w="${k}"]`).innerText()).replace(/[^\d.]/g, '');
@@ -225,7 +224,7 @@ await page.goto(BASE);
 await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ schema:2, sessions:[{ id:'a', date:'2026-09-20', category:'grappling', discipline:'bjj', gi:'gi', type:'class', duration:60, rounds:5, intensity:3, techniques:[], rolls:[], weight:200, notes:'', createdAt:1 }], profile:{ belt:'blue', goalWeight:'190', unit:'lb', setupDone:true, enabled:{ grappling:true, food:false, supps:false } }, nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] } })); });
 await page.reload(); await page.waitForSelector('#weightCard'); await settle(200);
 const mg = await page.evaluate(() => ({ d:JSON.parse(localStorage.getItem('dm.bjj.v1')), b:localStorage.getItem('dm.bjj.v1.backup.v2') }));
-ok('v2 → v4 migration: weights added, data kept, backup saved', mg.d.schema === 6 && Array.isArray(mg.d.weights) && mg.d.sessions.length === 1 && mg.d.profile.goalWeight === '190' && mg.d.profile.enabled.weight === true && !!mg.b && JSON.parse(mg.b).schema === 2);
+ok('v2 → v4 migration: weights added, data kept, backup saved', mg.d.schema === 7 && Array.isArray(mg.d.weights) && mg.d.sessions.length === 1 && mg.d.profile.goalWeight === '190' && mg.d.profile.enabled.weight === true && !!mg.b && JSON.parse(mg.b).schema === 2);
 ok('migrated user sees weight card from workout body weight', await wv('current') === '200' && await wv('goal') === '190');
 await ctx.close();
 

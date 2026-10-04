@@ -25,7 +25,7 @@ await page.getByRole('button', { name: /Load sample data/ }).tap();
 await page.waitForSelector('.statrow');
 const n0 = (await db()).sessions.length;
 ok('sample data loads', n0 > 20, `(${n0} sessions)`);
-ok('home shows essentials only', await page.locator('#nutriCard').count() === 1 && await page.locator('#suppCard').count() === 1 && await page.locator('svg.chart').count() === 0);
+ok('home shows essentials only', await page.locator('#nutriCard').count() === 1 && await page.locator('#suppCard').count() === 0 && await page.locator('.tabbar a[data-tab="food"] span').innerText() === 'Food' && await page.locator('svg.chart:not(.sev)').count() === 0);
 await page.locator('#seeStats').tap(); await page.waitForSelector('#catCard');
 ok('weekly chart renders (stats)', await page.locator('svg.chart g.wk').count() === 12);
 ok('weight chart renders (stats)', await page.locator('svg.chart path.line').count() === 1);
@@ -43,9 +43,11 @@ await page.waitForSelector('.cats');
 await page.locator('.cats button[data-c="grappling"]').tap();
 
 await page.getByRole('radio', { name: 'No-Gi' }).tap();
-await page.getByRole('radio', { name: 'Drilling' }).tap();
+ok('Session type: no Drilling option', await page.getByRole('radio', { name: 'Drilling' }).count() === 0 && await page.getByRole('radio', { name: 'Private' }).count() === 1);
+await page.getByRole('radio', { name: 'Private' }).tap();
 await page.locator('.field', { hasText: 'Duration' }).getByRole('button', { name: 'Increase' }).tap(); // 60/75 -> +15
-await page.locator('.intensity button[data-i="4"]').tap();
+await page.locator('.effort button[data-r="8"]').tap();
+await page.locator('.feelpick button[data-feel="4"]').tap();
 const techInput = page.locator('.field', { hasText: 'Techniques drilled' }).locator('.tags input');
 await techInput.tap(); await techInput.fill('knee');
 const sugg = page.locator('.field', { hasText: 'Techniques drilled' }).locator('.sugg button', { hasText: 'Knee slice pass' });
@@ -82,7 +84,7 @@ await page.screenshot({ path: `${SHOTS}/03b-form-with-roll.png`, fullPage:true }
 await page.locator('.actions [data-save]').tap();
 await page.waitForSelector('.statrow');
 let d = await db(); const mine = d.sessions.find(s => s.notes === 'Playwright test session');
-ok('session saved', !!mine && mine.gi === 'nogi' && mine.type === 'drill' && mine.intensity === 4 && mine.weight === 201.4 && mine.techniques.includes('Test Technique Zeta'), JSON.stringify(mine && {gi:mine.gi,type:mine.type,dur:mine.duration,w:mine.weight}));
+ok('session saved', !!mine && mine.gi === 'nogi' && mine.type === 'private' && mine.rpe === 8 && mine.intensity === 4 && mine.feel === 4 && mine.weight === 201.4 && mine.techniques.includes('Test Technique Zeta'), JSON.stringify(mine && {gi:mine.gi,type:mine.type,dur:mine.duration,w:mine.weight}));
 ok('roll saved', mine?.rolls.length === 1 && mine.rolls[0].partner === 'Edited Partner' && mine.rolls[0].subsLanded[0] === 'Omoplata' && mine.rolls[0].subsTapped[0] === 'Heel hook' && mine.rolls[0].stuck[0] === 'Turtle');
 ok('dashboard week count +1', Number(await stat('Sessions this week')) === week0 + 1, `${week0} -> ${await stat('Sessions this week')}`);
 await page.goto(BASE + '#/stats'); await page.waitForSelector('#catCard');

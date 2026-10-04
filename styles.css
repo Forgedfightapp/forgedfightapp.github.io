@@ -5,7 +5,7 @@
   --brand:#F2711C;                 /* flame orange: rings, bars, chart fills, borders */
   --accent:#F58A45;                /* small orange text/icons: 8.1:1 on #0B0B0C, 6.6:1 on #1f1f22 */
   --accent-fill:#F2711C;           /* filled buttons/toggles use dark ink: 6.7:1 (white on orange is only 2.9:1) */
-  --accent-ink:#0B0B0C; --accent-soft:rgba(242,113,28,.14);
+  --accent-ink:#0B0B0C; --accent-soft:rgba(242,113,28,.14); --accent-line:rgba(242,113,28,.35);
   --wordmark-gray:#9C9C9C;         /* FOR THE FIGHT gray, 7.2:1 on #0B0B0C */
   --font-head:"Barlow Condensed","Oswald",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   --font-sub:"Barlow",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
@@ -264,35 +264,13 @@ details.more .grid3{padding-bottom:4px}
 .flist small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .flist .grow{min-width:0}
 .ring text{stroke:none}
-/* ---- fuel switch + supplements ---- */
+/* ---- segmented tab switch (history) ---- */
 .fuelseg{margin-bottom:12px}
 .fuelseg a{flex:1;display:flex;align-items:center;justify-content:center;min-height:44px;border-radius:11px;text-decoration:none;color:var(--muted);font-weight:700}
 .fuelseg a.on{background:var(--accent-fill);color:var(--accent-ink)}
-.supp-head{display:flex;align-items:center;gap:16px}
-.supp-head b{font-size:32px;font-weight:780;letter-spacing:-.03em;display:block;line-height:1}
-.supp-head b small,.supp-sum b small{font-size:17px;color:var(--muted)}
-.supp-head span{font-size:12px;color:var(--muted);font-weight:600}
-.supp-group{margin-bottom:8px}
-.supp-item{display:flex;align-items:center;gap:14px;width:100%;min-height:72px;padding:12px 14px;margin-bottom:10px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);text-align:left;cursor:pointer;transition:background .15s,border-color .15s}
-.supp-item:active{transform:scale(.99)}
-.supp-item .tick{flex:none;width:34px;height:34px;border-radius:50%;border:2.5px solid #3a414d;display:grid;place-items:center}
-.supp-item .tick svg{width:20px;height:20px;stroke-width:3}
-.supp-item.done{background:var(--accent-soft);border-color:rgba(242,113,28,.4)}
-.supp-item.done .tick{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--accent-ink)}
-.supp-item .grow{flex:1;min-width:0}
-.supp-item b{display:block;font-size:16.5px}
-.supp-item small{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.supp-item.done b{color:var(--accent)}
-.supp-item .when{flex:none;text-align:right;font-size:11.5px;color:var(--dim);font-weight:650;line-height:1.3}
-.supp-item.done .when{color:var(--accent)}
 .adh .pct{flex:none;width:52px;text-align:right;font-weight:750;font-size:16px;color:var(--accent)}
 .adh .pct.low{color:var(--danger)}
 .adh .pct small{display:block;font-size:11px;color:var(--muted);font-weight:600}
-.supp-sum{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
-.supp-sum b{font-size:30px;font-weight:780}
-.supp-sum span{color:var(--muted);font-size:13px;font-weight:600}
-.supp-sum .r{margin-left:auto;text-align:right;color:var(--text);font-size:20px;font-weight:750}
-.supp-sum .r small{display:block;font-size:11px;color:var(--muted);font-weight:600}
 .srow{width:100%;background:none;border:0;border-bottom:1px solid var(--line);text-align:left;cursor:pointer;padding:8px 0}
 .srow b{display:block}.srow .grow{min-width:0}
 .srow small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -301,7 +279,6 @@ details.more .grid3{padding-bottom:4px}
 .daychips{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
 .daychips button{min-height:48px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);color:var(--muted);font-weight:700;cursor:pointer}
 .daychips button.on{background:var(--accent-fill);color:var(--accent-ink);border-color:var(--accent-fill)}
-.suppbtns{display:flex;flex-direction:column;gap:10px;margin-top:8px}
 .toast.act{pointer-events:auto;display:flex;align-items:center;gap:12px;padding:8px 8px 8px 18px}
 .toast .undo{border:0;background:var(--bg);color:var(--accent);font-weight:800;border-radius:999px;min-height:36px;padding:0 14px;cursor:pointer}
 /* ---- brand header / splash ---- */
@@ -320,7 +297,6 @@ details.more .grid3{padding-bottom:4px}
 .welcome .logo{display:none}
 .tabbar{border-top:2px solid var(--brand)}
 .chart rect,.chart path.area{stroke:none}
-.supp-item.done b{color:var(--text)}
 /* ---- multi-discipline + quick log ---- */
 .catdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:1px;flex:none}
 .statrow.three{grid-template-columns:1fr 1fr}
@@ -562,3 +538,139 @@ body.setup-mode .tabbar{display:none}
 .cats.n5 button,.cats.n6 button{min-height:66px;font-size:13px;padding:0 2px}
 .cats.n5 button svg,.cats.n6 button svg{width:24px;height:24px}
 body.setup-mode .topbar{display:none}
+
+/* ---- 3.1.0: week strip, challenge ring, effort/feel, load, comps, benchmarks, injuries, programs ---- */
+.weekstrip{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.wday{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0 7px;border-radius:12px;background:var(--surface2);min-width:0}
+.wday span{font-size:11px;font-weight:700;color:var(--dim)}
+.wday b{font-size:16px;font-weight:760}
+.wday.today{background:var(--accent-soft);box-shadow:0 0 0 1.5px var(--brand) inset}
+.wday.today span{color:var(--accent)}
+.wday.future b{color:var(--muted)}
+.wdots{display:flex;flex-wrap:wrap;justify-content:center;gap:3px;min-height:9px;max-width:38px}
+.wd{display:inline-block;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 1.5px var(--c) inset;flex:none}
+.wd.on{background:var(--c);box-shadow:none}
+.wlegend{display:flex;gap:14px;margin-top:8px}.wlegend span{display:inline-flex;align-items:center;gap:6px}
+.warnline{display:block;margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(255,196,61,.1);border:1px solid rgba(255,196,61,.28);color:#ffd37a;font-size:13.5px;line-height:1.4;text-decoration:none}
+.warnline.nudge{background:var(--accent-soft);border-color:rgba(242,113,28,.35);color:var(--text)}
+.warnline.injnote{margin:0 0 14px;background:rgba(255,107,107,.08);border-color:rgba(255,107,107,.3);color:#ffb3b3}
+.challenge{display:flex;align-items:center;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);border-radius:4px}
+.challenge b{display:block;font-size:16px}.challenge small{display:block;color:var(--muted);font-size:13px}
+.mring{width:56px;height:56px;flex:none}
+.mring .ring-bg,.mring .ring-fg{stroke-width:7}
+.mring text{fill:var(--text);font-size:18px;font-weight:780}
+.mring.hit .ring-fg{stroke:#ffc43d}
+.challenge.flash{animation:chflash 1.2s ease-out}
+@keyframes chflash{0%{background:rgba(255,196,61,.35)}100%{background:transparent}}
+.confetti{position:fixed;inset:0;pointer-events:none;z-index:200;overflow:hidden}
+.confetti i{position:absolute;top:-12px;width:8px;height:14px;border-radius:2px;animation:fall 1.8s cubic-bezier(.2,.6,.4,1) forwards}
+@keyframes fall{to{transform:translateY(105vh) rotate(540deg);opacity:.9}}
+.effort{display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
+.effort button{height:48px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);font-weight:750;font-size:16px;color:var(--muted);cursor:pointer;padding:0;min-width:0}
+.effort button.on{background:var(--accent-fill);color:var(--accent-ink);border-color:var(--accent-fill)}
+.feelpick{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.feelpick button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border-radius:14px;border:1px solid var(--line);background:var(--surface2);cursor:pointer;color:var(--muted);min-width:0}
+.feelpick button span{font-size:26px;line-height:1.1;filter:grayscale(.6);opacity:.75}
+.feelpick button small{font-size:11.5px;font-weight:650}
+.feelpick button.on{background:var(--accent-soft);border-color:var(--brand);color:var(--text);box-shadow:0 0 0 1px var(--brand) inset}
+.feelpick button.on span{filter:none;opacity:1}
+.feel{font-size:14px}
+.acwr{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-4px 0 8px}
+.acwr b{font-size:34px;font-weight:780;letter-spacing:-.03em;display:block;line-height:1.05}
+.acwr span{font-size:12.5px;color:var(--muted);font-weight:600}
+.loadpill{font-size:13px!important;font-weight:800!important;padding:6px 12px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.loadpill.fresh{background:rgba(111,211,168,.15);color:#6fd3a8!important}
+.loadpill.ok{background:var(--accent-soft);color:var(--accent)!important}
+.loadpill.high{background:rgba(255,107,107,.15);color:#ff8f8f!important}
+.card.comp{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start}
+.card.comp h2{margin:0 0 4px;color:var(--text);font-size:17px;text-transform:none;letter-spacing:0;display:block}
+.comp .cd{flex:none;width:64px;height:64px;border-radius:16px;background:var(--accent-fill);color:var(--accent-ink);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.comp .cd b{font-size:28px;font-weight:800;line-height:1}.comp .cd span{font-size:11px;font-weight:750;text-transform:uppercase}
+.comp .grow{flex:1;min-width:0}
+.cmeta{color:var(--muted);font-size:13.5px;margin-top:2px}.cmeta b{color:var(--text)}
+.taper{flex-basis:100%;background:var(--surface2);border-radius:12px;padding:10px 12px}
+.taper b{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
+.taper ul{margin:6px 0 0;padding-left:18px;font-size:14px;line-height:1.5;color:var(--text)}
+button.list-row{width:100%;background:none;border:0;border-bottom:1px solid var(--line);color:inherit;text-align:left;font:inherit;padding:8px 0;cursor:pointer}
+button.list-row:last-of-type{border-bottom:0}
+.list-row b{font-weight:700}
+.pill.res-win{background:var(--accent-soft);color:var(--accent)}
+.pill.res-loss{background:rgba(255,107,107,.14);color:#ff9a9a}
+.pill.res-medal{background:rgba(255,196,61,.16);color:#ffc43d}
+.benchrow .grow small b{color:var(--text);font-weight:700}
+.benchrow .up{color:#6fd3a8;font-weight:700}.benchrow .down{color:#ff9a9a;font-weight:700}
+.spark.sm{width:90px;height:30px}
+.spark-empty{width:90px;flex:none}
+.dim{color:var(--dim);font-weight:500;font-size:12px}
+.liftin{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}
+.liftin span{color:var(--dim)}
+.liftin .e1{grid-column:1/-1;font-size:13px;color:var(--accent);min-height:0}
+.liftin .e1:empty{display:none}
+.card.inj h2{color:#ffb3b3}
+.chart.sev{height:auto}
+.chart.sev text{font-size:10px}
+.schedrow{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-bottom:1px solid var(--line)}
+.schedrow:last-of-type{border-bottom:0}
+.schedrow>span{font-weight:700;font-size:14.5px;display:flex;align-items:center}
+.daypick{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.daypick button{height:42px;border-radius:10px;border:1px solid var(--line);background:var(--surface2);color:var(--muted);font-weight:750;cursor:pointer;padding:0;min-width:0}
+.daypick.big button{height:48px;font-size:13px}
+.daypick button.on{background:var(--accent-fill);color:var(--accent-ink);border-color:var(--accent-fill)}
+.progtitle{display:flex;align-items:center;gap:8px;margin:-4px 0 8px}.progtitle b{font-size:17px}
+.progex div{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+.progex div:last-child{border-bottom:0}.progex span{color:var(--muted)}.progex b{font-weight:700;white-space:nowrap}
+.progbanner{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:14px;background:var(--accent-soft);border:1px solid var(--accent-line);margin:0 0 14px}
+.progbanner b{font-size:15px}.progbanner span{font-weight:650}.progbanner small{color:var(--muted);font-size:12.5px}
+.excue{display:flex;gap:10px;align-items:center;margin:2px 0 8px;padding:8px 10px;border-radius:10px;background:var(--surface2)}
+.excue span{display:block;font-size:13px;color:var(--text);line-height:1.35}
+.excue small{display:block;font-size:12px;color:var(--muted);margin-top:2px}.excue .up{color:#6fd3a8}
+.pex{padding:10px 0;border-bottom:1px solid var(--line)}.pex:last-child{border-bottom:0}
+.pex-h{display:flex;justify-content:space-between;gap:10px;align-items:baseline}.pex-h b{font-size:15.5px}.pex-h span{color:var(--accent);font-weight:700;font-size:13px;text-align:right}
+.cue{font-size:13.5px;color:var(--text);opacity:.85;margin-top:3px;line-height:1.4}
+.pex-f{display:flex;justify-content:space-between;align-items:center;margin-top:4px}.pex-f small{color:var(--dim);font-size:12px}
+.phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(48px,1fr));gap:4px;margin-top:10px}
+.phases div{background:var(--surface2);border-radius:10px;padding:6px 2px;text-align:center;display:flex;flex-direction:column}
+.phases b{font-size:11px;color:var(--dim)}.phases span{font-size:11.5px;font-weight:700}.phases small{font-size:11px;color:var(--accent)}
+.disclaimer{font-size:12.5px;line-height:1.45;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:14px}
+.list-row.tmpl,.card a.list-row{text-decoration:none;color:inherit}
+.chev{color:var(--dim);font-size:20px}
+.swaplist .list-row.on b{color:var(--accent)}
+.card.inj h2{text-transform:none;letter-spacing:0;font-size:16px;color:#ffb3b3}
+#weekCard h2 small,#loadCard h2 small{margin:0 auto 0 8px}
+.benchrow .grow>b small.dim{display:inline;margin-left:4px}
+/* 3.1.0 onboarding steps + goals back */
+.stepper-dots{display:flex;align-items:center;justify-content:center;gap:6px;margin:4px 0 10px;color:var(--muted);font-size:13px;font-weight:650}
+.stepper-dots i{width:22px;height:5px;border-radius:3px;background:var(--surface2)}
+.stepper-dots i.on{background:var(--accent)}
+.stepper-dots span{margin-left:6px}
+.setup-top{display:grid;grid-template-columns:auto 1fr auto;align-items:center;margin:-6px 0 6px}
+.setup-top .stepper-dots{margin:0;grid-column:2}
+.setup-top::after{content:'';width:76px}
+.setup.goals .goalsec{margin:12px 0 0}
+.setup.goals .goalsec h2{font-size:15px}
+.lnk.skip{display:block;margin:14px auto 0;min-height:44px;background:none;border:0;color:var(--muted);font:inherit;font-size:16px;font-weight:600;text-decoration:underline;cursor:pointer}
+.goalsback{display:flex;flex-direction:column;gap:10px;border:1px solid var(--accent)}
+.goalsback span{color:var(--muted);font-size:14px}
+/* strength goals */
+.sgbar{display:block;height:6px;border-radius:3px;background:var(--surface2);margin-top:6px;overflow:hidden}
+.sgbar i{display:block;height:100%;border-radius:3px;background:var(--accent)}
+.sgrow.done .sgbar i{background:#6FD3A8}
+.sgrow .pill{min-width:52px;text-align:center}
+.strline{display:grid;grid-template-columns:1fr 70px auto;align-items:center;gap:10px;text-decoration:none;color:inherit;padding:12px 16px;font-size:14px}
+.strline .sgbar{margin:0}
+.strline em{font-style:normal;font-weight:700;color:var(--accent)}
+.goalhit{text-align:center}
+.goalhit .big{font-size:48px;line-height:1}
+.goalhit .list-row{text-align:left}
+
+/* 3.1.0: log form themed to the chosen category (body[data-theme] set on #/log and #/edit, removed elsewhere).
+   All fills use dark ink (#0B0B0C): yellow 12.9:1, red 5.4:1, blue 9.2:1, green 11.3:1, purple 7.6:1. */
+body[data-theme="striking"]{--brand:#F5C542;--accent:#F5C542;--accent-fill:#F5C542;--accent-soft:rgba(245,197,66,.14);--accent-line:rgba(245,197,66,.4)}
+body[data-theme="mma"]{--brand:#E5484D;--accent:#F07175;--accent-fill:#E5484D;--accent-soft:rgba(229,72,77,.15);--accent-line:rgba(229,72,77,.45)}
+body[data-theme="weights"]{--brand:#8FB0D9;--accent:#9DBCE3;--accent-fill:#8FB0D9;--accent-soft:rgba(143,176,217,.15);--accent-line:rgba(143,176,217,.45)}
+body[data-theme="cardio"]{--brand:#6FD3A8;--accent:#6FD3A8;--accent-fill:#6FD3A8;--accent-soft:rgba(111,211,168,.14);--accent-line:rgba(111,211,168,.4)}
+body[data-theme="mobility"]{--brand:#B48CF2;--accent:#BF9CF5;--accent-fill:#B48CF2;--accent-soft:rgba(180,140,242,.15);--accent-line:rgba(180,140,242,.45)}
+body[data-theme] input,body[data-theme] progress{accent-color:var(--accent-fill)}
+body[data-theme] .tabbar a.fab{box-shadow:0 8px 24px var(--accent-soft),0 0 0 6px var(--bg)}
+body[data-theme] .tabbar{border-top-color:var(--brand)}
+body[data-theme] .btn.primary,body[data-theme] .seg button.on,body[data-theme] .effort button.on,body[data-theme] .daypick button.on,body[data-theme] .intensity button.on{transition:background-color .15s,border-color .15s}

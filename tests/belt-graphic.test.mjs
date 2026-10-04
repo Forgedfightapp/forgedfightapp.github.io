@@ -13,7 +13,7 @@ const setBelts = async (belts) => { await page.evaluate(b => { const d = JSON.pa
 const E = (id, date, belt, stripes) => ({ id, date, belt, stripes, instructor:'', academy:'', notes:'', createdAt:1 });
 
 /* empty state: white belt + prompt above the button, Home and Profile */
-await page.goto(BASE); await page.waitForSelector('#catTiles'); await page.locator('#go').tap(); await page.waitForSelector('#beltCard');
+await page.goto(BASE); await page.waitForSelector('#catTiles'); await page.locator('#go').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('#beltCard');
 let i = await svgInfo('#beltCard svg.beltsvg');
 ok('Home empty: large white belt illustration', i.belt === 'white' && i.size === 'lg' && i.stripes === 0 && i.w > 280, JSON.stringify(i));
 const order = await page.evaluate(() => { const c = document.querySelector('#beltCard'), y = s => c.querySelector(s).getBoundingClientRect().top; return [y('svg'), y('.belt-prompt'), y('[data-promo]')]; });

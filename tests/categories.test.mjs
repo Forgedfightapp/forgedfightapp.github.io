@@ -19,7 +19,7 @@ ok('accent is flame orange with dark ink', await page.evaluate(() => { const cs 
 /* first-run: six sports, unused stay hidden */
 const tiles = await page.locator('#catTiles .tile').evaluateAll(ts => ts.map(t => t.querySelector('b').textContent));
 ok('first-run offers Grappling, Striking, MMA, Weights, Cardio, Mobility', JSON.stringify(tiles) === '["Grappling","Striking","MMA","Weights","Cardio","Mobility"]', JSON.stringify(tiles));
-await page.locator('.tile[data-k="mobility"]').tap(); await page.locator('#go').tap(); await page.waitForSelector('.statrow');
+await page.locator('.tile[data-k="mobility"]').tap(); await page.locator('#go').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('.statrow');
 await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); await settle();
 ok('log form shows only picked sports (Grappling + Mobility)', JSON.stringify(await page.locator('.cats button').evaluateAll(bs => bs.map(b => b.dataset.c))) === '["grappling","mobility"]');
 await page.locator('.cats button[data-c="grappling"]').tap(); await settle(150);
@@ -38,7 +38,7 @@ await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1
 await page.goto(BASE + '#/'); await page.reload(); await page.waitForSelector('.statrow',{timeout:5000}).catch(()=>{console.log('ERR',errors, page.url())}); await settle(400);
 let d = await db();
 const back1 = d.sessions.find(s => s.id === 's1'), back2 = d.sessions.find(s => s.id === 's2');
-ok('v5 → v6: archived striking sessions are back in the normal list, unchanged', d.schema === 6 && !d.archive && d.sessions.length === 3 && JSON.stringify(back1) === JSON.stringify(strike1), JSON.stringify(d.sessions.map(s => [s.id, s.category])));
+ok('v5 → v7: archived striking sessions are back in the normal list, unchanged', d.schema === 7 && !d.archive && d.sessions.length === 3 && JSON.stringify(back1) === JSON.stringify({ ...strike1, rpe:strike1.intensity * 2 }), JSON.stringify(d.sessions.map(s => [s.id, s.category])));
 ok('old striking "MMA" style session becomes the MMA category (data kept)', back2.category === 'mma' && back2.strike.mix.pads === 4 && back2.notes === 'Pads');
 ok('Striking and MMA switched on because they have sessions; Mobility stays off', d.profile.enabled.striking === true && d.profile.enabled.mma === true && d.profile.enabled.mobility === false);
 ok('v5 backup kept', !!(await page.evaluate(() => localStorage.getItem('dm.bjj.v1.backup.v5'))));
@@ -56,7 +56,7 @@ d = await db(); ok('importing an old D>M (2.3.0) backup works and un-archives st
 /* export from 3.0 */
 const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#exp').tap()]);
 const path = '/tmp/catmig-export.json'; await dl.saveAs(path); const exp = JSON.parse(fs.readFileSync(path, 'utf8'));
-ok('export: app forged, schema 6, all sessions, no archive', exp.app === 'forged' && exp.schema === 6 && exp.sessions.length === 3 && !exp.archive);
+ok('export: app forged, schema 7, all sessions, no archive', exp.app === 'forged' && exp.schema === 7 && exp.sessions.length === 3 && !exp.archive);
 ok('storage key unchanged (dm.bjj.v1)', await page.evaluate(() => !!localStorage.getItem('dm.bjj.v1')));
 /* sample data covers every category */
 await page.locator('#ldS').tap(); await settle(500);

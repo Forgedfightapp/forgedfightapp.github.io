@@ -29,7 +29,7 @@ const cases = [
 for (const [a, b, want, name] of cases) { const got = await D(a, b); ok(`duration: ${name}`, got === want, `${a}→${b} = ${got}`); }
 
 /* ---------- 2. logging flow (fresh user), out-of-order backfill ---------- */
-await page.locator('#go').tap(); await page.waitForSelector('#beltCard');
+await page.locator('#go').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('#beltCard');
 ok('home belt card prompts to log first belt', (await page.locator('#beltCard').innerText()).includes('Log your belt'));
 let taps = 0;
 taps++; await page.locator('#beltCard [data-promo]').tap(); await page.waitForSelector('#beltPick');
@@ -103,7 +103,7 @@ ok('clear data removes promotions', (await db()).belts.length === 0);
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#impFile', { state:'attached' });
 await page.setInputFiles('#impFile', path); await page.locator('.sheet [data-ok]').tap(); await settle(400);
 d = await db();
-ok('export/import round-trips promotions', JSON.stringify(d.belts) === JSON.stringify(b4) && d.profile.belt === 'blue' && d.schema === 6);
+ok('export/import round-trips promotions', JSON.stringify(d.belts) === JSON.stringify(b4) && d.profile.belt === 'blue' && d.schema === 7);
 await ctx.close();
 
 /* ---------- 3. migration v3 -> v4 ---------- */
@@ -113,7 +113,7 @@ await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v
   profile:{ belt:'purple', stripes:3, promotedOn:'2025-05-01', unit:'lb', setupDone:true, enabled:{ grappling:true, food:false, supps:false } }, nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] }, weights:[] })); });
 await page.reload(); await page.waitForSelector('#beltCard'); await settle(200);
 let mg = await page.evaluate(() => ({ d:JSON.parse(localStorage.getItem('dm.bjj.v1')), b:localStorage.getItem('dm.bjj.v1.backup.v3') }));
-ok('v3 → v4: old belt setting becomes first history entry', mg.d.schema === 6 && mg.d.belts.length === 1 && mg.d.belts[0].belt === 'purple' && mg.d.belts[0].stripes === 3 && mg.d.belts[0].date === '2025-05-01' && mg.d.sessions.length === 1);
+ok('v3 → v4: old belt setting becomes first history entry', mg.d.schema === 7 && mg.d.belts.length === 1 && mg.d.belts[0].belt === 'purple' && mg.d.belts[0].stripes === 3 && mg.d.belts[0].date === '2025-05-01' && mg.d.sessions.length === 1);
 ok('v3 → v4: backup kept', !!mg.b && JSON.parse(mg.b).schema === 3 && JSON.parse(mg.b).profile.belt === 'purple');
 ok('migrated rank shows on Home with mat time since promotion', (await page.locator('#beltCard').textContent()).includes('Purple belt · 3 stripes') && (await page.locator('#beltCard').textContent()).replace(/\s+/g,' ').includes('1 session · 1.5 h'));
 await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ schema:3, sessions:[], profile:{ belt:'blue', stripes:1, promotedOn:'', setupDone:true }, nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] }, weights:[] })); });

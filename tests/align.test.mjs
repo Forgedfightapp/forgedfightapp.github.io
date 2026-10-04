@@ -22,7 +22,7 @@ for (const [w, big] of [[390,false],[375,false],[375,true],[320,true]]) {
   const nav = async (hash) => { await page.goto(BASE + hash); await settle(350); for (let i = 0; i < 2; i++) if (await page.locator('.sheet [data-ok]').count()) { await page.locator('.sheet [data-ok]').first().tap(); await settle(350); } };
   const run = async (name) => { const rs = await checkGrids(page); screens.push(...rs.map(r => ({ ...r, name })));
     const bad = rs.filter(r => r.dt > 1 || r.db > 1); ok(`${tag} ${name}: paired fields aligned (${rs.length} rows${rs.some(r=>r.wrapped)?', some labels wrap':''})`, rs.length > 0 && !bad.length, JSON.stringify(bad)); };
-  await page.goto(BASE); await page.waitForSelector('#catTiles'); await page.locator('.tile[data-k="weight"]').tap(); await settle(); await run('first-run weight goal');
+  await page.goto(BASE); await page.waitForSelector('#catTiles'); await page.locator('.tile[data-k="weight"]').tap(); await page.locator('.tile[data-k="weights"]').tap(); await page.locator('#go').tap(); await page.waitForSelector('#setupDone'); await settle(); await run('first-run goals step (weight, nutrition, strength, comp)'); await page.locator('#setupBack').tap(); await page.waitForSelector('#loadSample');
   await page.locator('#loadSample').tap(); await page.waitForSelector('#beltCard');
   await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); Object.keys(d.profile.enabled).forEach(k => d.profile.enabled[k] = true); d.profile.enabled.cardio = d.profile.enabled.weights = true; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
   await page.goto(BASE + '#/settings'); await page.waitForSelector('#targetsCard'); await settle(); await run('Profile (weight goal + nutrition goals)');
@@ -36,7 +36,6 @@ for (const [w, big] of [[390,false],[375,false],[375,true],[320,true]]) {
   }
   await nav('#/food'); await page.waitForSelector('[data-add="dinner"]'); await page.locator('[data-add="dinner"]').tap(); await page.waitForSelector('.foodform'); await settle(400);
   await page.locator('details.more summary').tap(); await settle(); await run('Food entry sheet');
-  await nav('#/supps'); await page.locator('#manageStack').tap(); await page.waitForSelector('.slist'); await page.locator('#addSupp').tap(); await page.waitForSelector('.suppform'); await settle(400); await run('Supplement sheet');
   if (w === 375 && big) console.log(screens.filter(s => s.wrapped).map(s => `  wrapped: ${s.name}: ${s.labels}`).join('\n'));
   await ctx.close();
 }

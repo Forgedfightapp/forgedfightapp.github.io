@@ -16,11 +16,11 @@ for (const w of [390, 375]) {
     await page.locator(`.cats button[data-c="${c}"]`).tap(); await settle(200);
     const t = `${w}px ${c}:`;
     ok(`${t} no expander / no "Add details" toggle; details always shown`, await page.locator('#view details.details').count() === 0 && !(await page.locator('#view').innerText()).includes('Add details') && await page.locator('#detailsSec').isVisible() && (await page.locator('#detailsSec .sect-title').textContent()).startsWith('Details'));
-    const EXP = { grappling:['Session type','Techniques drilled','Notes','Rounds','Rolls','Intensity','Body weight','Import from device','Heart rate'],
-      striking:['Session type','Worked on','Notes','Total rounds','Rounds by type','Sparring partners','Intensity','Body weight','Import from device','Heart rate'],
-      mma:['Session type','Striking techniques','Grappling techniques','Notes','Total rounds','Rounds by type','Sparring partners','Intensity','Body weight','Import from device','Heart rate'],
-      mobility:['Session type','Duration','Date','Focus areas','Notes','Intensity','Body weight','Import from device','Heart rate'],
-      weights:['Notes','Intensity','Body weight','Import from device','Heart rate'], cardio:['Distance','Time (h:mm:ss)','Notes','Intensity','Body weight','Import from device','Heart rate'] }[c];
+    const EXP = { grappling:['Session type','Techniques drilled','Notes','How did it feel?','Rounds','Rolls','Effort (RPE)','Body weight','Import from device','Heart rate'],
+      striking:['Session type','Worked on','Notes','How did it feel?','Total rounds','Rounds by type','Sparring partners','Effort (RPE)','Body weight','Import from device','Heart rate'],
+      mma:['Session type','Striking techniques','Grappling techniques','Notes','How did it feel?','Total rounds','Rounds by type','Sparring partners','Effort (RPE)','Body weight','Import from device','Heart rate'],
+      mobility:['Session type','Duration','Date','Focus areas','Notes','How did it feel?','Effort (RPE)','Body weight','Import from device','Heart rate'],
+      weights:['Notes','How did it feel?','Effort (RPE)','Body weight','Import from device','Heart rate'], cardio:['Distance','Time (h:mm:ss)','Notes','How did it feel?','Effort (RPE)','Body weight','Import from device','Heart rate'] }[c];
     const order = await page.evaluate(names => { const y = txt => { const l = [...document.querySelectorAll('#view .field>label, #view .field>.label')].find(x => x.textContent.trim().startsWith(txt)); return l ? l.getBoundingClientRect().top + scrollY : null; };
       return names.map(y); }, EXP);
     ok(`${t} order ${EXP.join(' → ')}`, order.every(x => x != null) && order.every((x,i) => !i || x > order[i-1]), JSON.stringify(order));

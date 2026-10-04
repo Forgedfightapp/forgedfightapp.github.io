@@ -105,9 +105,9 @@ d = await db(); ok('import restores strength goals', d.strength.length === exp.s
 
 /* 7. onboarding: strength goals only when Weights is picked */
 await page.goto(BASE); await page.evaluate(() => localStorage.clear()); await page.reload(); await page.waitForSelector('#catTiles');
-await page.locator('#go').tap(); await page.waitForSelector('#setupDone');
+await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.waitForSelector('#setupDone');
 ok('onboarding without Weights: no strength goals', await page.locator('#setupSG-bench').count() === 0);
-await page.locator('#setupBack').tap(); await page.waitForSelector('#catTiles'); await page.locator('.tile[data-k="weights"]').tap(); await page.locator('#go').tap(); await page.waitForSelector('#setupDone');
+await page.locator('#setupBack').tap(); await page.waitForSelector('#aboutNext'); await page.locator('#setupBack').tap(); await page.waitForSelector('#catTiles'); await page.locator('.tile[data-k="weights"]').tap(); await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.waitForSelector('#setupDone');
 ok('onboarding with Weights: bench/squat/deadlift/OHP + pull-ups/push-ups/dead hang + date', await page.locator('[id^="setupSG-"]').count() === 7 && await page.locator('#setupSGDate').count() === 1);
 await page.locator('#setupSG-squat').fill('315'); await page.locator('#setupSG-pushups').fill('50'); await page.locator('#setupSGDate').fill(D(90)); await page.locator('#setupDone').tap(); await page.waitForSelector('.statrow');
 d = await db(); ok('onboarding saves only the filled strength goals', d.strength.length === 2 && d.strength.some(g => g.key === 'squat' && g.target === 315 && g.date === D(90)) && d.strength.some(g => g.key === 'pushups' && g.target === 50));

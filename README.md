@@ -21,6 +21,30 @@ Weigh-ins and workout body weight merge into one history (latest entry per day).
 progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
 projected goal date.
 
+## 3.4.0: friends + head-to-head + leaderboards (behind a flag), surprise looks, Profile order, Stairs, 3-step onboarding, tip of the day, comps for every sport, belts for every art
+**Friends (off by default; see `docs/social-setup.md`):**
+- Supabase backend: `supabase/migrations/001_social.sql` (one idempotent script: tables, strict RLS, security-definer RPCs, friends leaderboard view, account deletion) and `supabase/verify.sql`. Local SQL tests: `supabase/tests/run-local.sh`.
+- Client: `config.js` (flag `social:false`, project URL, publishable key, redirect URL), `social.js` (network layer), vendored `vendor/supabase-js-2.117.2.js` (loaded on demand, precached for offline). No CDN.
+- Optional account: email one-time code (or magic link on the same phone). Sign in with Apple hook (`apple:true` later). The app works fully offline without signing in.
+- Friends screen (Challenges → Friends, Profile → Friends): your invite code/link, add by code, friend list with rank and this week's sessions, weekly leaderboard (verified XP ≤ 30/day), head-to-head and group challenges on sessions, push-ups, mat hours or daily challenge streak with live standings (refreshes every 20 s while open).
+- Sync: per-day counts for the last 7 days go through the `ForgedSync` hook with an offline queue (`forged.social.queue`) that flushes when back online. Only summaries are shared, never notes, weight or food (stated on screen).
+- `#/join/<code>` challenge links carry your invite code when signed in, so friends can add you from them. `#/invite/<code>` links add a friend.
+- Preview on one phone without flipping the flag: open `?social=1` (`?social=0` to stop).
+
+**Looks are a surprise:** locked accent colours, frames and flair show only the dimmed item with a 🔒 (no requirement text). Tapping one says "Keep training to unlock"; earning one pops "🔓 New look unlocked!".
+
+**Profile:** Rank, badges & looks is now the last section on the page (after goals, settings and Your data).
+
+**Onboarding is 3 steps:** 1 "What do you train?", 2 "About you" (sex, age, height, current and goal weight, activity, pace, lb/kg; shown to everyone as the standard setup), 3 "Set your goals" with calories, protein, carbs, fat and water already filled in from step 2 (all editable), plus weight goal, monthly target, schedule, competition and strength goals. "Skip for now" on step 2 leaves step 3 blank; Back keeps what you typed.
+
+**Tip of the day (Home, under the stats):** one short tip from a bundled library of 170 (`tips.js`: recovery, sleep, nutrition, hydration, making weight safely, drilling, rolling, injury prevention, training with an injury, mobility, strength, striking, cardio, mindset, comp prep), filtered by the sports you track and picked by date so it changes daily. Context first: injury-care tips while an injury is active, taper/comp-prep tips when a competition is 21 days out or less, recovery/sleep tips when your load reads High. Tap to expand; "Next tip" (sticks for the day) and "Hide tips" (switch in Profile → What I track). General guidance only, no medical claims.
+
+**Competitions for every sport:** pick BJJ, Submission grappling, Judo, Wrestling, Sambo, Boxing, Muay Thai, Kickboxing, Karate, Taekwondo, MMA or Other (limited to the categories you track). Grappling: tournament or superfight, Gi/No-Gi (BJJ), division. Striking/MMA: bout type (amateur, pro, smoker/interclub), rounds × minutes, weigh-in time. Results: win/loss/draw with method (submission, points, decision, KO/TKO, DQ) for single bouts; medal plus matches won/lost for tournaments. Final-week tips per sport (striking: sparring taper, sharp pads, weigh-in rehydration; MMA: both). History → Comps → Past shows your W-L record per sport. Old comps keep their data.
+
+**Belts for every art:** BJJ (unchanged), Judo (white → yellow → orange → green → blue → brown kyu, then black with dan levels), Sambo, Karate, Taekwondo and Muay Thai prajied (armband). Each art gets its own card and timeline (belt and stripe/degree/dan dates, time at rank, that art's sessions since the last promotion) and the graphic is coloured per system. History → Belts has an art switcher when you track more than one; "Track another art" adds one. Wrestling and submission grappling have no belts. Existing BJJ belt entries are stored exactly as before (no `art` field = BJJ).
+
+**Cardio:** "Stairs" replaces "Jump rope" in the activity picker. Old Jump rope sessions keep their label (and stay editable as Jump rope).
+
 ## 3.3.0: food calculator, calorie/macro calculator, bodyweight challenges, water presets
 **Food calculator** (Add breakfast/lunch/dinner/snack):
 - Search box matches as you type against a bundled offline list of 425 common foods (`foods.js`, USDA-style values per 100 g, common units like 1 egg, 1 cup, 1 scoop, 1 slice, oz). Everyday staples rank first.
@@ -138,7 +162,7 @@ On every release, bump `APP_VERSION` in `app.js` **and** the `CACHE` name in `sw
     ./restart-preview.sh                            # optional: server + Cloudflare quick tunnel (temporary preview URL, changes on restart)
 
 ## Tests (Playwright, iPhone 13 emulation)
-`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/game.test.mjs`, `tests/macro-calc.test.mjs`, `tests/food-calc.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
+`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/social.test.mjs` (Supabase mocked by `tests/mock-supabase.js`, no network), `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/game.test.mjs`, `tests/macro-calc.test.mjs`, `tests/food-calc.test.mjs`, `tests/tip.test.mjs`, `tests/multisport.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 

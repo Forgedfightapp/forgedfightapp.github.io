@@ -179,15 +179,13 @@ await page.goto(BASE + '#/settings'); await page.waitForSelector('#looks');
 ok('looks picker: gold accent unlocked at level 15', await page.locator('#looks [data-kind="accent"] [data-look="gold"].locked').count() === 0);
 const crownLocked = r.level < 30;
 ok('crown flair locked until Forgemaster', (await page.locator('#looks [data-kind="flair"] [data-look="crown"].locked').count() === 1) === crownLocked);
-if (crownLocked) { await page.locator('#looks [data-kind="flair"] [data-look="crown"]').tap({ force:true }); await settle(200); ok('tapping a locked look explains how to unlock it', /Locked: Reach Forgemaster/i.test(await page.locator('#toast').innerText())); }
+if (crownLocked) { await page.locator('#looks [data-kind="flair"] [data-look="crown"]').tap({ force:true }); await settle(200); ok('tapping a locked look just says keep training (no requirement)', /^Keep training to unlock$/i.test(await page.locator('#toast').innerText())); }
 await page.locator('#looks [data-kind="accent"] [data-look="gold"]').tap(); await settle(400);
 await page.locator('#looks [data-kind="flair"] [data-look="flame"]').tap(); await settle(400);
 d = await db();
 ok('picking a look saves it and recolours the app', d.game.look.accent === 'gold' && d.game.look.flair === 'flame' && await page.evaluate(() => document.documentElement.dataset.look) === 'gold');
 await page.reload(); await page.waitForSelector('#looks');
 ok('look survives reload', await page.evaluate(() => document.documentElement.dataset.look) === 'gold');
-await hideToast(); await page.locator('#gameProfile').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, -70)); await settle(200);
-await page.screenshot({ path:`${SHOTS}/56-looks.png` });
 // export / import keeps game state
 const [ex] = await Promise.all([page.waitForEvent('download'), page.locator('#exp').tap()]);
 const path = '/workspace/pwtest/export-game.json'; await ex.saveAs(path);
@@ -201,6 +199,25 @@ d = await db();
 ok('import restores rep logs', d.reps.length === bigReps.length);
 ok('import restores looks, Pro week and seen rank', d.game.look.accent === 'gold' && d.game.proUntil === D(7) && d.game.rankSeen === r.ri && await page.locator('#rankUp').count() === 0);
 fs.unlinkSync(path);
+
+/* 5. looks are a surprise: locked items show only a lock, unlocking pops a toast */
+const mid = []; for (let i = 30; i >= 1; i--) mid.push(G(`m${i}`, D(-i), { duration:60 }));
+await seed(mkDb(mid, {}, { game:{ seenDone:[], seenBadges:[], look:{ accent:'flame', frame:'classic', flair:'none' } } }));
+await page.waitForTimeout(1500);
+d = await db();
+ok('first run records unlocked looks silently', Array.isArray(d.game.looksSeen) && d.game.looksSeen.includes('flair:flame') && !/New look/i.test(await page.locator('#toast').innerText()), JSON.stringify(d.game.looksSeen));
+await page.evaluate(() => { const x = JSON.parse(localStorage.getItem('dm.bjj.v1')); x.game.looksSeen = x.game.looksSeen.filter(k => k !== 'flair:flame'); localStorage.setItem('dm.bjj.v1', JSON.stringify(x)); });
+await page.reload(); await page.waitForFunction(() => /New look unlocked/i.test(document.querySelector('#toast').innerText), null, { timeout:8000 }).catch(() => {});
+ok('earning a look shows a "New look unlocked!" toast', /New look unlocked!/.test(await page.locator('#toast').innerText()), await page.locator('#toast').innerText());
+ok('the unlock is recorded (no repeat toast)', (await db()).game.looksSeen.includes('flair:flame'));
+await page.goto(BASE + '#/settings/looks'); await page.waitForSelector('#looks'); await settle(300);
+const lockedTxt = await page.locator('#looks button.locked').allInnerTexts();
+ok('locked looks show name + lock only, no unlock requirement', lockedTxt.length >= 4 && lockedTxt.every(t => !/reach|earn|level|badge/i.test(t)) && await page.locator('#looks button.locked .lk').count() === lockedTxt.length && await page.locator('#looks button.locked .sw, #looks button.locked .sy, #looks button.locked .fr').count() === lockedTxt.length, JSON.stringify(lockedTxt));
+ok('no requirement hidden in tooltips either', await page.locator('#looks button[title]').count() === 0);
+await page.locator('#looks button.locked').first().tap({ force:true }); await settle(200);
+ok('tapping a locked look: "Keep training to unlock"', /^Keep training to unlock$/.test(await page.locator('#toast').innerText()));
+await hideToast(); await page.locator('#gameProfile').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, -70)); await settle(200);
+await page.screenshot({ path:`${SHOTS}/56-looks.png` });
 
 ok('no console errors', errors.length === 0, errors.join(' | '));
 await browser.close();

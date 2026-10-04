@@ -37,6 +37,11 @@ await page.goto(BASE + '#/settings'); await page.waitForSelector('#targetsCard')
 const tl = await page.locator('#targetsCard label').evaluateAll(ls => ls.map(x => x.textContent));
 ok('Profile goals: clearer labels', tl[0] === 'Calories' && tl[1] === 'Protein (g)', JSON.stringify(tl));
 ok('Profile goals: helper text', (await page.locator('#targetsCard .hint:not(.calchint):not(.wtip):not(.wsuggest)').textContent()).startsWith('Used to track your progress on the Nutrition screen. You can change these anytime in Profile.'));
+const order = await page.evaluate(() => [...document.querySelectorAll('#view > .card')].map(c => c.id || c.querySelector('h2')?.textContent.trim()));
+ok('Profile: Rank, badges & looks is the last section (after goals, settings and Your data)', order[order.length - 1] === 'gameProfile' && order.indexOf('gameProfile') > order.indexOf('targetsCard') && order.indexOf('gameProfile') > order.indexOf('sectionsCard') && order.indexOf('gameProfile') > order.findIndex(x => /your data/i.test(x || '') || x === 'dataCard'), JSON.stringify(order));
+ok('Profile: only the version footer comes after it', await page.evaluate(() => { const g = document.querySelector('#gameProfile'); return g.nextElementSibling && g.nextElementSibling.classList.contains('foot') && !g.nextElementSibling.nextElementSibling; }));
+await page.locator('#gameProfile').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, -70)); await page.waitForTimeout(250);
+await page.screenshot({ path:'/workspace/bjj-tracker/screenshots/65-profile-rank-last.png' });
 ok('no console errors', errors.length === 0, JSON.stringify(errors));
 console.log(results.join('\n'));
 await browser.close();

@@ -721,8 +721,9 @@ html[data-look="violet"]{--brand:#B48CF2;--accent:#BF9CF5;--accent-fill:#B48CF2;
 .lookgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .lookgrid button{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;min-height:64px;border-radius:12px;border:1px solid var(--line);background:var(--surface2);color:var(--text);font:inherit;font-size:12.5px;font-weight:650;cursor:pointer;min-width:0}
 .lookgrid button.on{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand) inset;background:var(--accent-soft)}
-.lookgrid button.locked{opacity:.5}
-.lookgrid button small{font-size:10px;font-weight:600;color:var(--muted);line-height:1.2}
+.lookgrid button.locked{opacity:.45;filter:grayscale(.35)}
+.lookgrid button{position:relative}
+.lookgrid .lk{position:absolute;top:5px;right:6px;font-size:12px;line-height:1;opacity:.95}
 .lookgrid .sw{width:26px;height:26px;border-radius:50%;display:block}
 .lookgrid .sy{font-style:normal;font-size:22px;line-height:26px}
 .lookgrid .fr{width:30px;height:26px;border-radius:5px;display:block;background:#0B0B0C;border:3px solid #F2711C}
@@ -740,9 +741,9 @@ html[data-look="violet"]{--brand:#B48CF2;--accent:#BF9CF5;--accent-fill:#B48CF2;
 .calcbtn{margin:0 0 6px;border:1px dashed var(--accent);color:var(--accent);background:transparent;font-weight:800}
 .calchint{margin:0 0 12px}.calchint.ok{color:var(--good,#6FD3A8)}
 .calcfood{margin-top:8px}
-#macroCalc .input.big{font-size:20px;min-height:52px}
-#macroCalc .hrow{display:flex;gap:8px}#macroCalc .hrow .input{min-width:0;flex:1}
-#macroCalc .lnk.hu{background:none;border:0;color:var(--accent);font-weight:700;padding:6px 0 0;font-size:13px;cursor:pointer}
+.mcform .input.big{font-size:20px;min-height:0;height:54px}
+.mcform .hrow{display:flex;gap:8px}.mcform .hrow .input{min-width:0;flex:1}
+.mcform .lnk.hu{background:none;border:0;color:var(--accent);font-weight:700;padding:6px 0 0;font-size:13px;cursor:pointer}
 .actlist{display:flex;flex-direction:column;gap:8px}
 .actlist button{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:2px;padding:12px 14px;border-radius:14px;border:1.5px solid var(--line);background:var(--surface2);color:inherit;cursor:pointer;min-height:56px}
 .actlist button b{font-size:16px}.actlist button small{color:var(--muted);font-size:13px}
@@ -757,7 +758,7 @@ html[data-look="violet"]{--brand:#B48CF2;--accent:#BF9CF5;--accent-fill:#B48CF2;
 .card.recalc{display:flex;flex-direction:column;gap:10px;border:1px solid color-mix(in srgb,var(--accent) 45%,transparent)}
 .card.recalc small{display:block;color:var(--muted);margin-top:2px}.recalc .rc-btns{display:flex;gap:8px}
 #targetsCard .card.recalc{margin:0 0 12px}
-#macroCalc .grid2{align-items:start}
+.mcform .grid2.hgrid{align-items:start}
 /* 3.3.0 food calculator */
 .fpbar{display:flex;gap:8px;align-items:center}.fpbar .grow{flex:1;min-width:0}
 .fpscan svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
@@ -800,3 +801,69 @@ html[data-look="violet"]{--brand:#B48CF2;--accent:#BF9CF5;--accent-fill:#B48CF2;
 .wsuggest .lnk{background:none;border:0;padding:0;color:var(--accent);font-weight:800;cursor:pointer;font-size:inherit}
 .wline .wgal{color:var(--muted);margin-left:6px;font-size:12px}
 .wbtns .btn b{white-space:nowrap}
+
+/* 3.4.0 friends, head-to-head, sign-in */
+.av{flex:0 0 auto;width:38px;height:38px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--av) 22%,#141518);border:2px solid var(--av);color:var(--av);font-weight:800;font-size:16px;font-family:var(--font-sub,inherit);text-transform:uppercase}
+.av.lg{width:52px;height:52px;font-size:22px}
+.frow,.brow{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.card>.frow:first-child,#youCard .frow,#inviteView .frow{border-top:0;padding-top:0}
+.frow .grow,.brow .grow{flex:1;min-width:0}
+.frow .grow b,.brow .grow b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frow .grow small{display:block;color:var(--muted);font-size:13px}
+.frow.me .grow b,.brow.me .grow b{color:var(--text)}
+.frow .place,.brow .place{width:18px;text-align:center;font-weight:800;color:var(--muted);font-variant-numeric:tabular-nums}
+.fstat{text-align:right}
+.fstat b{display:block;font-size:20px;line-height:1.1;font-variant-numeric:tabular-nums}
+.fstat small{display:block;color:var(--muted);font-size:12px;white-space:nowrap}
+.fmenu{min-width:36px;padding:0 8px;font-size:18px}
+.brow .sgbar{margin-top:6px}
+.bscore{font-size:22px;font-variant-numeric:tabular-nums;min-width:44px;text-align:right}
+.invrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.invcode{font-family:var(--font-sub,inherit);font-size:28px;font-weight:800;letter-spacing:.14em;color:var(--accent)}
+.addrow{display:flex;gap:8px}
+.addrow .input{flex:1;text-transform:uppercase;letter-spacing:.12em}
+.btnrow{display:flex;gap:10px}
+.btnrow .btn{flex:1}
+.privacy ul{margin:0 0 10px;padding-left:20px;color:var(--muted);font-size:14px;line-height:1.5}
+.privacy p{margin:0;font-size:14px;color:var(--muted)}
+.privacy p b{color:var(--text)}
+.card.offline{border-color:rgba(255,196,61,.4);background:rgba(255,196,61,.08);color:#ffd77a;font-size:14px}
+.h2hrow b .dim{font-weight:600}
+.card .h2ht{margin:4px 0 6px;text-transform:none;letter-spacing:0;font-size:24px;color:var(--text)}
+.input.otp{font-size:24px;letter-spacing:.3em;text-align:center;font-variant-numeric:tabular-nums}
+.avpick{display:flex;flex-wrap:wrap;gap:10px}
+.avpick button{width:38px;height:38px;border-radius:50%;border:2px solid transparent;background:var(--av);cursor:pointer}
+.avpick button.on{border-color:var(--text);box-shadow:0 0 0 2px var(--bg,#0b0b0c) inset}
+
+/* onboarding step 2: About you */
+.setup.about .goalsec .field:first-child{margin-top:0}
+.setup.about .mcnote{margin:10px 2px 0;text-align:left}
+.calchint .lnk{padding:0;font:inherit;color:var(--accent);text-decoration:underline}
+
+/* Tip of the day (Home, under the stats) */
+.card.tip{padding:0;overflow:hidden}
+.tiphead{display:flex;align-items:center;gap:10px;width:100%;padding:11px 14px;background:none;border:0;color:inherit;text-align:left;cursor:pointer;min-height:52px;font:inherit}
+.tipico{font-size:18px;line-height:1;flex:none}
+.tiptxt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.tiptxt small{color:var(--muted);font-size:12px;font-weight:650;letter-spacing:.02em}
+.tiptxt b{font-size:15px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tip.open .tiptxt b{white-space:normal}
+.tiphead .chev{width:18px;height:18px;flex:none;fill:none;stroke:var(--muted);stroke-width:2;transition:transform .2s}
+.tip.open .chev{transform:rotate(180deg)}
+.tipbody{padding:0 14px 12px 42px}
+.tipbody p{margin:0 0 8px;line-height:1.45;font-size:15px}
+.tipwhy{margin:0 0 8px;color:var(--accent)}
+.tipbtns{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.tipbtns .lnk{background:none;border:0;color:var(--muted);font:inherit;font-size:14px;padding:8px 0;cursor:pointer;text-decoration:underline}
+.tipnote{margin-top:8px;font-size:12px}
+
+/* 3.4.0 belts for every art */
+.artseg{overflow-x:auto;scrollbar-width:none}.artseg::-webkit-scrollbar{display:none}
+.artseg a{flex:1 0 auto;padding:0 12px;font-size:14px}
+.beltpick button small{color:var(--muted);font-size:11px;font-weight:600;margin-left:auto}
+h3 .artname{font-size:13px;color:var(--muted);font-weight:650;margin-left:6px}
+.tl-head small.kyu{display:inline;color:var(--muted);font-weight:600;font-size:12px;margin-left:4px}
+/* 3.4.0 comps for every sport */
+.comprec{display:flex;flex-direction:column;gap:6px;margin:-2px 0 10px;padding:10px 12px;border-radius:12px;background:var(--surface2)}
+.recrow{display:flex;justify-content:space-between;gap:10px;font-size:14px}
+.recrow span{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:650}

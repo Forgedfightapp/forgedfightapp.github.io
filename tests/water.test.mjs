@@ -11,7 +11,7 @@ const settle = (ms=300) => page.waitForTimeout(ms);
 const hideToast = async () => { await page.evaluate(() => document.querySelector('#toast').classList.remove('show','act')); await page.waitForTimeout(450); };
 const total = async () => Number(await page.locator('#waterTotal').innerText());
 
-await page.goto(BASE); await page.waitForSelector('#catTiles'); await page.locator('#go').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('.statrow');
+await page.goto(BASE); await page.waitForSelector('#catTiles'); await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('.statrow');
 ok('Home nutrition card has a water line', (await page.locator('#homeWater').innerText()).includes('Water') && (await page.locator('#homeWater').innerText()).includes('oz'));
 await page.goto(BASE + '#/food'); await page.waitForSelector('#waterCard');
 ok('no water goal: shows Set goal link, no bar', await page.locator('#waterCard #setWaterGoal').count() === 1 && await page.locator('#waterCard .mbar').count() === 0);
@@ -89,8 +89,10 @@ ok('tapping the suggestion uses it', Math.round((await db()).profile.waterGoal) 
 await page.goto(BASE); await page.evaluate(() => localStorage.clear()); await page.reload(); await page.waitForSelector('#catTiles');
 if (await page.locator('#extraTiles .tile[data-k="food"]').getAttribute('aria-pressed') !== 'true') await page.locator('#extraTiles .tile[data-k="food"]').tap();
 if (await page.locator('#extraTiles .tile[data-k="weight"]').getAttribute('aria-pressed') !== 'true') await page.locator('#extraTiles .tile[data-k="weight"]').tap();
-await page.locator('#go').tap(); await page.waitForSelector('#setupWater');
-await page.locator('#setupW').fill('200'); await settle(100);
+await page.locator('#go').tap(); await page.waitForSelector('#aboutNext');
+await page.getByRole('radio', { name:'Male', exact:true }).tap(); await page.locator('#mcAge').fill('30'); await page.locator('#mcFt').fill('6'); await page.locator('#mcIn2').fill('0'); await page.locator('#mcW').fill('200');
+await page.locator('#aboutNext').tap(); await page.waitForSelector('#setupWater'); await settle(100);
+ok('About you pre-fills the water goal: half your weight in oz (200 lb → 100 oz)', await page.locator('#setupWater').inputValue() === '100' && await page.locator('#setupW').inputValue() === '200');
 ok('onboarding water goal: presets + suggestion from the weight you enter (200 lb → 100 oz)', await page.locator('.goalsec .wchips [data-wpreset]').count() === 3 && /Suggested: 100 oz/.test(await page.locator('.goalsec .wsuggest').innerText()));
 await page.locator('.goalsec [data-wpreset="128"]').tap();
 ok('preset fills the onboarding field', await page.locator('#setupWater').inputValue() === '128');

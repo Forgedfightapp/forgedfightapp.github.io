@@ -31,7 +31,7 @@ for (const [a, b, want, name] of cases) { const got = await D(a, b); ok(`duratio
 /* ---------- 2. belt + stripe events (3.2.0): separate dated events, backdating, missing stripes, edit/delete ---------- */
 const TODAY = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
 const YM = (a, b) => page.evaluate(([a, b]) => { const x = window.DM_TEST.diffYMD(a, b); return x.y ? `${x.y} yr${x.y > 1 ? 's' : ''} ${x.m} mo${x.m === 1 ? '' : 's'}` : x.m ? `${x.m} mo${x.m === 1 ? '' : 's'}` : `${x.d} day${x.d === 1 ? '' : 's'}`; }, [a, b]);
-await page.locator('#go').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('#beltCard');
+await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('#beltCard');
 ok('home belt card prompts to log first belt', (await page.locator('#beltCard').innerText()).includes('Log your belt'));
 let taps = 0;
 taps++; await page.locator('#beltCard [data-promo]').tap(); await page.waitForSelector('#beltPick');

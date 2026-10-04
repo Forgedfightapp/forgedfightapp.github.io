@@ -1,7 +1,9 @@
 # Forged social plan: friends, head-to-head challenges, leaderboards
 
-Status: **design only.** No backend account has been created; Steve approves before anything is set up.
+Status: **built in 3.4.0, behind a flag.** Supabase project `ftnhmeqpzqpfdwhjfvnk` (free plan) exists. Schema: `supabase/migrations/001_social.sql`; setup and flag: `docs/social-setup.md`; manual tests: `docs/social-test-checklist.md`.
 3.2.0 ships everything on the phone (XP, ranks, badges, challenges) plus a no-server "Challenge a friend" link.
+
+What 3.4.0 changed from this plan: tables are `profiles`, `invites`, `friendships`, `challenges`, `challenge_participants`, `progress_entries` (per-day counts, not workout rows); validation runs in Postgres RPCs (no Edge Functions); account deletion is an RPC; leaderboard is a security-invoker view; invite links are `#/invite/<code>` and `#/join` links carry the code.
 
 ## 1. Recommendation (short version)
 

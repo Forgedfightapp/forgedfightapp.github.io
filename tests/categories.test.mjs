@@ -19,7 +19,7 @@ ok('accent is flame orange with dark ink', await page.evaluate(() => { const cs 
 /* first-run: six sports, unused stay hidden */
 const tiles = await page.locator('#catTiles .tile').evaluateAll(ts => ts.map(t => t.querySelector('b').textContent));
 ok('first-run offers Grappling, Striking, MMA, Weights, Cardio, Mobility', JSON.stringify(tiles) === '["Grappling","Striking","MMA","Weights","Cardio","Mobility"]', JSON.stringify(tiles));
-await page.locator('.tile[data-k="mobility"]').tap(); await page.locator('#go').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('.statrow');
+await page.locator('.tile[data-k="mobility"]').tap(); await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('.statrow');
 await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); await settle();
 ok('log form shows only picked sports (Grappling + Mobility)', JSON.stringify(await page.locator('.cats button').evaluateAll(bs => bs.map(b => b.dataset.c))) === '["grappling","mobility"]');
 await page.locator('.cats button[data-c="grappling"]').tap(); await settle(150);
@@ -72,6 +72,31 @@ const st = await page.locator('#catCard').innerText();
 ok('stats hours-by-category include MMA and Mobility', /MMA/.test(st) && /Mobility/.test(st) && /Striking/.test(st));
 await page.goto(BASE + '#/'); await settle(300);
 ok('belt card still shown (BJJ)', await page.locator('#beltCard').count() === 1);
+/* 3.4.0: Cardio "Jump rope" replaced by "Stairs"; old Jump rope sessions keep their label */
+{
+  const t = new Date().toLocaleDateString('en-CA'), rope = { id:'rope1', date:t, category:'cardio', discipline:'rope', duration:20, intensity:3, rpe:7, notes:'', sample:false, createdAt:Date.now() - 864e5, cardio:{ distance:'', unit:'mi', sec:1200 } };
+  await page.goto(BASE); await page.evaluate(r => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ schema:7, sessions:[r], profile:{ setupDone:true, unit:'lb', distUnit:'mi', enabled:{ grappling:true, cardio:true } }, nutrition:{ entries:[], foods:[], water:[] }, weights:[], belts:[] })); }, rope);
+  await page.reload(); await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); await settle(200);
+  if (await page.locator('.sheet [data-ok]').count()) { await page.locator('.sheet [data-ok]').tap(); await settle(); }
+  await page.locator('.cats button[data-c="cardio"]').tap(); await settle(200);
+  const acts = await page.locator('#view .seg').first().locator('button').allInnerTexts();
+  ok('cardio picker: Stairs replaces Jump rope', acts.join('|') === 'Run|Bike|Row|Swim|Stairs|Other', acts.join('|'));
+  ok('new cardio form does not default to the retired Jump rope', !acts.some(a => /jump rope/i.test(a)) && await page.locator('#view .seg').first().locator('button.on').count() === 1);
+  await page.locator('#view .seg').first().locator('button', { hasText:'Stairs' }).tap();
+  await page.locator('.actions [data-save]').tap(); await settle(600);
+  let d = await db();
+  ok('a Stairs session saves as discipline "stairs"', d.sessions.some(s => s.discipline === 'stairs'), JSON.stringify(d.sessions.map(s => s.discipline)));
+  ok('old Jump rope session is kept as-is (not remapped)', d.sessions.find(s => s.id === 'rope1').discipline === 'rope');
+  await page.goto(BASE + '#/history'); await settle(500);
+  const hist = await page.locator('#view').innerText();
+  ok('history still labels the old session "Jump rope" and the new one "Stairs"', /Jump rope/i.test(hist) && /Stairs/i.test(hist));
+  await page.goto(BASE + '#/edit/rope1'); await page.waitForSelector('.actions [data-save]'); await settle(200);
+  const eacts = await page.locator('#view .seg').first().locator('button').allInnerTexts();
+  ok('editing an old Jump rope session keeps it selected (shown only there)', /Jump rope/i.test(eacts.join('|')) && /Jump rope/i.test(await page.locator('#view .seg').first().locator('button.on').innerText()), eacts.join('|'));
+  await page.locator('.actions [data-save]').tap(); await settle(500);
+  ok('saving the edit without changes keeps Jump rope', (await db()).sessions.find(s => s.id === 'rope1').discipline === 'rope');
+  ok('Profile "What I track" lists Stairs, not Jump rope', await page.goto(BASE + '#/settings').then(() => page.waitForSelector('#sectionsCard')).then(async () => { const x = await page.locator('#sectionsCard').innerText(); return /Stairs/.test(x) && !/Jump rope/i.test(x); }));
+}
 ok('no console errors', errors.length === 0, JSON.stringify(errors));
 console.log(results.join('\n'));
 await browser.close();

@@ -117,26 +117,44 @@ const mt = await T(() => window.DM_TEST.macroCalc({ sex:'f', age:28, cm:168, kg:
 ok('metric maintenance result', await page.locator('#mcResult [data-r="cal"]').textContent() === mt.cal.toLocaleString() && /maintain/.test(await page.locator('#mcResult [data-r="wk"]').textContent()));
 await page.locator('.sheet [data-close]').first().tap(); await settle();
 
-/* 6. onboarding goals step */
+/* 6. onboarding: step 2 About you (calculator inputs for everyone) → step 3 pre-filled */
 await page.goto(BASE); await page.evaluate(() => localStorage.clear()); await page.reload(); await page.waitForSelector('#catTiles');
 for (const k of ['food', 'weight']) { if (await page.locator(`#extraTiles .tile[data-k="${k}"]`).getAttribute('aria-pressed') !== 'true') await page.locator(`#extraTiles .tile[data-k="${k}"]`).tap(); }
-await page.locator('#go').tap(); await page.waitForSelector('#setupDone');
-ok('onboarding goals step offers Calculate for me', await page.locator('#setupCalc').count() === 1);
-await page.locator('#setupW').fill('200'); await page.locator('#setupGoal').fill('185');
-await page.locator('#setupCalc').tap(); await page.waitForSelector('#macroCalc');
-ok('onboarding prefills current and goal weight', await page.locator('#mcW').inputValue() === '200' && await page.locator('#mcGw').inputValue() === '185');
+await page.locator('#go').tap(); await page.waitForSelector('#aboutNext');
+ok('About you shows the calculator inputs inline (no sheet, no Calculate for me)', await page.locator('#macroCalc').count() === 0 && await page.locator('#setupCalc').count() === 0 && await page.locator('#mcAge').isVisible() && await page.locator('#mcAct').isVisible());
 await page.getByRole('radio', { name:'Male', exact:true }).tap(); await page.locator('#mcAge').fill('40'); await page.locator('#mcFt').fill('6'); await page.locator('#mcIn2').fill('0');
-await page.locator('#mcGo').tap(); await page.waitForSelector('#mcResult'); await page.locator('#mcUse').tap(); await settle(300);
+await page.locator('#mcW').fill('200'); await page.locator('#mcGw').fill('185'); await settle(100);
+ok('pace appears when the goal differs', await page.locator('.mcform .field', { hasText:/How fast to lose/i }).isVisible());
+await page.locator('#mcAct [data-act="active"]').tap();
+await page.locator('#aboutNext').tap(); await page.waitForSelector('#setupDone');
 const ob = await T(() => window.DM_TEST.macroCalc(window.DM_TEST.calcInputsKg({ sex:'m', age:40, hu:'ftin', ft:6, inch:0, w:200, gw:185, u:'lb', act:'active', pace:'steady' })));
-ok('Use these fills the onboarding goal fields', await page.locator('#setupT-cal').inputValue() === String(ob.cal) && await page.locator('#setupT-p').inputValue() === String(ob.p) && /Filled in/.test(await page.locator('#setupCalcNote').innerText()));
+ok('step 3 pre-fills calories and macros from About you', await page.locator('#setupT-cal').inputValue() === String(ob.cal) && await page.locator('#setupT-p').inputValue() === String(ob.p) && await page.locator('#setupT-c').inputValue() === String(ob.c) && await page.locator('#setupT-f').inputValue() === String(ob.f) && /Calculated from your details/.test(await page.locator('#setupCalcNote').innerText()));
+ok('step 3 pre-fills water (200 lb → 100 oz) and the weight goal', await page.locator('#setupWater').inputValue() === '100' && await page.locator('#setupW').inputValue() === '200' && await page.locator('#setupGoal').inputValue() === '185' && await page.locator('#setupGoalDate').inputValue() === ob.goalDate);
 await page.locator('#setupT-f').fill(String(ob.f + 5));
 await page.locator('#setupDone').tap(); await settle(500);
 d = await db();
-ok('finishing saves targets (with your edit) and the calculator inputs', d.profile.targets.cal === ob.cal && d.profile.targets.f === ob.f + 5 && d.profile.calc.age === 40 && d.profile.goalWeight === '185');
+ok('finishing saves targets (with your edit), water and the calculator inputs', d.profile.targets.cal === ob.cal && d.profile.targets.f === ob.f + 5 && d.profile.calc.age === 40 && d.profile.calc.act === 'active' && d.profile.goalWeight === '185' && Math.round(d.profile.waterGoal) === Math.round(100 * 29.5735));
+/* metric + Food/Weight off: the numbers still get shown and saved */
 await page.goto(BASE); await page.evaluate(() => localStorage.clear()); await page.reload(); await page.waitForSelector('#catTiles');
 for (const k of ['food', 'weight']) { if (await page.locator(`#extraTiles .tile[data-k="${k}"]`).getAttribute('aria-pressed') === 'true') await page.locator(`#extraTiles .tile[data-k="${k}"]`).tap(); }
-await page.locator('#go').tap(); await page.waitForSelector('#setupDone');
-ok('no Calculate for me when Food and Weight goal are off', await page.locator('#setupCalc').count() === 0);
+await page.locator('#go').tap(); await page.waitForSelector('#aboutNext');
+await page.locator('#mcUnits').getByRole('radio', { name:/kg/ }).tap(); await settle(100);
+ok('units switch to kg · cm swaps height to cm and weight labels to kg', await page.locator('#mcCm').isVisible() && /kg/.test(await page.locator('.mcform').innerText()));
+await page.getByRole('radio', { name:'Female', exact:true }).tap(); await page.locator('#mcAge').fill('28'); await page.locator('#mcCm').fill('168'); await page.locator('#mcW').fill('64');
+await page.locator('#mcAct [data-act="active"]').tap();
+await page.locator('#aboutNext').tap(); await page.waitForSelector('#setupDone');
+const om = await T(() => window.DM_TEST.macroCalc({ sex:'f', age:28, cm:168, kg:64, goalKg:64, act:'active' }));
+const mlExp = Math.round(Math.round(64 * 2.20462 / 2) * 29.5735 / 50) * 50;
+ok('Food off: step 3 still shows the calculated numbers; water in ml (rounded to 50)', await page.locator('#setupT-cal').inputValue() === String(om.cal) && await page.locator('#setupWater').inputValue() === String(mlExp) && await page.locator('#setupW').count() === 0, await page.locator('#setupWater').inputValue() + ' vs ' + mlExp);
+await page.locator('#setupDone').tap(); await settle(500);
+d = await db();
+ok('saved: targets, calc, metric units', d.profile.targets.cal === om.cal && d.profile.calc.u === 'kg' && d.profile.unit === 'kg' && Math.round(d.profile.waterGoal) === mlExp);
+/* skip */
+await page.goto(BASE); await page.evaluate(() => localStorage.clear()); await page.reload(); await page.waitForSelector('#catTiles');
+await page.locator('#go').tap(); await page.waitForSelector('#skipAbout'); await page.locator('#skipAbout').tap(); await page.waitForSelector('#setupDone');
+ok('Skip for now on About you: empty numbers and a way back', await page.locator('#setupT-cal').inputValue() === '' && await page.locator('#toAbout').count() === 1);
+await page.locator('#toAbout').tap(); await page.waitForSelector('#aboutNext');
+ok('"Go back to About you" opens step 2', /Step 2 of 3/.test(await page.locator('#setupStep').innerText()));
 
 ok('no console errors', errors.length === 0, errors.join(' | '));
 await browser.close();

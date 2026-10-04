@@ -12,6 +12,7 @@ let { ctx, page } = await mk();
 const db = () => page.evaluate(() => JSON.parse(localStorage.getItem('dm.bjj.v1')));
 let taps = 0; const tap = async loc => { taps++; await loc.tap(); };
 const hideToast = async () => { await page.evaluate(() => document.querySelector('#toast').classList.remove('show','act')); await page.waitForTimeout(450); };
+const settle = (ms = 250) => page.waitForTimeout(ms);
 
 /* 1. first-run setup */
 await page.goto(BASE); await page.waitForSelector('#catTiles');
@@ -19,18 +20,32 @@ ok('first-run screen shown on empty app', await page.locator('.welcome.setup').c
 await page.screenshot({ path:`${SHOTS}/00-first-run.png` });
 await page.locator('.tile[data-k="weights"]').tap();
 await page.locator('.tile[data-k="cardio"]').tap();
-ok('step 1: "What do you train?" with Step 1 of 2, no goal fields yet', /What do you train/i.test(await page.locator('.welcome > h2').innerText()) && /Step 1 of 2/.test(await page.locator('#setupStep').innerText()) && await page.locator('#setupT-cal, #setupW, #setupSG-bench').count() === 0);
-await page.locator('#go').tap(); await page.waitForSelector('#setupDone');
-ok('step 2: "Set your goals" with Step 2 of 2', /Set your goals/i.test(await page.locator('.welcome > h2').innerText()) && /Step 2 of 2/.test(await page.locator('#setupStep').innerText()));
+ok('step 1: "What do you train?" with Step 1 of 3, no goal fields yet', /What do you train/i.test(await page.locator('.welcome > h2').innerText()) && /Step 1 of 3/.test(await page.locator('#setupStep').innerText()) && await page.locator('#setupT-cal, #setupW, #setupSG-bench, #mcAge').count() === 0 && /about you/i.test(await page.locator('#go').innerText()));
+await page.locator('#go').tap(); await page.waitForSelector('#aboutNext');
+ok('step 2: "About you" with Step 2 of 3, calculator inputs shown for everyone (no Calculate button)', /About you/i.test(await page.locator('.welcome > h2').innerText()) && /Step 2 of 3/.test(await page.locator('#setupStep').innerText())
+  && await page.locator('#mcUnits').count() === 1 && await page.getByRole('radio', { name:'Male', exact:true }).count() === 1 && await page.locator('#mcAge').isVisible() && await page.locator('#mcFt').isVisible() && await page.locator('#mcW').isVisible() && await page.locator('#mcGw').isVisible() && await page.locator('#mcAct [data-act]').count() >= 4
+  && await page.locator('#setupCalc, #mcGo').count() === 0 && await page.locator('#skipAbout').isVisible() && await page.locator('#setupBack').isVisible());
+await page.locator('#aboutNext').tap(); await settle(300);
+ok('Next without details asks for them and stays on step 2', /Step 2 of 3/.test(await page.locator('#setupStep').innerText()) && /male or female/i.test(await page.locator('#toast').innerText()));
+await page.getByRole('radio', { name:'Male', exact:true }).tap(); await page.locator('#mcAge').fill('32'); await page.locator('#mcFt').fill('5'); await page.locator('#mcIn2').fill('10'); await page.locator('#mcW').fill('190'); await page.locator('#mcGw').fill('180');
+await hideToast(); await page.screenshot({ path:`${SHOTS}/00b-about-you.png` });
+await page.locator('#aboutNext').tap(); await page.waitForSelector('#setupDone');
+ok('step 3: "Set your goals" with Step 3 of 3', /Set your goals/i.test(await page.locator('.welcome > h2').innerText()) && /Step 3 of 3/.test(await page.locator('#setupStep').innerText()));
+const pre = { cal:await page.locator('#setupT-cal').inputValue(), p:await page.locator('#setupT-p').inputValue(), c:await page.locator('#setupT-c').inputValue(), f:await page.locator('#setupT-f').inputValue(), w:await page.locator('#setupWater').inputValue() };
+ok('step 3 pre-fills calories, protein, carbs, fat and water (95 oz = half of 190 lb), all editable', Number(pre.cal) > 1200 && Number(pre.p) > 0 && Number(pre.c) > 0 && Number(pre.f) > 0 && pre.w === '95' && await page.locator('#setupT-cal').isEditable() && /Calculated from your details/.test(await page.locator('#setupCalcNote').innerText()), JSON.stringify(pre));
+ok('step 3 has no Calculate for me button', await page.locator('#setupCalc').count() === 0);
 const secs = await page.locator('.goalsec h2').allInnerTexts();
 ok('step 2 shows only relevant goals: nutrition (Food on), strength (Weights), no weight goal (off)', await page.locator('#setupT-cal').count() === 1 && await page.locator('#setupWater').count() === 1 && await page.locator('#setupSG-bench').count() === 1 && await page.locator('#setupW').count() === 0, JSON.stringify(secs));
 ok('step 2: schedule rows only for chosen disciplines (BJJ, Weights, Cardio) + monthly target + optional comp', await page.locator('.goalsec .schedrow').count() === 3 && await page.locator('#goalForm .stepper').count() === 1 && await page.locator('#setupComp').count() === 1);
 ok('protein placeholder hint 0.8–1 g per lb', /0\.8–1 g per lb/.test(await page.locator('#goalForm').innerText()));
-ok('step 2 has Done, Skip for now and Back', await page.locator('#setupDone').isVisible() && await page.locator('#skipGoals').isVisible() && await page.locator('#setupBack').isVisible());
+ok('step 3 has Done, Skip for now and Back', await page.locator('#setupDone').isVisible() && await page.locator('#skipGoals').isVisible() && await page.locator('#setupBack').isVisible());
 await page.screenshot({ path:`${SHOTS}/00c-first-run-goals.png` });
+await page.locator('#setupBack').tap(); await page.waitForSelector('#aboutNext');
+ok('Back from step 3 returns to About you with details kept', await page.locator('#mcAge').inputValue() === '32' && await page.locator('#mcW').inputValue() === '190' && await page.getByRole('radio', { name:'Male', exact:true }).getAttribute('aria-checked') === 'true');
 await page.locator('#setupBack').tap(); await page.waitForSelector('#catTiles');
 ok('Back returns to step 1 with picks kept', await page.locator('.tile[data-k="weights"].on').count() === 1 && await page.locator('.tile[data-k="cardio"].on').count() === 1);
-await page.locator('#go').tap(); await page.waitForSelector('#skipGoals');
+await page.locator('#go').tap(); await page.waitForSelector('#skipAbout'); await page.locator('#skipAbout').tap(); await page.waitForSelector('#skipGoals');
+ok('Skip for now on About you: step 3 without pre-filled numbers', await page.locator('#setupT-cal').inputValue() === '' && await page.locator('#setupWater').inputValue() === '' && await page.locator('#toAbout').count() === 1);
 await page.locator('#skipGoals').tap(); await page.waitForSelector('.statrow');
 let d = await db();
 ok('setup saves choices (Skip for now: no goals)', d.profile.setupDone && d.profile.enabled.weights && d.profile.enabled.cardio && !d.profile.enabled.striking && !d.profile.enabled.supps && !d.profile.targets && !d.strength.length, JSON.stringify(d.profile.enabled));

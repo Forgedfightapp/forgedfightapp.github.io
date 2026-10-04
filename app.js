@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.3.0';
+const APP_VERSION = '3.4.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -16,8 +16,23 @@ const fixType = (c, t) => (c === 'striking' || c === 'mma') ? (t === 'open' ? 'p
 /* 'drill' (Drilling) was removed in 3.1.0. Old sessions keep the stored value and are shown (and edited) as Class. */
 const LEGACY_TYPES = ['drill'];
 const BELTS = [['white','White','#f1f1f1'],['blue','Blue','#2563eb'],['purple','Purple','#7c3aed'],['brown','Brown','#7b4a26'],['black','Black','#151515'],
-  ['grey','Grey','#9ca3af'],['yellow','Yellow','#facc15'],['orange','Orange','#f97316'],['green','Green','#16a34a']];
+  ['grey','Grey','#9ca3af'],['yellow','Yellow','#facc15'],['orange','Orange','#f97316'],['green','Green','#16a34a'],['red','Red','#dc2626']];
 const ADULT_BELTS = ['white','blue','purple','brown','black'], KIDS_BELTS = ['grey','yellow','orange','green'];
+/* 3.4.0: rank systems per art. Events without an art are BJJ (existing data is unchanged). sub(belt) = stripes/degrees/dan at that belt, or null.
+   Colour orders follow common systems; clubs and federations vary, so every colour is pickable. */
+const dan = to => b => b === 'black' ? { word:'dan', from:2, to } : null;
+const BELT_ARTS = {
+  bjj:{ label:'BJJ', cat:'grappling', disc:['bjj', ''], noun:'belt', belts:ADULT_BELTS, kids:KIDS_BELTS, sub:b => b === 'black' ? { word:'degree', from:1, to:6 } : { word:'stripe', from:1, to:4 }, tint:'#F2711C' },
+  judo:{ label:'Judo', cat:'grappling', disc:['judo'], noun:'belt', belts:['white','yellow','orange','green','blue','brown','black'], kyu:{ white:'6th kyu', yellow:'5th kyu', orange:'4th kyu', green:'3rd kyu', blue:'2nd kyu', brown:'1st kyu', black:'1st dan' }, sub:dan(10), tint:'#3b82f6' },
+  sambo:{ label:'Sambo', cat:'grappling', disc:['sambo'], noun:'belt', belts:['white','yellow','orange','green','blue','brown','black'], sub:dan(10), tint:'#dc2626' },
+  karate:{ label:'Karate', cat:'striking', disc:['karate'], noun:'belt', belts:['white','yellow','orange','green','blue','purple','brown','black'], sub:dan(10), tint:'#e5e7eb' },
+  taekwondo:{ label:'Taekwondo', cat:'striking', disc:['karate', 'taekwondo'], noun:'belt', belts:['white','yellow','green','blue','red','black'], sub:dan(9), tint:'#2563eb' },
+  muaythai:{ label:'Muay Thai', cat:'striking', disc:['muaythai'], noun:'prajied', belts:['white','yellow','orange','green','blue','purple','brown','red','black'], sub:() => null, tint:'#F5C542' } };
+const ART_KEYS = Object.keys(BELT_ARTS);
+const artOf = e => (e && BELT_ARTS[e.art]) ? e.art : 'bjj';
+const artBelts = art => { const A = BELT_ARTS[art] || BELT_ARTS.bjj; return A.belts.concat(A.kids || []); };
+const cap = w => w ? w[0].toUpperCase() + w.slice(1) : w;
+const ordN = n => `${n}${(n % 100 > 10 && n % 100 < 14) ? 'th' : ['th','st','nd','rd'][n % 10] || 'th'}`;
 const INTENSITY = ['', 'Light','Easy','Moderate','Hard','All-out'];
 
 /* ---------------- storage ---------------- */
@@ -117,6 +132,7 @@ const saveDb = () => save();
 function save(){
   try { localStorage.setItem(STORE_KEY, lastRaw = JSON.stringify(db)); }
   catch(e){ toast('Storage full or unavailable'); console.warn(e); }
+  if (window.ForgedSync) window.ForgedSync.emit('db.saved', null);   // signed in: queues a summary sync (3.4.0)
 }
 
 /* ---------------- utils ---------------- */
@@ -472,12 +488,22 @@ function hbars(rows, cls){
 }
 /* ---------------- belt & stripe promotion history ---------------- */
 function beltOf(k){ return BELTS.find(x => x[0] === k) || BELTS[0]; }
-function maxStripes(belt){ return belt === 'black' ? 6 : 4; }
+function maxStripes(belt, art = 'bjj'){ const sb = (BELT_ARTS[art] || BELT_ARTS.bjj).sub(belt); return sb ? sb.to : 0; }
+const subOf = (belt, art = 'bjj') => (BELT_ARTS[art] || BELT_ARTS.bjj).sub(belt);
 /* 3.2.0: belt history is a list of dated events: kind 'belt' (belt earned, stripes reset to 0) or kind 'stripe' (stripe/degree n earned
    at that belt). Older entries were rank snapshots; they migrate here: same belt with a changed stripe count = stripe event, otherwise a
    belt event. A belt that starts with stripes already on it gets its belt event plus stripe events on the same date (marked approx). */
 function sanitizeBelts(list){
-  const base = (Array.isArray(list) ? list : []).filter(x => x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.date)) && BELTS.some(b => b[0] === x.belt))
+  const all = (Array.isArray(list) ? list : []).filter(x => x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.date)) && (x.art && x.art !== 'bjj' ? BELT_ARTS[x.art] && BELT_ARTS[x.art].belts.includes(x.belt) : BELTS.some(b => b[0] === x.belt)));
+  /* other arts are always stored as events (they're new in 3.4.0) */
+  const arts = all.filter(x => x.art && x.art !== 'bjj').map(x => { const sb = subOf(x.belt, x.art), kind = x.kind === 'stripe' && sb ? 'stripe' : 'belt';
+    return { id:String(x.id || ('b' + Date.now().toString(36) + Math.random().toString(36).slice(2,8))), art:x.art, date:String(x.date), belt:x.belt, kind,
+      stripes:kind === 'stripe' ? Math.max(sb.from, Math.min(sb.to, Math.round(Number(x.stripes) || sb.from))) : 0,
+      instructor:String(x.instructor||''), academy:String(x.academy||''), notes:String(x.notes||''), createdAt:Number(x.createdAt) || 0, ...(x.sample ? { sample:true } : {}) }; });
+  return sanitizeBjjBelts(all.filter(x => !x.art || x.art === 'bjj')).concat(arts);
+}
+function sanitizeBjjBelts(list){
+  const base = list
     .map(x => ({ id:String(x.id || ('b' + Date.now().toString(36) + Math.random().toString(36).slice(2,8))), date:String(x.date), belt:x.belt,
       stripes:Math.max(0, Math.min(maxStripes(x.belt), Math.round(Number(x.stripes) || 0))), ...(x.kind === 'belt' || x.kind === 'stripe' ? { kind:x.kind } : {}),
       instructor:String(x.instructor||''), academy:String(x.academy||''), notes:String(x.notes||''),
@@ -510,29 +536,37 @@ function fmtSpan(x){
   if (x.m) return `${x.m} mo${x.d ? ` ${x.d} d` : ''}`;
   return `${x.d} d`;
 }
-const beltHistory = () => [...(db.belts||[])].sort((a,b) => a.date.localeCompare(b.date) || (a.kind === 'belt' ? 0 : 1) - (b.kind === 'belt' ? 0 : 1) || a.stripes - b.stripes || (a.createdAt||0) - (b.createdAt||0));
+const beltHistory = (art = 'bjj') => (db.belts||[]).filter(e => artOf(e) === art).sort((a,b) => a.date.localeCompare(b.date) || (a.kind === 'belt' ? 0 : 1) - (b.kind === 'belt' ? 0 : 1) || a.stripes - b.stripes || (a.createdAt||0) - (b.createdAt||0));
 /* current rank: latest belt event + the highest stripe earned at that belt since; dates for "time at belt" and "since last stripe" */
-const currentRank = () => { const h = beltHistory(); if (!h.length) return null;
+const currentRank = (art = 'bjj') => { const h = beltHistory(art); if (!h.length) return null;
   const be = [...h].reverse().find(e => e.kind === 'belt') || h[0], st = h.filter(e => e.kind === 'stripe' && e.belt === be.belt && e.date >= be.date);
   const top = st.reduce((a, e) => !a || e.stripes > a.stripes || (e.stripes === a.stripes && e.date > a.date) ? e : a, null), last = st.reduce((a, e) => !a || e.date > a.date ? e : a, null);
-  return { ...be, stripes:top ? top.stripes : 0, date:last ? last.date : be.date, beltDate:be.date, lastStripe:last ? last.date : null, sample:be.sample }; };
+  return { ...be, art, stripes:top ? top.stripes : 0, date:last ? last.date : be.date, beltDate:be.date, lastStripe:last ? last.date : null, sample:be.sample }; };
 const fmtYM = x => x.y ? `${x.y} yr${x.y > 1 ? 's' : ''} ${x.m} mo${x.m === 1 ? '' : 's'}` : x.m ? `${x.m} mo${x.m === 1 ? '' : 's'}` : `${x.d} day${x.d === 1 ? '' : 's'}`;
-const stripeWord = (belt, n) => belt === 'black' ? `${n}${['','st','nd','rd'][n] || 'th'} degree` : `Stripe ${n}`;
-const eventLabel = e => e.kind === 'stripe' ? `${stripeWord(e.belt, e.stripes)} earned` : `${beltOf(e.belt)[1]} belt earned`;
-const rankLabel = (e, short) => e.stripes ? (e.belt === 'black' ? `${e.stripes}${['','st','nd','rd'][e.stripes] || 'th'} degree` : `${e.stripes} stripe${e.stripes > 1 ? 's' : ''}`) : (short ? 'No stripes' : `Promoted to ${beltOf(e.belt)[1].toLowerCase()} belt`);
+const subWord = (belt, art = 'bjj') => (subOf(belt, art) || { word:'stripe' }).word;
+const stripeWord = (belt, n, art = 'bjj') => { const w = subWord(belt, art); return w === 'stripe' ? `Stripe ${n}` : `${ordN(n)} ${w}`; };
+const nounOf = art => (BELT_ARTS[art] || BELT_ARTS.bjj).noun;
+const beltName = (belt, art = 'bjj') => `${beltOf(belt)[1]} ${nounOf(art)}`;
+const kyuOf = (belt, art) => (BELT_ARTS[art] || {}).kyu?.[belt] || '';
+const eventLabel = e => { const a = artOf(e); return e.kind === 'stripe' ? `${stripeWord(e.belt, e.stripes, a)} earned` : `${beltName(e.belt, a)}${kyuOf(e.belt, a) ? ` (${kyuOf(e.belt, a)})` : ''} earned`; };
+const rankLabel = (e, short) => { const a = artOf(e), w = subWord(e.belt, a);
+  return e.stripes ? (w === 'stripe' ? `${e.stripes} stripe${e.stripes > 1 ? 's' : ''}` : `${ordN(e.stripes)} ${w}`) : (short ? (a === 'bjj' ? 'No stripes' : kyuOf(e.belt, a) || '') : `Promoted to ${beltName(e.belt, a).toLowerCase()}`); };
 function syncProfileRank(){ const c = currentRank(); db.profile = { ...db.profile, belt:c ? c.belt : 'white', stripes:c ? c.stripes : 0, promotedOn:c ? c.beltDate : '' }; }
 /* mat time logged in [from, to) (to inclusive when it is today) */
-function matIn(from, to, inclusive){ const ss = db.sessions.filter(s => catOf(s) === 'grappling' && s.date >= from && (inclusive ? s.date <= to : s.date < to)); return { n:ss.length, min:ss.reduce((a,s) => a + (Number(s.duration)||0), 0) }; }
+/* sessions of that art: BJJ = grappling sessions logged as BJJ (or with no discipline), Judo = Judo, Karate = Karate/Taekwondo, … */
+const artSession = (s, art = 'bjj') => { const A = BELT_ARTS[art] || BELT_ARTS.bjj; return catOf(s) === A.cat && A.disc.includes(s.discipline || ''); };
+function matIn(from, to, inclusive, art = 'bjj'){ const ss = db.sessions.filter(s => artSession(s, art) && s.date >= from && (inclusive ? s.date <= to : s.date < to)); return { n:ss.length, min:ss.reduce((a,s) => a + (Number(s.duration)||0), 0) }; }
 /* consecutive entries at the same belt form one group; a group runs until the next belt's first entry (or today) */
-function beltGroups(){
-  const h = beltHistory(), t = today(), groups = [];
+function beltGroups(art = 'bjj'){
+  const h = beltHistory(art), t = today(), groups = [];
   h.forEach((e, i) => { const prev = h[i-1]; e = { ...e, took: prev ? diffYMD(prev.date, e.date) : null, end: h[i+1] ? h[i+1].date : t, current: i === h.length-1 };
     const g = groups[groups.length-1]; if (g && g.belt === e.belt) g.items.push(e); else groups.push({ belt:e.belt, start:e.date, items:[e] }); });
-  groups.forEach((g, i) => { g.current = i === groups.length-1; g.end = g.current ? t : groups[i+1].start; g.span = diffYMD(g.start, g.end); g.mat = matIn(g.start, g.end, g.current); });
+  groups.forEach((g, i) => { g.current = i === groups.length-1; g.end = g.current ? t : groups[i+1].start; g.span = diffYMD(g.start, g.end); g.mat = matIn(g.start, g.end, g.current, art); });
   return groups;
 }
 // Belt illustration (SVG). size 'lg' = tied belt with hanging tails; 'sm' = flat bar for lists/timeline.
-function beltSVG(belt, stripes, size='lg', title){
+function beltSVG(belt, stripes, size='lg', title, art='bjj'){
+  if (art !== 'bjj') return artBeltSVG(belt, stripes, size, title, art);
   const b = beltOf(belt), n = Math.max(0, Math.min(maxStripes(belt), Number(stripes) || 0)), black = b[0] === 'black';
   const fill = b[2], bar = black ? '#c8102e' : '#141414', edge = black ? 'rgba(255,255,255,.28)' : 'rgba(0,0,0,.28)', stitch = black ? 'rgba(255,255,255,.16)' : 'rgba(0,0,0,.18)';
   const label = esc(title || `${b[1]} belt${n ? ', ' + (black ? n + (['','st','nd','rd'][n] || 'th') + ' degree' : n + ' stripe' + (n > 1 ? 's' : '')) : ''}`);
@@ -552,44 +586,76 @@ function beltSVG(belt, stripes, size='lg', title){
     <path d="M140 20L180 48M141 44L160 30" stroke="${edge}" stroke-width="1.5" fill="none" stroke-linecap="round"/>
   </svg>`;
 }
-const beltBar = (belt, stripes, cls='') => beltSVG(belt, stripes, cls === 'mini' ? 'sm' : 'lg');
+/* other arts: solid belt (no rank bar); black belts show gold dan bars for 2nd dan up. Muay Thai: a twisted prajied armband. */
+function artBeltSVG(belt, stripes, size, title, art){
+  const A = BELT_ARTS[art], b = beltOf(belt), fill = b[2], dark = ['black','brown','blue','purple','red','green'].includes(belt), edge = dark ? 'rgba(255,255,255,.3)' : 'rgba(0,0,0,.3)', stitch = dark ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.18)';
+  const sb = subOf(belt, art), n = sb ? Math.max(0, Math.min(sb.to, Number(stripes) || 0)) : 0, bars = n >= 2 ? n - 1 : 0;
+  const label = esc(title || `${A.label} ${beltName(belt, art).toLowerCase()}${n ? `, ${ordN(n)} dan` : kyuOf(belt, art) ? `, ${kyuOf(belt, art)}` : ''}`);
+  const attrs = `data-art="${art}" data-belt="${b[0]}" data-stripes="${n}" role="img" aria-label="${label}"`;
+  if (A.noun === 'prajied') {
+    const twist = Array.from({ length:size === 'sm' ? 9 : 14 }, (_, i) => size === 'sm' ? `<path d="M${6 + i*12} 2l8 20" stroke="${stitch}" stroke-width="3"/>` : `<path d="M${30 + i*19} 30l12 24" stroke="${stitch}" stroke-width="5"/>`).join('');
+    if (size === 'sm') return `<svg class="beltsvg sm prajied" ${attrs} viewBox="0 0 120 24"><rect x=".75" y=".75" width="118.5" height="22.5" rx="11" fill="${fill}" stroke="${edge}" stroke-width="1.5"/>${twist}<rect x=".75" y=".75" width="118.5" height="22.5" rx="11" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/></svg>`;
+    return `<svg class="beltsvg lg prajied" ${attrs} viewBox="0 0 320 132"><rect x="20" y="28" width="280" height="28" rx="14" fill="${fill}" stroke="${edge}" stroke-width="1.5"/>${twist}
+      <path d="M150 56c-6 22-16 44-30 66M170 56c6 22 16 44 30 66" stroke="${fill}" stroke-width="12" stroke-linecap="round" fill="none"/><path d="M150 56c-6 22-16 44-30 66M170 56c6 22 16 44 30 66" stroke="${edge}" stroke-width="1.5" fill="none"/>
+      <circle cx="160" cy="44" r="18" fill="${fill}" stroke="${edge}" stroke-width="1.5"/></svg>`;
+  }
+  if (size === 'sm') { const tape = Array.from({ length:bars }, (_, i) => `<rect x="${100 - i*5}" y="2" width="2.6" height="20" fill="#d4a017"/>`).join('');
+    return `<svg class="beltsvg sm" ${attrs} viewBox="0 0 120 24"><rect x=".75" y=".75" width="118.5" height="22.5" rx="3" fill="${fill}" stroke="${edge}" stroke-width="1.5"/><path d="M3 6.5H117M3 17.5H117" stroke="${stitch}" stroke-width="1" stroke-dasharray="3 2"/>${tape}<rect x=".75" y=".75" width="118.5" height="22.5" rx="3" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/></svg>`; }
+  const tape = Array.from({ length:bars }, (_, i) => `<rect x="-14" y="${72 - i*6.2}" width="28" height="2.8" fill="#d4a017"/>`).join('');
+  const tail = (tx, rot, rank) => `<g transform="translate(${tx} 46) rotate(${rot})"><rect x="-14" y="0" width="28" height="84" rx="2.5" fill="${fill}" stroke="${edge}" stroke-width="1.5"/><path d="M-8 2V82M8 2V82" stroke="${stitch}" stroke-dasharray="4 3"/>${rank ? tape : ''}</g>`;
+  return `<svg class="beltsvg lg" ${attrs} viewBox="0 0 320 132"><rect x="2" y="20" width="316" height="28" rx="4" fill="${fill}" stroke="${edge}" stroke-width="1.5"/><path d="M6 27.5H314M6 40.5H314" stroke="${stitch}" stroke-dasharray="4 3"/>
+    ${tail(146, 32, false)}${tail(174, -30, true)}<rect x="136" y="11" width="48" height="46" rx="7" fill="${fill}" stroke="${edge}" stroke-width="1.5"/><path d="M140 20L180 48M141 44L160 30" stroke="${edge}" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>`;
+}
+const beltBar = (belt, stripes, cls='', art='bjj') => beltSVG(belt, stripes, cls === 'mini' ? 'sm' : 'lg', undefined, art);
+/* which arts get a belt card / tab: any art with promotions logged; BJJ by default for grapplers who haven't logged another art */
+function artsUsed(){ const have = new Set((db.belts||[]).map(artOf)), l = ART_KEYS.filter(k => have.has(k)); if (!l.length && enabled('grappling')) l.push('bjj'); return l; }
+const artsOffered = () => { const l = ART_KEYS.filter(k => enabled(BELT_ARTS[k].cat)); return l.length ? l : ART_KEYS; };
+const beltCards = () => artsUsed().map(a => beltCard(a)).join('');
 const beltEmpty = () => `<div class="belt empty-belt">${beltSVG('white', 0, 'lg', 'White belt')}</div><div class="belt-prompt"><b>Track your belt journey</b><span>Log your belt and stripes to track time at each rank.</span></div>`;
-function beltCard(){
-  const cur = currentRank();
-  if (!cur) return `<div class="card" id="beltCard"><h2>Belt</h2>${beltEmpty()}<button type="button" class="btn primary block" data-promo>Log promotion</button></div>`;
-  const b = beltOf(cur.belt), atBelt = diffYMD(cur.beltDate, today()), m = matIn(cur.date, today(), true) /* BJJ/grappling sessions on or after the latest belt or stripe date */, sw = cur.belt === 'black' ? 'degree' : 'stripe';
-  return `<div class="card tappable" id="beltCard" data-href="#/belts"><h2>${esc(b[1])} belt${cur.stripes ? ` · ${rankLabel(cur)}` : ''} ${cur.sample ? '<span class="pill sample">Sample</span>' : ''}<a class="lnk" href="#/belts">Timeline ›</a></h2>
-    <div class="belt">${beltBar(cur.belt, cur.stripes)}</div>
-    <div class="belt-meta"><span>Time at belt <b data-b="rank">${fmtYM(atBelt)}</b></span><span>Time since last ${sw} <b data-b="since">${cur.lastStripe ? fmtYM(diffYMD(cur.lastStripe, today())) : `no ${sw}s yet`}</b></span></div>
-    <div class="belt-meta" style="margin-top:4px"><span>Belt earned <b data-b="beltdate">${fmtShort(cur.beltDate)}</b></span>${cur.lastStripe ? `<span>Last ${sw} <b data-b="stripedate">${fmtShort(cur.lastStripe)}</b></span>` : ''}</div>
-    <div class="belt-meta" style="margin-top:4px"><span data-b="sessions"><b>${m.n}</b> session${m.n === 1 ? '' : 's'} since last promotion</span></div>
-    <button type="button" class="btn block" data-promo style="margin-top:12px">Log promotion</button></div>`;
+function beltCard(art = 'bjj'){
+  const cur = currentRank(art), A = BELT_ARTS[art], id = art === 'bjj' ? 'beltCard' : `beltCard-${art}`, pre = art !== 'bjj' || artsUsed().length > 1 ? `${A.label} · ` : '', href = art === 'bjj' ? '#/belts' : `#/belts/${art}`;
+  if (!cur) return `<div class="card beltcard" id="${id}" data-art="${art}"><h2>${art === 'bjj' ? 'Belt' : `${A.label} rank`}</h2>${art === 'bjj' ? beltEmpty() : ''}<button type="button" class="btn primary block" data-promo data-art="${art}">Log promotion</button></div>`;
+  const B = cap(A.noun), b = beltOf(cur.belt), atBelt = diffYMD(cur.beltDate, today()), m = matIn(cur.date, today(), true, art) /* that art's sessions on or after the latest belt or stripe date */, sb = subOf(cur.belt, art), sw = sb ? sb.word : '';
+  return `<div class="card tappable beltcard" id="${id}" data-art="${art}" data-href="${href}"><h2>${esc(pre)}${esc(beltName(cur.belt, art))}${cur.stripes ? ` · ${rankLabel(cur)}` : kyuOf(cur.belt, art) ? ` · ${kyuOf(cur.belt, art)}` : ''} ${cur.sample ? '<span class="pill sample">Sample</span>' : ''}<a class="lnk" href="${href}">Timeline ›</a></h2>
+    <div class="belt">${beltBar(cur.belt, cur.stripes, '', art)}</div>
+    <div class="belt-meta"><span>Time at ${A.noun} <b data-b="rank">${fmtYM(atBelt)}</b></span>${sw ? `<span>Time since last ${sw} <b data-b="since">${cur.lastStripe ? fmtYM(diffYMD(cur.lastStripe, today())) : `no ${sw}s yet`}</b></span>` : ''}</div>
+    <div class="belt-meta" style="margin-top:4px"><span>${B} earned <b data-b="beltdate">${fmtShort(cur.beltDate)}</b></span>${cur.lastStripe ? `<span>Last ${sw} <b data-b="stripedate">${fmtShort(cur.lastStripe)}</b></span>` : ''}</div>
+    <div class="belt-meta" style="margin-top:4px"><span data-b="sessions"><b>${m.n}</b> ${esc(art === 'bjj' ? '' : A.label + ' ')}session${m.n === 1 ? '' : 's'} since last promotion</span></div>
+    <button type="button" class="btn block" data-promo data-art="${art}" style="margin-top:12px">Log promotion</button></div>`;
 }
 function wireBelt(root){
-  root.querySelectorAll('[data-promo]').forEach(x => x.onclick = e => { e.stopPropagation(); promoSheet(null); });
-  const c = root.querySelector('#beltCard.tappable'); if (c) c.onclick = e => { if (!e.target.closest('a,button')) go('#/belts'); };
+  root.querySelectorAll('[data-promo]').forEach(x => x.onclick = e => { e.stopPropagation(); promoSheet(null, null, x.dataset.art || 'bjj'); });
+  root.querySelectorAll('.beltcard.tappable').forEach(c => c.onclick = e => { if (!e.target.closest('a,button')) go(c.dataset.href); });
   root.querySelectorAll('[data-pid]').forEach(x => x.onclick = () => promoSheet(x.dataset.pid));
-  root.querySelectorAll('[data-addstripe]').forEach(x => x.onclick = e => { e.stopPropagation(); promoSheet(null, { kind:'stripe', belt:x.dataset.addstripe, stripes:Number(x.dataset.n) || 1 }); });
+  root.querySelectorAll('[data-addstripe]').forEach(x => x.onclick = e => { e.stopPropagation(); promoSheet(null, { kind:'stripe', belt:x.dataset.addstripe, stripes:Number(x.dataset.n) || 1 }, x.dataset.art || 'bjj'); });
 }
 /* the next likely promotion, so logging is usually just "Log promotion" -> "Save" */
-function nextRank(cur){
-  if (!cur) return { belt:'white', stripes:0 };
-  if (cur.stripes < maxStripes(cur.belt) && cur.belt !== 'black') return { belt:cur.belt, stripes:cur.stripes + 1 };
-  if (cur.belt === 'black') return { belt:'black', stripes:Math.min(6, cur.stripes + 1) };
-  const ai = ADULT_BELTS.indexOf(cur.belt), ki = KIDS_BELTS.indexOf(cur.belt);
-  return { belt: ai >= 0 ? ADULT_BELTS[ai+1] : KIDS_BELTS[ki+1] || 'blue', stripes:0 };
+function nextRank(cur, art = 'bjj'){
+  const A = BELT_ARTS[art] || BELT_ARTS.bjj;
+  if (!cur) return { belt:A.belts[0], stripes:0 };
+  if (art === 'bjj') {
+    if (cur.stripes < maxStripes(cur.belt) && cur.belt !== 'black') return { belt:cur.belt, stripes:cur.stripes + 1 };
+    if (cur.belt === 'black') return { belt:'black', stripes:Math.min(6, cur.stripes + 1) };
+    const ai = ADULT_BELTS.indexOf(cur.belt), ki = KIDS_BELTS.indexOf(cur.belt);
+    return { belt: ai >= 0 ? ADULT_BELTS[ai+1] : KIDS_BELTS[ki+1] || 'blue', stripes:0 };
+  }
+  const sb = subOf(cur.belt, art), i = A.belts.indexOf(cur.belt);
+  if (i < A.belts.length - 1) return { belt:A.belts[i + 1], stripes:0 };
+  return sb ? { belt:cur.belt, stripes:Math.min(sb.to, Math.max(sb.from, cur.stripes + 1)) } : { belt:cur.belt, stripes:0 };
 }
 /* missing stripe numbers at a belt (e.g. stripes 1 and 3 logged, 2 missing) */
-function missingStripes(belt){ const have = new Set((db.belts||[]).filter(e => e.kind === 'stripe' && e.belt === belt).map(e => e.stripes)), top = Math.max(0, ...have); return Array.from({ length:top }, (_, i) => i + 1).filter(n => !have.has(n)); }
-function promoSheet(id, preset){
-  const ex = id ? db.belts.find(x => x.id === id) : null, cur = currentRank(), nx = nextRank(cur);
+function missingStripes(belt, art = 'bjj'){ const sb = subOf(belt, art); if (!sb) return []; const have = new Set((db.belts||[]).filter(e => artOf(e) === art && e.kind === 'stripe' && e.belt === belt).map(e => e.stripes)), top = Math.max(0, ...have);
+  return Array.from({ length:Math.max(0, top - sb.from + 1) }, (_, i) => i + sb.from).filter(n => !have.has(n)); }
+function promoSheet(id, preset, art0 = 'bjj'){
+  const ex0 = id ? db.belts.find(x => x.id === id) : null, art = ex0 ? artOf(ex0) : art0, A = BELT_ARTS[art], N = A.noun, ex = ex0, cur = currentRank(art), nx = nextRank(cur, art);
   const f = ex ? { ...ex } : preset ? { instructor:cur?.instructor || '', academy:cur?.academy || '', notes:'', date:today(), ...preset }
     : { kind: cur && nx.belt === cur.belt ? 'stripe' : 'belt', belt:nx.belt, stripes: cur && nx.belt === cur.belt ? nx.stripes : 0, date:today(), instructor:cur?.instructor || '', academy:cur?.academy || '', notes:'' };
   if (!f.kind) f.kind = f.stripes ? 'stripe' : 'belt';
-  let kids = KIDS_BELTS.includes(f.belt);
-  const el = h(`<div><h3>${ex ? (ex.kind === 'stripe' ? 'Edit stripe' : 'Edit belt') : 'Log promotion'}</h3>
+  f.art = art; if (!artBelts(art).includes(f.belt)) f.belt = A.belts[0];
+  let kids = art === 'bjj' && KIDS_BELTS.includes(f.belt);
+  const el = h(`<div data-art="${art}"><h3>${ex ? (ex.kind === 'stripe' ? `Edit ${subWord(ex.belt, art)}` : `Edit ${N}`) : 'Log promotion'}${art !== 'bjj' || artsUsed().length > 1 ? ` <small class="artname">${esc(A.label)}</small>` : ''}</h3>
     <div class="field" id="kindF"></div>
-    <div class="field"><label id="beltLbl">Belt</label><div class="beltpick" id="beltPick"></div><button type="button" class="btn sm ghost" id="kidsT" style="margin-top:8px">Kids belts</button></div>
+    <div class="field"><label id="beltLbl">${cap(N)}</label><div class="beltpick" id="beltPick"></div>${art === 'bjj' ? '<button type="button" class="btn sm ghost" id="kidsT" style="margin-top:8px">Kids belts</button>' : ''}</div>
     <div class="field" id="stripeF"></div>
     <div class="field"><label id="dateLbl">Belt earned</label><input class="input" type="date" id="pDate" max="${today()}" value="${esc(f.approx ? '' : f.date)}"><div class="hint" id="dateHint">Defaults to today. Pick an earlier date to add a past promotion.</div></div>
     <details class="details" ${ex && (ex.instructor || ex.academy || (ex.notes && !ex.approx)) ? 'open' : ''}><summary><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add details <small>optional</small></summary><div class="det-body">
@@ -599,23 +665,25 @@ function promoSheet(id, preset){
     <div style="display:flex;gap:10px;margin-top:6px">${ex ? '<button type="button" class="btn danger" id="pDel">Delete</button>' : ''}<button type="button" class="btn primary" style="flex:1" id="pSave">${ex ? 'Save changes' : 'Save'}</button></div></div>`);
   if (f.approx) el.querySelector('#pDate').value = f.date;
   const pick = el.querySelector('#beltPick'), sf = el.querySelector('#stripeF'), kt = el.querySelector('#kidsT'), kf = el.querySelector('#kindF');
-  const sync = () => { const st = f.kind === 'stripe'; el.querySelector('#dateLbl').textContent = st ? `${f.belt === 'black' ? 'Degree' : 'Stripe'} earned` : 'Belt earned'; el.querySelector('#beltLbl').textContent = st ? 'At belt' : 'New belt'; sf.hidden = !st; };
-  const drawKind = () => { kf.innerHTML = '<label>What happened?</label>'; kf.appendChild(seg([['belt','New belt'],['stripe', f.belt === 'black' ? 'Degree' : 'Stripe']], f.kind, x => { f.kind = x; if (x === 'stripe' && !f.stripes) f.stripes = (missingStripes(f.belt)[0]) || Math.min(maxStripes(f.belt), (cur && cur.belt === f.belt ? cur.stripes : 0) + 1); drawStripes(); sync(); })); kf.querySelector('.seg').id = 'pKind'; };
-  const drawStripes = () => { if (f.stripes > maxStripes(f.belt)) f.stripes = maxStripes(f.belt); if (f.stripes < 1) f.stripes = 1; sf.innerHTML = `<label>${f.belt === 'black' ? 'Which degree' : 'Which stripe'}</label>`;
-    sf.appendChild(seg(Array.from({length:maxStripes(f.belt)}, (_, i) => [i + 1, String(i + 1)]), f.stripes, x => { f.stripes = x; })); sf.querySelector('.seg').id = 'pStripe';
-    const miss = missingStripes(f.belt).filter(n => !ex || n !== ex.stripes); if (miss.length) sf.appendChild(h(`<div class="hint">Missing a date for stripe ${miss.join(', ')} at ${beltOf(f.belt)[1].toLowerCase()} belt.</div>`)); };
-  const drawPick = () => { const list = kids ? ADULT_BELTS.concat(KIDS_BELTS) : ADULT_BELTS; kt.textContent = kids ? 'Hide kids belts' : 'Kids belts';
-    pick.innerHTML = list.map(k => `<button type="button" data-belt="${k}" class="${f.belt === k ? 'on' : ''}" aria-pressed="${f.belt === k}"><i style="background:${beltOf(k)[2]}"></i>${beltOf(k)[1]}</button>`).join('');
+  const Sw = () => cap(subWord(f.belt, art));
+  const sync = () => { if (!subOf(f.belt, art)) f.kind = 'belt'; const st = f.kind === 'stripe'; el.querySelector('#dateLbl').textContent = st ? `${Sw()} earned` : `${cap(N)} earned`; el.querySelector('#beltLbl').textContent = st ? `At ${N}` : `New ${N}`; sf.hidden = !st; kf.hidden = !subOf(f.belt, art); };
+  const drawKind = () => { kf.innerHTML = '<label>What happened?</label>'; if (!subOf(f.belt, art)) return; kf.appendChild(seg([['belt',`New ${N}`],['stripe', Sw()]], f.kind, x => { f.kind = x; const sb = subOf(f.belt, art); if (x === 'stripe' && !f.stripes) f.stripes = (missingStripes(f.belt, art)[0]) || Math.min(sb.to, Math.max(sb.from, (cur && cur.belt === f.belt ? cur.stripes : 0) + 1)); drawStripes(); sync(); })); kf.querySelector('.seg').id = 'pKind'; };
+  const drawStripes = () => { const sb = subOf(f.belt, art); sf.innerHTML = ''; if (!sb) return; if (f.stripes > sb.to) f.stripes = sb.to; if (f.stripes < sb.from) f.stripes = sb.from; sf.innerHTML = `<label>Which ${sb.word}</label>`;
+    sf.appendChild(seg(Array.from({length:sb.to - sb.from + 1}, (_, i) => [i + sb.from, String(i + sb.from)]), f.stripes, x => { f.stripes = x; }, sb.to - sb.from > 6)); sf.querySelector('.seg').id = 'pStripe';
+    const miss = missingStripes(f.belt, art).filter(n => !ex || n !== ex.stripes); if (miss.length) sf.appendChild(h(`<div class="hint">Missing a date for ${sb.word} ${miss.join(', ')} at ${beltName(f.belt, art).toLowerCase()}.</div>`)); };
+  const drawPick = () => { const list = kids ? ADULT_BELTS.concat(KIDS_BELTS) : A.belts; if (kt) kt.textContent = kids ? 'Hide kids belts' : 'Kids belts';
+    pick.innerHTML = list.map(k => `<button type="button" data-belt="${k}" class="${f.belt === k ? 'on' : ''}" aria-pressed="${f.belt === k}"><i style="background:${beltOf(k)[2]}"></i>${beltOf(k)[1]}${kyuOf(k, art) ? `<small>${kyuOf(k, art)}</small>` : ''}</button>`).join('');
     pick.querySelectorAll('button').forEach(x => x.onclick = () => { f.belt = x.dataset.belt; drawPick(); drawKind(); drawStripes(); sync(); }); };
-  kt.onclick = () => { kids = !kids; if (!kids && KIDS_BELTS.includes(f.belt)) f.belt = 'white'; drawPick(); drawStripes(); };
+  if (kt) kt.onclick = () => { kids = !kids; if (!kids && KIDS_BELTS.includes(f.belt)) f.belt = 'white'; drawPick(); drawStripes(); };
   drawKind(); drawPick(); drawStripes(); sync();
   el.querySelector('#pSave').onclick = () => {
     const date = el.querySelector('#pDate').value;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today()) { toast('Pick a date (today or earlier)'); return; }
-    if (f.kind === 'stripe' && (db.belts||[]).some(e => e.id !== f.id && e.kind === 'stripe' && e.belt === f.belt && e.stripes === f.stripes)) { toast(`${stripeWord(f.belt, f.stripes)} at ${beltOf(f.belt)[1].toLowerCase()} belt is already logged. Tap it on the timeline to edit.`); return; }
-    if (f.kind === 'belt' && (db.belts||[]).some(e => e.id !== f.id && e.kind === 'belt' && e.belt === f.belt)) { toast(`${beltOf(f.belt)[1]} belt is already logged. Tap it on the timeline to edit.`); return; }
+    const same = e => e.id !== f.id && artOf(e) === art;
+    if (f.kind === 'stripe' && (db.belts||[]).some(e => same(e) && e.kind === 'stripe' && e.belt === f.belt && e.stripes === f.stripes)) { toast(`${stripeWord(f.belt, f.stripes, art)} at ${beltName(f.belt, art).toLowerCase()} is already logged. Tap it on the timeline to edit.`); return; }
+    if (f.kind === 'belt' && (db.belts||[]).some(e => same(e) && e.kind === 'belt' && e.belt === f.belt)) { toast(`${beltName(f.belt, art)} is already logged. Tap it on the timeline to edit.`); return; }
     const before = JSON.parse(JSON.stringify(db.belts));
-    const rec = sanitizeBelts([{ ...f, stripes:f.kind === 'belt' ? 0 : f.stripes, id:ex ? ex.id : uid(), date, instructor:el.querySelector('#pInst').value.trim(), academy:el.querySelector('#pAcad').value.trim(), notes:el.querySelector('#pNotes').value.trim(), createdAt:ex ? ex.createdAt : Date.now() }])[0];
+    const rec = sanitizeBelts([{ ...f, ...(art === 'bjj' ? { art:undefined } : { art }), stripes:f.kind === 'belt' ? 0 : f.stripes, id:ex ? ex.id : uid(), date, instructor:el.querySelector('#pInst').value.trim(), academy:el.querySelector('#pAcad').value.trim(), notes:el.querySelector('#pNotes').value.trim(), createdAt:ex ? ex.createdAt : Date.now() }])[0];
     delete rec.sample; delete rec.approx;
     db.belts = db.belts.filter(x => x.id !== rec.id).concat(rec); syncProfileRank(); save(); closeSheet();
     undoToast(`${ex ? 'Updated' : 'Logged'}: ${eventLabel(rec)} · ${fmtShort(rec.date)}`, () => { db.belts = before; syncProfileRank(); save(); route(); });
@@ -627,27 +695,36 @@ function promoSheet(id, preset){
   openSheet(el, null, { closeLabel:'Cancel' });
 }
 function histSeg(which){
-  const belts = enabled('grappling') || (db.belts||[]).length;
+  const belts = enabled('grappling') || enabled('striking') || (db.belts||[]).length;
   return `<div class="seg fuelseg histseg" role="tablist"><a role="tab" href="#/history" class="${which === 'workouts' ? 'on' : ''}">Workouts</a>${belts ? `<a role="tab" href="#/belts" class="${which === 'belts' ? 'on' : ''}">Belts</a>` : ''}<a role="tab" href="#/comps" class="${which === 'comps' ? 'on' : ''}">Comps</a></div>`;
 }
-function viewBelts(){
+let beltArt = 'bjj';
+function viewBelts(want){
   setHeader('History', `<a class="btn sm" href="#/stats">Stats</a>`);
-  const v = $('#view'), groups = beltGroups().reverse();
+  const used = artsUsed(), art = BELT_ARTS[want] ? want : used.includes(beltArt) ? beltArt : used[0] || artsOffered()[0];
+  beltArt = art; const A = BELT_ARTS[art], N = A.noun, arts = used.includes(art) ? used : used.concat(art);
+  const v = $('#view'), groups = beltGroups(art).reverse();
   const items = g => [...g.items].reverse().map(e => `<button type="button" class="tl-item ${e.kind}${e.approx ? ' approx' : ''}" data-pid="${esc(e.id)}" data-kind="${e.kind}"><i class="tl-dot"></i><div class="grow"><b>${esc(eventLabel(e))}</b>
       <small>${fmtShort(e.date)}${e.instructor ? ` · ${esc(e.instructor)}` : ''}${e.academy ? ` · ${esc(e.academy)}` : ''}${e.sample ? ' · sample' : ''}</small>${e.notes ? `<small class="tl-note">${esc(e.notes)}</small>` : ''}</div>
       <span class="tl-took">${e.took ? `<b>${fmtSpan(e.took)}</b><small>after previous</small>` : '<small>start</small>'}</span></button>`).join('');
+  const more = artsOffered().filter(k => !arts.includes(k));
   v.innerHTML = `${histSeg('belts')}
-    ${currentRank() ? beltCard().replace('card tappable', 'card').replace(/<button type="button" class="btn block" data-promo[^>]*>Log promotion<\/button>/, '').replace(/<a class="lnk" href="#\/belts">Timeline ›<\/a>/, '') : ''}
-    <button type="button" class="btn primary block" data-promo style="margin-bottom:14px"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Log promotion</button>
-    ${groups.length ? `<div class="timeline" id="timeline">${groups.map(g => { const b = beltOf(g.belt); return `<section class="tl-group ${g.current ? 'current' : ''}" data-belt="${g.belt}" style="--belt:${b[2]}">
-      <div class="tl-head">${beltBar(g.belt, g.items[g.items.length-1].stripes, 'mini')}<div class="grow"><b>${esc(b[1])} belt</b><small>${fmtShort(g.start)} – ${g.current ? 'today' : fmtShort(g.end)}</small></div>
-        <div class="tl-dur"><b data-span>${fmtSpan(g.span)}</b><small>${g.current ? 'so far' : 'at this belt'}</small></div></div>
-      ${g.mat.n ? `<div class="tl-meta">${g.mat.n} session${g.mat.n > 1 ? 's' : ''} · ${hrs(g.mat.min)} h on the mat logged</div>` : ''}
-      <div class="tl-items">${items(g)}</div>${(() => { const miss = missingStripes(g.belt), top = Math.max(0, ...g.items.filter(e => e.kind === 'stripe').map(e => e.stripes)), n = miss[0] || (top < maxStripes(g.belt) ? top + 1 : 0);
-        return n ? `<button type="button" class="btn sm ghost addstripe" data-addstripe="${g.belt}" data-n="${n}">+ ${miss.length ? 'Add missing' : 'Add'} ${g.belt === 'black' ? 'degree' : 'stripe'} ${n} date</button>` : ''; })()}</section>`; }).join('')}</div>
-      <div class="hint" style="text-align:center;margin-top:8px">Tap a belt or stripe to change its date or delete it. Add past belts and stripes in any order; they're sorted by date. A new belt starts at 0 stripes.</div>`
-    : `<div class="empty" style="padding:30px 10px">No promotions yet. Log your current belt (and past ones if you like) to see your journey.</div>`}`;
+    ${arts.length > 1 ? `<div class="seg fuelseg artseg" id="artSwitch" role="tablist" aria-label="Martial art">${arts.map(k => `<a role="tab" href="#/belts/${k}" data-art="${k}" class="${k === art ? 'on' : ''}" aria-selected="${k === art}">${esc(BELT_ARTS[k].label)}</a>`).join('')}</div>` : ''}
+    ${currentRank(art) ? beltCard(art).replace('card tappable', 'card').replace(/<button type="button" class="btn block" data-promo[^>]*>Log promotion<\/button>/, '').replace(/<a class="lnk" href="#\/belts[^"]*">Timeline ›<\/a>/, '') : ''}
+    <button type="button" class="btn primary block" data-promo data-art="${art}" style="margin-bottom:14px"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Log promotion</button>
+    ${groups.length ? `<div class="timeline" id="timeline" data-art="${art}">${groups.map(g => { const b = beltOf(g.belt); return `<section class="tl-group ${g.current ? 'current' : ''}" data-belt="${g.belt}" style="--belt:${b[2]}">
+      <div class="tl-head">${beltBar(g.belt, g.items[g.items.length-1].stripes, 'mini', art)}<div class="grow"><b>${esc(beltName(g.belt, art))}${kyuOf(g.belt, art) ? ` <small class="kyu">${kyuOf(g.belt, art)}</small>` : ''}</b><small>${fmtShort(g.start)} – ${g.current ? 'today' : fmtShort(g.end)}</small></div>
+        <div class="tl-dur"><b data-span>${fmtSpan(g.span)}</b><small>${g.current ? 'so far' : `at this ${N}`}</small></div></div>
+      ${g.mat.n ? `<div class="tl-meta">${g.mat.n} ${art === 'bjj' ? '' : esc(A.label) + ' '}session${g.mat.n > 1 ? 's' : ''} · ${hrs(g.mat.min)} h ${art === 'bjj' ? 'on the mat ' : ''}logged</div>` : ''}
+      <div class="tl-items">${items(g)}</div>${(() => { const sb = subOf(g.belt, art); if (!sb) return ''; const miss = missingStripes(g.belt, art), top = Math.max(sb.from - 1, ...g.items.filter(e => e.kind === 'stripe').map(e => e.stripes)), n = miss[0] || (top < sb.to ? top + 1 : 0);
+        return n ? `<button type="button" class="btn sm ghost addstripe" data-addstripe="${g.belt}" data-art="${art}" data-n="${n}">+ ${miss.length ? 'Add missing' : 'Add'} ${sb.word} ${n} date</button>` : ''; })()}</section>`; }).join('')}</div>
+      <div class="hint" style="text-align:center;margin-top:8px">${art === 'bjj' ? 'Tap a belt or stripe to change its date or delete it. Add past belts and stripes in any order; they\'re sorted by date. A new belt starts at 0 stripes.' : `Tap any entry to change its date or delete it. Add past ranks in any order; they're sorted by date.${A.noun === 'prajied' ? ' Prajied colours vary by gym and organisation: pick the colour you were given.' : ' Colour orders vary by club: pick the colour you were given.'}`}</div>`
+    : `<div class="empty" style="padding:30px 10px">No promotions yet. Log your current ${N} (and past ones if you like) to see your journey.</div>`}
+    ${more.length ? `<button type="button" class="btn block ghost" id="addArt" style="margin-top:14px">+ Track another art's ranks</button>` : ''}`;
   wireBelt(v);
+  const aa = $('#addArt'); if (aa) aa.onclick = () => { const el = h(`<div><h3>Track ranks for</h3><div class="hint" style="margin:-6px 0 12px">Each art gets its own card and timeline. Wrestling and submission grappling don't use belts.</div><div class="artlist">${more.map(k => `<button type="button" class="btn block" data-pickart="${k}" style="margin-bottom:8px">${esc(BELT_ARTS[k].label)}${BELT_ARTS[k].noun === 'prajied' ? ' (prajied)' : ''}</button>`).join('')}</div></div>`);
+    el.querySelectorAll('[data-pickart]').forEach(b => b.onclick = () => { closeSheet(); const k = b.dataset.pickart; whenSettled(() => { go('#/belts/' + k); setTimeout(() => promoSheet(null, null, k), 50); }); });
+    openSheet(el, null, { closeLabel:'Cancel' }); };
 }
 
 /* ---------------- disciplines ---------------- */
@@ -660,12 +737,14 @@ const CATS = {
     icon:'<path d="M4 20l6-6M14 10l6-6M15 4h5v5M9 20H4v-5M8 8l8 8"/>' },
   weights:{ label:'Weights', color:'#8FB0D9', dur:60, disc:[['strength','Strength']],
     icon:'<path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/>' },
-  cardio:{ label:'Cardio', color:'#6FD3A8', dur:30, disc:[['run','Run'],['bike','Bike'],['row','Row'],['swim','Swim'],['rope','Jump rope'],['other','Other']],
+  cardio:{ label:'Cardio', color:'#6FD3A8', dur:30, disc:[['run','Run'],['bike','Bike'],['row','Row'],['swim','Swim'],['stairs','Stairs'],['other','Other']],
+    legacy:[['rope','Jump rope']],   // 3.4.0: no longer in the picker; old sessions keep their label
     icon:'<path d="M3 12h4l2-5 4 10 2-5h6"/>' },
   mobility:{ label:'Mobility', sub:'Yoga, stretching, foam rolling', color:'#B48CF2', dur:20, discLabel:'Session type', disc:[['yoga','Yoga'],['stretch','Stretching'],['foam','Foam rolling'],['flow','Mobility flow'],['recovery','Recovery/other']],
     icon:'<path d="M12 5a2 2 0 1 0 0-.1M4 10c3 1 5 1 8 1s5 0 8-1M12 11v4l-4 6M12 15l4 6"/>' }
 };
 const CAT_KEYS = Object.keys(CATS);
+const allDisc = c => [...CATS[c].disc, ...(CATS[c].legacy || [])];
 const STRIKE_TECH = ['Jab','Cross','Lead hook','Rear hook','Uppercut','Teep','Roundhouse kick','Low kick','Body kick','Head kick','Knee','Elbow','Clinch','Check kick','Slip & counter','Roll under','Parry','Footwork','Head movement','1-2-3','Jab-cross-low kick','Level change','Cage work'];
 const STRIKE_MIX = [['shadow','Shadow'],['pads','Pads'],['bag','Bag'],['drills','Drills'],['sparring','Sparring']];
 const MMA_MIX = [['pads','Pad work'],['drills','Drilling'],['sparring','Sparring'],['grappling','Grappling rounds']];
@@ -675,7 +754,7 @@ const FOCUS = [['hips','Hips'],['hamstrings','Hamstrings'],['shoulders','Shoulde
 const COMBAT = c => c === 'grappling' || c === 'striking' || c === 'mma';
 const EXERCISES = ['Back squat','Front squat','Bench press','Incline bench press','Deadlift','Romanian deadlift','Trap bar deadlift','Overhead press','Barbell row','Pull-up','Chin-up','Dip','Lat pulldown','Cable row','Hip thrust','Bulgarian split squat','Lunge','Leg press','Kettlebell swing','Turkish get-up','Farmer carry','Power clean','Bicep curl','Tricep extension','Face pull','Neck curl','Plank','Push-up'];
 const catOf = s => CATS[s.category] ? s.category : 'grappling';
-const discLabel = s => { const c = CATS[catOf(s)]; return (c.disc.find(d => d[0]===s.discipline) || c.disc[0])[1]; };
+const discLabel = s => { const k = catOf(s), c = CATS[k]; return (allDisc(k).find(d => d[0]===s.discipline) || c.disc[0])[1]; };
 const enabled = k => { if (k === 'supps') return false; const e = db.profile.enabled || {}; return k in e ? !!e[k] : (k === 'grappling' || k === 'food'); };
 const SECTION_KEYS = () => CAT_KEYS.concat(['weight','food']);
 const enabledCats = () => { const l = CAT_KEYS.filter(enabled); return l.length ? l : ['grappling']; };
@@ -693,7 +772,7 @@ function catDot(c){ return `<i class="catdot" style="background:${CATS[c].color}
 function sanitizeSession(s){
   const n = v => v === '' || v == null || isNaN(Number(v)) ? '' : Number(v);
   const cat = CATS[s.category] ? s.category : 'grappling';
-  const disc = CATS[cat].disc.some(d => d[0]===s.discipline) ? s.discipline : CATS[cat].disc[0][0];
+  const disc = allDisc(cat).some(d => d[0]===s.discipline) ? s.discipline : CATS[cat].disc[0][0];
   const out = { id:String(s.id||uid()), date:s.date, category:cat, discipline:disc, gi:s.gi==='nogi'?'nogi':'gi',
     type:SESSION_TYPES.some(t => t[0]===s.type) || LEGACY_TYPES.includes(s.type) ? fixType(s.category || 'grappling', s.type) : 'class', duration:Math.max(0, Math.round(Number(s.duration)||0)), rounds:Math.max(0, Number(s.rounds)||0),
     intensity:Math.min(5, Math.max(1, Number(s.intensity)||3)), techniques:Array.isArray(s.techniques) ? s.techniques.map(String) : [],
@@ -732,32 +811,51 @@ function updateNav(){
   else { fuel.href = '#/food'; fuel.querySelector('span').textContent = 'Food'; fuel.dataset.mode = 'fuel'; }
 }
 
-/* first-run: step 1 what you train, step 2 goals for only what was picked (all optional) */
-let setupPick = null;
+/* first-run: step 1 what you train, step 2 about you (calculator inputs), step 3 goals pre-filled from step 2 (all optional) */
+let setupPick = null, setupAbout = null;   // setupAbout: { st (form state, kept across Back), done:{ s, r } | null }
 function viewSetup(step = 1){
   document.body.classList.add('setup-mode');
   setHeader('');
   const v = $('#view'), pick = setupPick || (setupPick = { grappling:true, striking:false, mma:false, mobility:false, weights:false, cardio:false, food:true, weight:false });
-  if (step === 2) return viewSetupGoals();
+  if (step === 2) return viewSetupAbout();
+  if (step === 3) return viewSetupGoals();
   v.innerHTML = `<div class="welcome setup"><img class="lockup" src="brand/forged/wordmark.svg" alt="Forged: for the fight" width="926" height="327">
-    <div class="stepper-dots" id="setupStep" aria-label="Step 1 of 2"><i class="on"></i><i></i><span>Step 1 of 2</span></div>
+    <div class="stepper-dots" id="setupStep" aria-label="Step 1 of 3"><i class="on"></i><i></i><i></i><span>Step 1 of 3</span></div>
     <h2>What do you train?</h2><p>Pick all that apply. You can change this any time in Profile.</p>
     <div class="tiles" id="catTiles">${CAT_KEYS.map(k => `<button type="button" class="tile" data-k="${k}" aria-pressed="false"><svg viewBox="0 0 24 24">${CATS[k].icon}</svg><b>${CATS[k].label}</b><small>${CATS[k].sub || CATS[k].disc.map(d=>d[1]).slice(0,3).join(', ')}</small></button>`).join('')}</div>
     <h3>Also track</h3>
     <div class="tiles two" id="extraTiles"><button type="button" class="tile" data-k="food"><b>Food</b><small>Calories &amp; protein</small></button><button type="button" class="tile" data-k="weight"><b>Weight goal</b><small>Lose or gain</small></button></div>
-    <button class="btn primary block" id="go" style="margin-top:18px">Next: set your goals</button>
+    <button class="btn primary block" id="go" style="margin-top:18px">Next: about you</button>
     <button class="btn block ghost" id="loadSample" style="margin-top:10px">Load sample data (demo)</button></div>`;
   const sync = () => v.querySelectorAll('.tile').forEach(b => { b.classList.toggle('on', !!pick[b.dataset.k]); b.setAttribute('aria-pressed', !!pick[b.dataset.k]); });
   v.querySelectorAll('.tile').forEach(b => b.onclick = () => { pick[b.dataset.k] = !pick[b.dataset.k]; if (!CAT_KEYS.some(k => pick[k])) pick.grappling = true; sync(); });
   sync();
   $('#go').onclick = () => { db.profile = { ...db.profile, enabled:{ ...pick } }; viewSetup(2); window.scrollTo(0, 0); };
-  $('#loadSample').onclick = () => { setupPick = null; loadSample(); };
+  $('#loadSample').onclick = () => { setupPick = null; setupAbout = null; loadSample(); };
+}
+function viewSetupAbout(){
+  const v = $('#view'), A = setupAbout || (setupAbout = { st:null, done:null });
+  v.innerHTML = `<div class="welcome setup goals about"><div class="setup-top"><button type="button" class="backbtn" id="setupBack" aria-label="Back to step 1"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span>Back</span></button>
+    <div class="stepper-dots" id="setupStep" aria-label="Step 2 of 3"><i class="on"></i><i class="on"></i><i></i><span>Step 2 of 3</span></div></div>
+    <h2>About you</h2><p>We use this to work out your daily calories, macros and water. You can change it any time in Profile.</p>
+    <div class="card goalsec" id="aboutForm" style="text-align:left"></div>
+    <div class="hint mcnote">Estimates only, not medical advice.</div>
+    <button class="btn primary block" id="aboutNext" style="margin-top:18px">Next: set your goals</button>
+    <button type="button" class="lnk skip" id="skipAbout">Skip for now</button></div>`;
+  const F = macroCalcForm({ units:true, state:A.st, pre:{ u:unit() } }); A.st = F.st;
+  $('#aboutForm').appendChild(F.el);
+  const next = () => { viewSetupGoals(); window.scrollTo(0, 0); };
+  $('#aboutNext').onclick = () => { const err = F.validate(); if (err) { toast(err); return; }
+    A.done = F.calc(); db.profile = { ...db.profile, unit:A.done.s.u }; next(); };
+  $('#skipAbout').onclick = () => { A.done = null; next(); };
+  $('#setupBack').onclick = () => { viewSetup(1); window.scrollTo(0, 0); };
 }
 function viewSetupGoals(){
   const v = $('#view'), pick = setupPick, cats = CAT_KEYS.filter(k => pick[k]);
+  const calc = setupAbout?.done || null, cr = calc?.r, cs = calc?.s;
   let wu = unit(), target = Number(db.profile.challengeTarget) || 8; const sch = {};
-  v.innerHTML = `<div class="welcome setup goals"><div class="setup-top"><button type="button" class="backbtn" id="setupBack" aria-label="Back to step 1"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span>Back</span></button>
-    <div class="stepper-dots" id="setupStep" aria-label="Step 2 of 2"><i class="on"></i><i class="on"></i><span>Step 2 of 2</span></div></div>
+  v.innerHTML = `<div class="welcome setup goals"><div class="setup-top"><button type="button" class="backbtn" id="setupBack" aria-label="Back to step 2"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span>Back</span></button>
+    <div class="stepper-dots" id="setupStep" aria-label="Step 3 of 3"><i class="on"></i><i class="on"></i><i class="on"></i><span>Step 3 of 3</span></div></div>
     <h2>Set your goals</h2><p>Everything here is optional. You can change it any time in Profile.</p><div id="goalForm" style="text-align:left"></div>
     <button class="btn primary block" id="setupDone" style="margin-top:18px">Done</button>
     <button type="button" class="lnk skip" id="skipGoals">Skip for now</button></div>`;
@@ -768,23 +866,17 @@ function viewSetupGoals(){
     c.appendChild(field('Units', seg([['lb','lb'],['kg','kg']], wu, x => { wu = x; const l = $('#setupWater')?.closest('.field')?.querySelector('label'); if (l) { l.textContent = `Water (${x === 'kg' ? 'ml' : 'oz'})`; $('#setupWater').placeholder = x === 'kg' ? 'e.g. 2500' : 'e.g. 96'; } })));
     wNow = inp('setupW', 'Today'); wGoal = inp('setupGoal', 'Target'); wDate = h(`<input class="input" type="date" id="setupGoalDate" min="${today()}">`);
     const g = h('<div class="grid2"></div>'); g.appendChild(field('Current weight', wNow)); g.appendChild(field('Goal weight', wGoal)); c.appendChild(g); c.appendChild(field('Goal date (optional)', wDate));
-    wNow.oninput = () => { const w = num(wNow.value); if (tIn.p) tIn.p.placeholder = w ? `e.g. ${Math.round(w * (wu === 'kg' ? 2.2 * .9 : .9))}` : 'e.g. 160'; }; }
-  if (pick.food) { const c = sec('Daily nutrition', 'Rough guide: protein ≈ 0.8–1 g per lb of body weight (1.8–2.2 g per kg).'), g = h('<div class="grid2"></div>');
+    wNow.oninput = () => { const w = num(wNow.value); if (tIn.p) tIn.p.placeholder = w ? `e.g. ${Math.round(w * (wu === 'kg' ? 2.2 * .9 : .9))}` : 'e.g. 160'; };
+    if (cs) { wNow.value = cs.w; if (cs.gw) wGoal.value = cs.gw; if (cr.dir && cr.goalDate) wDate.value = cr.goalDate; } }
+  if (pick.food || calc) { const c = sec('Daily nutrition', 'Rough guide: protein ≈ 0.8–1 g per lb of body weight (1.8–2.2 g per kg).'), g = h('<div class="grid2"></div>');
     [['cal','Calories','e.g. 2400'],['p','Protein (g)','e.g. 160'],['c','Carbs (g)','e.g. 250'],['f','Fat (g)','e.g. 75']].forEach(([k, l, ph]) => { tIn[k] = inp(`setupT-${k}`, ph, 'numeric'); g.appendChild(field(l, tIn[k])); });
     water = inp('setupWater', waterMetric() ? 'e.g. 2500' : 'e.g. 96'); g.appendChild(field(`Water (${waterU()})`, water)); c.appendChild(g);
-    const wp = waterPresets(water, () => (wNow && num(wNow.value) ? convW(num(wNow.value), wu, unit()) : weightGoal().cur)); c.appendChild(wp); if (wNow) wNow.addEventListener('input', () => wp._refresh()); }
-  let pendingCalc = null;
-  if (pick.food || pick.weight) {
-    const host = pick.food ? F.querySelector('.goalsec:last-child') : F.querySelector('.goalsec');
-    const b = h('<button type="button" class="btn block calcbtn" id="setupCalc">Calculate for me</button>'), note = h('<div class="hint calchint" id="setupCalcNote">Don\'t know your numbers? We\'ll work out calories and macros for you.</div>');
-    host.insertBefore(note, host.children[1] || null); host.insertBefore(b, note);
-    b.onclick = () => macroCalcSheet({ pre:{ w:wNow ? num(wNow.value) : 0, gw:wGoal ? num(wGoal.value) : 0, u:pick.weight ? wu : unit() }, onUse:(r, s) => {
-      pendingCalc = { r, s };
-      if (pick.food) { tIn.cal.value = r.cal; tIn.p.value = r.p; tIn.c.value = r.c; tIn.f.value = r.f; }
-      if (pick.weight) { if (!num(wNow.value)) wNow.value = s.w; if (!num(wGoal.value) && s.gw) wGoal.value = s.gw; }
-      note.textContent = `Filled in: ${r.cal.toLocaleString()} kcal · ${r.p} g protein · ${r.c} g carbs · ${r.f} g fat. Edit any number if you like.`; note.classList.add('ok');
-      toast('Targets filled in'); } });
-  }
+    const wp = waterPresets(water, () => (wNow && num(wNow.value) ? convW(num(wNow.value), wu, unit()) : cs ? convW(cs.w, cs.u, unit()) : weightGoal().cur)); c.appendChild(wp); if (wNow) wNow.addEventListener('input', () => wp._refresh());
+    const note = calc ? h(`<div class="hint calchint ok" id="setupCalcNote">Calculated from your details${cr.dir ? ` (${cr.dir < 0 ? 'lose' : 'gain'} ${fmtWk(cr)})` : ' (maintain)'}. Edit any number.</div>`)
+      : h('<div class="hint calchint" id="setupCalcNote">Don\'t know your numbers? <button type="button" class="lnk" id="toAbout">Go back to About you</button> and we\'ll work them out.</div>');
+    c.insertBefore(note, c.children[1] || null);
+    if (calc) { tIn.cal.value = cr.cal; tIn.p.value = cr.p; tIn.c.value = cr.c; tIn.f.value = cr.f; water.value = waterSuggest(cs.w, cs.u, waterMetric()); water.dispatchEvent(new Event('input')); wp._refresh?.(); }
+    else note.querySelector('#toAbout').onclick = () => { viewSetupAbout(); window.scrollTo(0, 0); }; }
   const sgIn = {}; let sgDate;
   if (pick.weights) { const c = sec('Strength goals', 'PR targets. Leave any blank. Lifts count your est. 1RM (change in Profile).'), g = h('<div class="grid2"></div>'), lu = () => (pick.weight ? wu : unit());
     [['bench','Bench press', 'e.g. 225'],['squat','Squat','e.g. 315'],['deadlift','Deadlift','e.g. 405'],['ohp','Overhead press','e.g. 135'],['pullups','Pull-ups (reps)','e.g. 15'],['pushups','Push-ups (reps)','e.g. 50'],['hang','Dead hang (sec)','e.g. 90']].forEach(([k, l, ph]) => {
@@ -805,17 +897,17 @@ function viewSetupGoals(){
       if (pick.weight) { const now = num(wNow.value), gw = num(wGoal.value); db.profile.unit = wu;
         if (now) { db.weights.push({ id:uid(), date:today(), w:r1(now), u:wu, createdAt:Date.now() }); db.profile.startWeight = String(r1(now)); }
         if (gw) db.profile.goalWeight = String(r1(gw)); if (wDate.value) db.profile.goalDate = wDate.value; }
-      if (pick.food) { const t = {}; Object.entries(tIn).forEach(([k, i]) => { const n = Math.round(num(i.value)); if (n > 0) t[k] = n; }); if (Object.keys(t).length) db.profile.targets = t;
+      if (tIn.cal) { const t = {}; Object.entries(tIn).forEach(([k, i]) => { const n = Math.round(num(i.value)); if (n > 0) t[k] = n; }); if (Object.keys(t).length) db.profile.targets = t;
         const ml = num(water.value) ? toMl(water.value) : 0; if (ml >= 250 && ml <= 10000) db.profile.waterGoal = Math.round(ml); }
       if (pick.weights) { const u0 = pick.weight ? wu : unit(); Object.entries(sgIn).forEach(([k, i]) => { const t = num(i.value); if (t > 0) db.strength.push(sanitizeStrength([{ id:uid(), key:k, target:t, u:u0, date:sgDate.value, createdAt:Date.now() }])[0]); }); }
-      if (pendingCalc) { db.profile.calc = pendingCalc.s; if (!pick.food) db.profile.targets = { ...(db.profile.targets||{}), cal:pendingCalc.r.cal, p:pendingCalc.r.p, c:pendingCalc.r.c, f:pendingCalc.r.f }; }
+      if (calc) db.profile.calc = calc.s;
       db.profile.challengeTarget = target;
       const sc = Object.fromEntries(Object.entries(sch).filter(([, a]) => a.length)); if (Object.keys(sc).length) db.profile.schedule = sc;
       if (cName.value.trim() && isoOk(cDate.value)) db.comps.push(sanitizeComps([{ id:uid(), name:cName.value.trim(), date:cDate.value, sport:pick.grappling ? 'BJJ' : pick.mma ? 'MMA' : pick.striking ? 'Muay Thai' : 'Other', createdAt:Date.now() }])[0]);
     }
-    setupPick = null; save(); toast(saveGoals ? 'All set. Tap + to log a workout' : 'All set. Set goals any time in Profile'); route();
+    setupPick = null; setupAbout = null; save(); toast(saveGoals ? 'All set. Tap + to log a workout' : 'All set. Set goals any time in Profile'); route();
   };
-  $('#setupBack').onclick = () => { viewSetup(1); window.scrollTo(0, 0); };
+  $('#setupBack').onclick = () => { viewSetupAbout(); window.scrollTo(0, 0); };
   $('#setupDone').onclick = () => finish(true);
   $('#skipGoals').onclick = () => finish(false);
 }
@@ -838,6 +930,54 @@ function repeatButtons(compact){
 }
 function wireRepeat(root, after){ root.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => { const s = db.sessions.find(x => x.id === b.dataset.rep); if (s) { repeatSession(s); after ? after() : route(); } }); }
 
+/* ---- Tip of the day: bundled library (tips.js), filtered by what you train, one per day by date; context first ---- */
+const TIP_TOPICS = { recovery:'Recovery', sleep:'Sleep', nutrition:'Nutrition', hydration:'Hydration', cut:'Making weight', drilling:'Drilling', rolling:'Rolling', injury:'Injury prevention', care:'Training with an injury', mobility:'Mobility', strength:'Strength', striking:'Striking', cardio:'Cardio', mindset:'Mindset', comp:'Comp prep' };
+const TIP_CTX = { injury:['care'], comp:['comp'], load:['recovery','sleep'] };
+const tipsOn = () => db.profile.tips !== false;
+const tipLib = () => window.FORGED_TIPS || [];
+const seedHash = str => { let x = 2166136261; for (let i = 0; i < str.length; i++) { x ^= str.charCodeAt(i); x = Math.imul(x, 16777619); } return x >>> 0; };
+function seededShuffle(arr, seed){ const a = arr.slice(); let x = seed >>> 0 || 1;
+  const rnd = () => { x = x + 0x6D2B79F5 >>> 0; let t = x; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+/* what's going on right now: an active injury beats a comp within 3 weeks beats a high-load week */
+function tipContext(){
+  if (activeInjuries().length) return 'injury';
+  const c = nextComp(); if (c && daysTo(c.date) <= 21) return 'comp';
+  if (loadStatus().label === 'High load') return 'load';
+  return '';
+}
+/* the order for a day: context tips first (shuffled), then everything else that fits your sports (shuffled). The shuffle is fixed, the day picks the start. */
+function tipDeck(day = today(), ctx = tipContext(), cats = enabledCats()){
+  const want = TIP_CTX[ctx] || [], ck = ctx === 'comp' && nextComp() ? compKind(nextComp().sport) : '', ccats = ck === 'other' ? cats : ck ? [ck] : cats;
+  const fits = t => !t.s.length || t.s.some(k => cats.includes(k)), fitsCtx = t => !t.s.length || t.s.some(k => ccats.includes(k));
+  const lib = tipLib().filter(t => t.t !== 'care' || ctx === 'injury');
+  let pri = lib.filter(t => want.includes(t.t) && fitsCtx(t)); if (want.length && !pri.length) pri = lib.filter(t => want.includes(t.t));
+  const rest = lib.filter(t => fits(t) && !pri.includes(t));
+  const dayN = Math.round(parse(day) / 864e5), deck = [...seededShuffle(pri, seedHash('forged-tips-' + ctx)), ...seededShuffle(rest, seedHash('forged-tips'))];
+  const start = deck.length ? (pri.length ? dayN % pri.length : dayN % deck.length) : 0;
+  return { deck, start, ctx, pri:pri.length };
+}
+const tipSkip = () => { try { const o = JSON.parse(localStorage.getItem('forged.tip') || 'null'); return o && o.d === today() ? Number(o.n) || 0 : 0; } catch(e) { return 0; } };
+function tipFor(day = today(), skip = day === today() ? tipSkip() : 0){ const { deck, start, ctx } = tipDeck(day); return deck.length ? { ...deck[(start + skip) % deck.length], ctx } : null; }
+let tipOpen = false;
+function tipCard(){
+  if (!tipsOn()) return '';
+  const t = tipFor(); if (!t) return '';
+  const why = t.ctx === 'injury' && t.t === 'care' ? 'Because you have an injury logged' : t.ctx === 'comp' && t.t === 'comp' ? 'Your competition is coming up' : t.ctx === 'load' && TIP_CTX.load.includes(t.t) ? 'Your training load is high this week' : '';
+  return `<div class="card tip${tipOpen ? ' open' : ''}" id="tipCard" data-tip="${esc(t.id)}" data-topic="${esc(t.t)}">
+    <button type="button" class="tiphead" id="tipToggle" aria-expanded="${tipOpen}" aria-controls="tipBody"><span class="tipico" aria-hidden="true">💡</span><span class="tiptxt"><small>Tip of the day · ${esc(TIP_TOPICS[t.t] || t.t)}</small><b>${esc(t.h)}</b></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+    <div class="tipbody" id="tipBody"${tipOpen ? '' : ' hidden'}><p>${esc(t.b)}</p>${why ? `<div class="hint tipwhy">${esc(why)}</div>` : ''}
+      <div class="tipbtns"><button type="button" class="btn sm" id="tipNext">Next tip</button><button type="button" class="lnk" id="tipHide">Hide tips</button></div>
+      <div class="hint tipnote">General guidance, not medical advice.</div></div></div>`;
+}
+function wireTip(v){
+  const c = v.querySelector('#tipCard'); if (!c) return;
+  const redraw = () => { const n = h(tipCard()); if (n) { c.replaceWith(n); wireTip(v); } else c.remove(); };
+  c.querySelector('#tipToggle').onclick = () => { tipOpen = !tipOpen; redraw(); };
+  c.querySelector('#tipNext').onclick = () => { localStorage.setItem('forged.tip', JSON.stringify({ d:today(), n:tipSkip() + 1 })); redraw(); };
+  c.querySelector('#tipHide').onclick = () => { db.profile.tips = false; tipOpen = false; save(); c.remove();
+    actionToast('Tips hidden. Turn them back on in Profile', 'Undo', () => { db.profile.tips = true; save(); route(); }); };
+}
 function viewHome(){
   if (!db.profile.setupDone && !db.sessions.length) return viewSetup();
   setHeader('');
@@ -852,6 +992,7 @@ function viewHome(){
       <div class="stat"><div class="v">${hrs(st.weekMin)}<small>h</small></div><div class="l">Hours this week</div></div>
       <div class="stat"><div class="v">${streak}<small>wk</small></div><div class="l">Week streak 🔥</div></div>
     </div>
+    ${tipCard()}
     ${compCard()}
     ${injuryCards()}
     ${weekCard()}
@@ -862,9 +1003,9 @@ function viewHome(){
       <a class="btn primary block" href="#/log" id="homeLog"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Log a workout</a></div>
     ${enabled('weight') ? weightCard() : ''}
     ${enabled('food') ? nutritionCard() : ''}
-    ${enabled('grappling') ? beltCard() : ''}
+    ${beltCards()}
     <a class="btn block" href="#/stats" id="seeStats">See all stats ›</a>`;
-  wireRepeat(v); wireWeight(v); wireBelt(v); wireComps(v); wireInjuries(v); wireProg(v);
+  wireRepeat(v); wireWeight(v); wireBelt(v); wireComps(v); wireInjuries(v); wireProg(v); wireTip(v);
   v.querySelectorAll('.tappable[data-comp]').forEach(c => c.onclick = e => { if (!e.target.closest('a,button')) compSheet(c.dataset.comp); });
   const rm = $('#rmSample'); if (rm) rm.onclick = removeSample;
   checkChallenge();
@@ -982,7 +1123,7 @@ let form = null;
 function blankSession(cat){
   cat = cat || catOf(sorted().find(s => enabledCats().includes(catOf(s))) || { category:enabledCats()[0] });
   const last = lastOf(cat);
-  return { id:null, date:today(), category:cat, discipline:last?.discipline || CATS[cat].disc[0][0], gi:last?.gi || 'gi', type:'class',
+  return { id:null, date:today(), category:cat, discipline:(last && CATS[cat].disc.some(d => d[0] === last.discipline) ? last.discipline : CATS[cat].disc[0][0]), gi:last?.gi || 'gi', type:'class',
     duration:last?.duration || CATS[cat].dur, rounds:cat==='grappling' ? 5 : (cat==='striking' || cat==='mma') ? (last?.rounds||6) : 0, intensity:3, rpe:'', feel:'', techniques:[], gtech:[], focus:[], rolls:[], weight:'', notes:'',
     strike:{ roundLen:last?.strike?.roundLen || (cat === 'mma' ? 5 : 3), mix:Object.fromEntries(mixOf(cat).map(([k]) => [k, 0])), spar:[] },
     exercises:[], cardio:{ distance:'', unit:distU(), sec:0 }, hr:{ avg:'', max:'', cal:'', zones:['','','','',''] }, _open:false };
@@ -1044,7 +1185,8 @@ function viewForm(id){
   v.appendChild(field('Workout', catEl));
   // 2. discipline (+ gi for BJJ)
   const C = CATS[f.category];
-  if (C.disc.length > 1) { const ds = seg(C.disc, f.discipline, x => { f.discipline = x; if (f.category === 'grappling') redraw(); }, C.disc.length > 4); if (C.disc.length > 4) ds.classList.add('three'); v.appendChild(field(C.discLabel || (f.category === 'cardio' ? 'Activity' : 'Style'), ds)); }
+  const discOpts = [...C.disc, ...(C.legacy || []).filter(d => d[0] === f.discipline)];   // a legacy type shows only when editing a session that has it
+  if (C.disc.length > 1) { const ds = seg(discOpts, f.discipline, x => { f.discipline = x; if (f.category === 'grappling') redraw(); }, C.disc.length > 4); if (C.disc.length > 4) ds.classList.add('three'); v.appendChild(field(C.discLabel || (f.category === 'cardio' ? 'Activity' : 'Style'), ds)); }
   if (f.category === 'grappling' && f.discipline === 'bjj') v.appendChild(field('Uniform', seg([['gi','Gi'],['nogi','No-Gi']], f.gi, x => f.gi = x)));
   // 3. duration + date
   const g = h('<div class="durdate"></div>');
@@ -1336,7 +1478,7 @@ const haversine = (a, b) => { const R = 6371008.8, t = Math.PI/180, dLat = (b.la
 function sportToActivity(s){
   s = String(s||'').toLowerCase();
   if (/run|jog|trail/.test(s)) return 'run'; if (/bik|cycl|ride/.test(s)) return 'bike'; if (/row/.test(s)) return 'row';
-  if (/swim/.test(s)) return 'swim'; if (/rope|jump/.test(s)) return 'rope'; return s ? 'other' : '';
+  if (/swim/.test(s)) return 'swim'; if (/stair|step/.test(s)) return 'stairs'; if (/rope|jump/.test(s)) return 'rope'; return s ? 'other' : '';
 }
 function hrZones(samples, maxHr){ // samples: [{t(ms), hr}] -> minutes in zones 1-5 (50-60-70-80-90% of max)
   const mx = Number(db.profile.maxHR) || maxHr || 190, z = [0,0,0,0,0];
@@ -1423,7 +1565,7 @@ function csvRowToSession(o){
   const date = normDate(pickF(o, 'date', 'day', 'start_time', 'start', 'activity_date')); if (!date) return null;
   const rawCat = pickF(o, 'category', 'workout', 'type', 'workout_type').toLowerCase(), rawDisc = pickF(o, 'discipline', 'activity', 'activity_type', 'sport', 'style').toLowerCase();
   let cat = CAT_KEYS.find(k => rawCat.startsWith(k.slice(0,5)) || CATS[k].label.toLowerCase() === rawCat) || '';
-  const findDisc = c => CATS[c].disc.find(d => rawDisc && (d[0] === rawDisc || d[1].toLowerCase() === rawDisc || rawDisc.includes(d[1].toLowerCase())));
+  const findDisc = c => allDisc(c).find(d => rawDisc && (d[0] === rawDisc || d[1].toLowerCase() === rawDisc || rawDisc.includes(d[1].toLowerCase())));
   if (!cat) cat = CAT_KEYS.find(k => findDisc(k)) || (sportToActivity(rawDisc || rawCat) && sportToActivity(rawDisc || rawCat) !== 'other' ? 'cardio' : /lift|weight|strength|gym/.test(rawCat+rawDisc) ? 'weights' : 'grappling');
   const disc = findDisc(cat)?.[0] || (cat === 'cardio' ? sportToActivity(rawDisc || rawCat) || 'other' : '');
   const sec = hmsToSec(pickF(o, 'time', 'moving_time', 'elapsed_time', 'duration_hms')) || Number(pickF(o, 'duration_sec', 'seconds'))||0;
@@ -1537,41 +1679,48 @@ function recalcCard(){
     <div class="rc-btns"><button type="button" class="btn sm primary" data-calc="recalc" id="recalcGo">Recalculate</button><button type="button" class="btn sm ghost" id="recalcNo">Not now</button></div></div>`;
 }
 const fmtWk = r => { const v = unit() === 'kg' ? r.perWeekKg : r.perWeekLb; return Math.abs(v) < 0.05 ? 'about the same' : `${v > 0 ? '+' : '−'}${Math.abs(Math.round(v * 10) / 10)} ${unit()} / week`; };
-/* the sheet: one short screen of inputs → result card. opts: { pre:{w, gw, u}, onUse(result, inputs) } */
-function macroCalcSheet(opts = {}){
+/* the calculator inputs as a reusable block (used by the sheet and by onboarding step 2).
+   opts: { pre:{w, gw, u}, state (restore a previous st), units (show a lb/kg switch) } */
+function macroCalcForm(opts = {}){
   const prev = db.profile.calc || {}, pre = opts.pre || {};
-  const u = pre.u || unit(), conv = (v, from) => v > 0 ? r1(convW(Number(v), from || u, u)) : '';
-  const st = {
-    sex:prev.sex || '', age:prev.age || '', hu:prev.hu || (u === 'kg' ? 'cm' : 'ftin'), ft:prev.ft || '', inch:prev.inch ?? '', cm:prev.cm || '',
-    w:pre.w > 0 ? r1(pre.w) : calcCurW() > 0 ? r1(convW(calcCurW(), unit(), u)) : prev.w ? conv(prev.w, prev.u) : '',
-    gw:pre.gw > 0 ? r1(pre.gw) : Number(db.profile.goalWeight) > 0 ? r1(convW(Number(db.profile.goalWeight), unit(), u)) : prev.gw ? conv(prev.gw, prev.u) : '',
-    act:prev.act || guessActivity(), pace:prev.pace || 'steady', u };
-  const el = h(`<div id="macroCalc"><h3>Calculate my targets</h3><p class="dim" style="margin:-4px 0 12px">A few quick details. We'll work out calories and macros for your goal.</p><div id="mcIn"></div><div id="mcOut" hidden></div>
-    <div class="hint mcnote">Estimates only, not medical advice.</div></div>`);
-  const IN = el.querySelector('#mcIn'), OUT = el.querySelector('#mcOut');
-  const box = (id, val, ph, mode = 'decimal') => { const i = h(`<input class="input big" type="text" inputmode="${mode}" id="${id}" placeholder="${esc(ph)}" value="${esc(val)}">`); return i; };
+  const u0 = pre.u || unit(), conv = (v, from) => v > 0 ? r1(convW(Number(v), from || u0, u0)) : '';
+  const st = opts.state || {
+    sex:prev.sex || '', age:prev.age || '', hu:prev.hu || (u0 === 'kg' ? 'cm' : 'ftin'), ft:prev.ft || '', inch:prev.inch ?? '', cm:prev.cm || '',
+    w:pre.w > 0 ? r1(pre.w) : calcCurW() > 0 ? r1(convW(calcCurW(), unit(), u0)) : prev.w ? conv(prev.w, prev.u) : '',
+    gw:pre.gw > 0 ? r1(pre.gw) : Number(db.profile.goalWeight) > 0 ? r1(convW(Number(db.profile.goalWeight), unit(), u0)) : prev.gw ? conv(prev.gw, prev.u) : '',
+    act:prev.act || guessActivity(), pace:prev.pace || 'steady', u:u0 };
+  const IN = h('<div class="mcform"></div>');
+  const box = (id, val, ph, mode = 'decimal') => h(`<input class="input big" type="text" inputmode="${mode}" id="${id}" placeholder="${esc(ph)}" value="${esc(val)}">`);
   IN.appendChild(field('Sex (for the formula)', seg([['m','Male'],['f','Female']], st.sex, x => { st.sex = x; })));
-  const g1 = h('<div class="grid2"></div>'), age = box('mcAge', st.age, 'e.g. 30', 'numeric'); age.oninput = () => st.age = age.value; g1.appendChild(field('Age', age));
+  const g1 = h('<div class="grid2 hgrid"></div>'), age = box('mcAge', st.age, 'e.g. 30', 'numeric'); age.oninput = () => st.age = age.value; g1.appendChild(field('Age', age));
   const hWrap = h('<div class="field"><label>Height</label><div class="hrow" id="mcH"></div></div>');
   const drawH = () => { const r = hWrap.querySelector('#mcH'); r.innerHTML = '';
     if (st.hu === 'cm') { const c = box('mcCm', st.cm, 'cm', 'numeric'); c.oninput = () => st.cm = c.value; r.appendChild(c); }
     else { const f = box('mcFt', st.ft, 'ft', 'numeric'), i = box('mcIn2', st.inch, 'in', 'numeric'); f.oninput = () => st.ft = f.value; i.oninput = () => st.inch = i.value; r.appendChild(f); r.appendChild(i); } };
   const hu = h(`<button type="button" class="lnk hu" id="mcHu">${st.hu === 'cm' ? 'Use ft/in' : 'Use cm'}</button>`);
-  hu.onclick = () => { if (st.hu === 'cm') { const t = Number(st.cm) / 2.54; if (t > 0) { st.ft = Math.floor(t / 12); st.inch = Math.round(t % 12); if (st.inch === 12) { st.ft++; st.inch = 0; } } st.hu = 'ftin'; }
-    else { const t = (Number(st.ft) || 0) * 12 + (Number(st.inch) || 0); if (t > 0) st.cm = Math.round(t * 2.54); st.hu = 'cm'; } hu.textContent = st.hu === 'cm' ? 'Use ft/in' : 'Use cm'; drawH(); };
-  hWrap.appendChild(hu); drawH(); g1.appendChild(hWrap); IN.appendChild(g1);
-  const g2 = h('<div class="grid2"></div>'), w = box('mcW', st.w, u === 'kg' ? 'e.g. 80' : 'e.g. 180'), gw = box('mcGw', st.gw, 'Same = maintain');
-  g2.appendChild(field(`Current weight (${u})`, w)); g2.appendChild(field(`Goal weight (${u})`, gw)); IN.appendChild(g2);
+  const toCm = () => { const t = (Number(st.ft) || 0) * 12 + (Number(st.inch) || 0); if (t > 0) st.cm = Math.round(t * 2.54); st.hu = 'cm'; };
+  const toFt = () => { const t = Number(st.cm) / 2.54; if (t > 0) { st.ft = Math.floor(t / 12); st.inch = Math.round(t % 12); if (st.inch === 12) { st.ft++; st.inch = 0; } } st.hu = 'ftin'; };
+  hu.onclick = () => { if (st.hu === 'cm') toFt(); else toCm(); hu.textContent = st.hu === 'cm' ? 'Use ft/in' : 'Use cm'; drawH(); };
+  hWrap.appendChild(hu); drawH(); g1.appendChild(hWrap);
+  const g2 = h('<div class="grid2"></div>'), w = box('mcW', st.w, st.u === 'kg' ? 'e.g. 80' : 'e.g. 180'), gw = box('mcGw', st.gw, 'Same = maintain');
+  const wF = field(`Current weight (${st.u})`, w), gwF = field(`Goal weight (${st.u})`, gw); g2.appendChild(wF); g2.appendChild(gwF);
+  if (opts.units) IN.appendChild(field('Units', seg([['lb','lb · ft/in'],['kg','kg · cm']], st.u, x => {
+    if (x === st.u) return; const c = v => Number(v) > 0 ? r1(convW(Number(v), st.u, x)) : v;
+    st.w = w.value = c(w.value); st.gw = gw.value = c(gw.value); st.u = x;
+    if (x === 'kg' && st.hu !== 'cm') toCm(); if (x === 'lb' && st.hu === 'cm') toFt(); hu.textContent = st.hu === 'cm' ? 'Use ft/in' : 'Use cm'; drawH();
+    wF.querySelector('label').textContent = `Current weight (${x})`; gwF.querySelector('label').textContent = `Goal weight (${x})`; w.placeholder = x === 'kg' ? 'e.g. 80' : 'e.g. 180'; paceSync();
+    if (opts.onUnit) opts.onUnit(x); })));
+  if (opts.units) IN.lastChild.id = 'mcUnits';
+  IN.appendChild(g1); IN.appendChild(g2);
   const paceF = field('Pace', seg([['slow','Slow'],['steady','Steady'],['aggressive','Aggressive']], st.pace, x => { st.pace = x; }));
-  const paceSync = () => { const a = Number(w.value), b = Number(gw.value); paceF.hidden = !(a > 0 && b > 0 && Math.abs(convW(b - a, u, 'lb')) > 1);
+  const paceSync = () => { const a = Number(w.value), b = Number(gw.value); paceF.hidden = !(a > 0 && b > 0 && Math.abs(convW(b - a, st.u, 'lb')) > 1);
     paceF.querySelector('label').textContent = b > a ? 'How fast to gain' : 'How fast to lose'; };
   w.oninput = () => { st.w = w.value; paceSync(); }; gw.oninput = () => { st.gw = gw.value; paceSync(); };
   const actF = h(`<div class="field"><label>Activity</label><div class="actlist" id="mcAct" role="radiogroup">${ACTIVITY.map(([k, l, d]) => `<button type="button" role="radio" data-act="${k}" class="${st.act === k ? 'on' : ''}" aria-checked="${st.act === k}"><b>${l}</b><small>${d}</small></button>`).join('')}</div><div class="hint">Count your training days (BJJ, lifting, cardio) here.</div></div>`);
   actF.querySelectorAll('[data-act]').forEach(b => b.onclick = () => { st.act = b.dataset.act; actF.querySelectorAll('[data-act]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', x === b); }); });
   IN.appendChild(actF); IN.appendChild(paceF); paceSync();
-  const go = h('<button type="button" class="btn primary block big" id="mcGo" style="margin-top:6px">Calculate</button>'); IN.appendChild(go);
-  const read = () => {
-    const hcm = st.hu === 'cm' ? Number(st.cm) : ((Number(st.ft) || 0) * 12 + (Number(st.inch) || 0)) * 2.54, wk = convW(Number(w.value), u, 'kg');
+  const validate = () => {
+    const u = st.u, hcm = st.hu === 'cm' ? Number(st.cm) : ((Number(st.ft) || 0) * 12 + (Number(st.inch) || 0)) * 2.54, wk = convW(Number(w.value), u, 'kg');
     if (!st.sex) return 'Pick male or female (the formula needs it)';
     if (!(Number(age.value) >= 14 && Number(age.value) <= 100)) return 'Enter your age (14–100)';
     if (!(hcm >= 120 && hcm <= 230)) return 'Enter your height';
@@ -1580,10 +1729,21 @@ function macroCalcSheet(opts = {}){
     return null;
   };
   const stored = () => ({ sex:st.sex, age:Math.round(Number(age.value)), hu:st.hu, ft:st.hu === 'ftin' ? Number(st.ft) || 0 : '', inch:st.hu === 'ftin' ? Number(st.inch) || 0 : '', cm:st.hu === 'cm' ? Math.round(Number(st.cm)) : '',
-    w:r1(Number(w.value)), gw:Number(gw.value) > 0 ? r1(Number(gw.value)) : '', u, act:st.act, pace:st.pace, at:today() });
+    w:r1(Number(w.value)), gw:Number(gw.value) > 0 ? r1(Number(gw.value)) : '', u:st.u, act:st.act, pace:st.pace, at:today() });
+  return { el:IN, st, validate, stored, calc(){ const s = stored(); return { s, r:macroCalc(calcInputsKg(s)) }; } };
+}
+/* water suggestion: half your body weight (lb) in oz; metric rounded to 50 ml. Returns the value in the display unit. */
+const waterSuggest = (w, u, metric) => { const oz = Math.round(convW(Number(w), u, 'lb') / 2); return metric ? Math.round(oz * ML_PER_OZ / 50) * 50 : oz; };
+/* the sheet: one short screen of inputs → result card. opts: { pre:{w, gw, u}, onUse(result, inputs) } */
+function macroCalcSheet(opts = {}){
+  const el = h(`<div id="macroCalc"><h3>Calculate my targets</h3><p class="dim" style="margin:-4px 0 12px">A few quick details. We'll work out calories and macros for your goal.</p><div id="mcIn"></div><div id="mcOut" hidden></div>
+    <div class="hint mcnote">Estimates only, not medical advice.</div></div>`);
+  const IN = el.querySelector('#mcIn'), OUT = el.querySelector('#mcOut'), F = macroCalcForm(opts);
+  IN.appendChild(F.el);
+  const go = h('<button type="button" class="btn primary block big" id="mcGo" style="margin-top:6px">Calculate</button>'); IN.appendChild(go);
   go.onclick = () => {
-    const err = read(); if (err) { toast(err); return; }
-    const s = stored(), r = macroCalc(calcInputsKg(s));
+    const err = F.validate(); if (err) { toast(err); return; }
+    const { s, r } = F.calc(), u = s.u;
     OUT.innerHTML = `<div class="card mcres" id="mcResult"><div class="eyebrow">Daily target</div>
       <div class="mccal"><b data-r="cal">${r.cal.toLocaleString()}</b><span>kcal / day</span></div>
       <div class="mcmac"><div><b data-r="p">${r.p}</b><small>g protein</small></div><div><b data-r="c">${r.c}</b><small>g carbs</small></div><div><b data-r="f">${r.f}</b><small>g fat</small></div></div>
@@ -2161,6 +2321,9 @@ function viewSettings(){
       p.enabled = en; save(); updateNav(); toast(`${l} ${e.target.checked ? 'shown' : 'hidden'}`); };
     sec.querySelector('.toggles').appendChild(row);
   });
+  { const row = h(`<label class="toggle" id="tipsRow"><span><b>Tip of the day</b><small>One short training tip on Home</small></span><input type="checkbox" role="switch" id="tipsToggle" ${tipsOn() ? 'checked' : ''}><i></i></label>`);
+    row.querySelector('input').onchange = e => { p.tips = e.target.checked; save(); toast(`Tips ${e.target.checked ? 'shown' : 'hidden'}`); };
+    sec.querySelector('.toggles').appendChild(row); }
   v.appendChild(sec);
   const card = h(`<div class="card" id="rankCard"><h2>Belt <a class="lnk" href="#/belts">Timeline ›</a></h2>${currentRank() ? `<div class="belt">${beltBar(currentRank().belt, currentRank().stripes)}</div><div class="belt-meta"><span><b>${esc(beltOf(currentRank().belt)[1])} belt</b>${currentRank().stripes ? ` · ${rankLabel(currentRank())}` : ''}</span><span>since ${fmtShort(beltGroups().slice(-1)[0].start)}</span></div>` : beltEmpty()}
     <button type="button" class="btn primary block" data-promo style="margin-top:12px">Log promotion</button><div class="hint" style="margin-top:8px">${(db.belts||[]).length} promotion${(db.belts||[]).length === 1 ? '' : 's'} in your history. Edit or delete them on the timeline.</div></div>`);
@@ -2173,7 +2336,6 @@ function viewSettings(){
   const ic = injuryProfileCard(); wireInjuries(ic); v.appendChild(ic);
   if (isPro()) v.appendChild(programProfileCard());
   if (enabled('weights') || db.strength.length) { const sc = strengthProfileCard(); wireStrength(sc); v.appendChild(sc); }
-  v.appendChild(gameProfileCard());
 
   const wcard = h('<div class="card"><h2>Weight</h2></div>');
   wcard.appendChild(field('Units', seg([['lb','lb'],['kg','kg']], unit(), x => { if (x === unit()) return; const from = unit(), cv = v => v === '' || v == null || !(Number(v) > 0) ? v : Math.round(convW(Number(v), from, x)*10)/10;
@@ -2230,6 +2392,8 @@ function viewSettings(){
     </div>${db.archive?.supps ? `<div class="hint" id="suppArchiveNote" style="margin-top:12px">Supplement tracking was removed in 3.1. Your ${(db.archive.supps.items||[]).length} supplement${(db.archive.supps.items||[]).length === 1 ? '' : 's'} and ${(db.archive.supps.log||[]).length} check-off${(db.archive.supps.log||[]).length === 1 ? '' : 's'} are kept, hidden, on this device and in your backups.</div>` : ''}</div>`);
   v.appendChild(data);
   v.appendChild(h(`<div class="card"><h2>Install on iPhone</h2><div style="color:var(--muted);font-size:14px">In Safari, tap <b style="color:var(--text)">Share</b> → <b style="color:var(--text)">Add to Home Screen</b>. It opens full-screen and works offline.</div></div>`));
+  if (socialOn()) v.appendChild(h(`<div class="card" id="friendsCard"><h2>Friends</h2><a class="list-row" href="#/friends" id="friendsProfileLink" style="text-decoration:none;color:inherit"><div class="grow"><b>Friends &amp; head-to-head</b><small>${sUser() ? `Signed in as ${esc(sUser().email)}` : 'Optional account. Only summaries are shared.'}</small></div>›</a></div>`));
+  v.appendChild(gameProfileCard());   // rank, badges & looks: last section on Profile
   v.appendChild(h(`<div class="foot">Forged · v${APP_VERSION} · ${db.sessions.length} sessions · ${db.nutrition.entries.length} food entries stored</div>`));
 
   $('#exp').onclick = exportData;
@@ -2525,58 +2689,130 @@ function challengeHistory(){
   return `<div class="card" id="challengeHist"><h2>Monthly goal <small>${list.length} month${list.length === 1 ? '' : 's'} achieved</small></h2>${list.length ? list.slice(0, 12).map(x => { const [y, m] = x.month.split('-').map(Number); return `<div class="list-row"><div class="grow"><b>${MONTHS[m-1]} ${y}</b><small>${x.n} workouts · goal ${x.target}</small></div><button type="button" class="btn sm" data-sharering="${x.month}" aria-label="Share ${MONTHS[m-1]} ${y}">Share</button></div>`; }).join('') : '<div class="empty" style="padding:4px 0">Hit your monthly goal to start a streak of months.</div>'}</div>`;
 }
 
-/* ---- competitions ---- */
-const COMP_SPORTS = ['BJJ','No-Gi grappling','Wrestling','Judo','Sambo','Muay Thai','Boxing','Kickboxing','MMA','Other'];
-const TAPER_TIPS = ['Cut training volume by about a third to a half', 'Keep the intensity: short, sharp rounds and drilling', 'Sleep 8+ hours, especially the last 3 nights', 'Make weight safely: no crash cuts or severe dehydration; ask a coach if you need to cut', 'Nothing new: same food, same gear, same warm-up'];
-function sanitizeComps(l){ return (Array.isArray(l) ? l : []).filter(c => c && isoOk(c.date)).map(c => ({ id:String(c.id || uid()), name:String(c.name || 'Competition').slice(0, 80), date:c.date, sport:String(c.sport || ''), weightClass:String(c.weightClass || ''),
-  targetWeight:posOr(c.targetWeight), result:['win','loss','medal'].includes(c.result) ? c.result : '', medal:['gold','silver','bronze'].includes(c.medal) ? c.medal : '', notes:String(c.notes || ''), createdAt:Number(c.createdAt)||0, ...(c.sample ? { sample:true } : {}) })); }
+/* ---- competitions (3.4.0: every combat sport, sport-appropriate fields, per-sport record) ---- */
+const COMP_SPORT_DEFS = [['BJJ','grappling'],['Submission grappling','grappling'],['Judo','grappling'],['Wrestling','grappling'],['Sambo','grappling'],
+  ['Boxing','striking'],['Muay Thai','striking'],['Kickboxing','striking'],['Karate','striking'],['Taekwondo','striking'],['MMA','mma'],['Other','']];
+const LEGACY_COMP_SPORTS = { 'No-Gi grappling':'grappling' };
+const COMP_SPORTS = COMP_SPORT_DEFS.map(x => x[0]);
+const compKind = sport => { const d = COMP_SPORT_DEFS.find(x => x[0] === sport); return (d ? d[1] : LEGACY_COMP_SPORTS[sport]) || 'other'; };
+/* the sports you can pick: limited to the combat categories you track (all of them if you track none); a comp's existing sport always stays listed */
+function compSports(cur){ const cats = ['grappling','striking','mma'].filter(k => enabled(k)), l = COMP_SPORT_DEFS.filter(([, k]) => !k || !cats.length || cats.includes(k)).map(x => x[0]);
+  if (cur && !l.includes(cur)) l.splice(l.length - 1, 0, cur); return l; }
+const defaultCompSport = () => enabled('grappling') ? 'BJJ' : enabled('mma') ? 'MMA' : enabled('striking') ? 'Muay Thai' : 'BJJ';
+const compFmtDefault = sport => compKind(sport) === 'grappling' || compKind(sport) === 'other' ? 'tournament' : 'bout';
+const COMP_METHODS = { grappling:[['sub','Submission'],['points','Points'],['decision','Decision'],['dq','DQ']], striking:[['ko','KO/TKO'],['decision','Decision'],['points','Points'],['dq','DQ']],
+  mma:[['ko','KO/TKO'],['sub','Submission'],['decision','Decision'],['dq','DQ']], other:[['sub','Submission'],['points','Points'],['decision','Decision'],['ko','KO/TKO'],['dq','DQ']] };
+const METHOD_LABEL = { sub:'Submission', points:'Points', decision:'Decision', ko:'KO/TKO', dq:'DQ' };
+const BOUT_TYPES = [['am','Amateur'],['pro','Pro'],['smoker','Smoker / interclub']];
+const GI_OPTS = [['gi','Gi'],['nogi','No-Gi'],['both','Both']];
+const TAPER = {
+  grappling:['Cut training volume by about a third to a half', 'Keep the intensity: short, sharp rounds and drilling', 'Sleep 8+ hours, especially the last 3 nights', 'Make weight safely: no crash cuts or severe dehydration; ask a coach if you need to cut', 'Nothing new: same food, same gear, same warm-up'],
+  striking:['Taper sparring: last hard sparring about 7–10 days out, then light technical rounds', 'Keep pads short and sharp: speed, timing and your best combinations', 'Cut overall volume by about a third to a half', 'Plan weigh-in rehydration: fluids with electrolytes and a familiar meal right after', 'Make weight safely: no crash cuts or severe dehydration', 'Sleep 8+ hours. Nothing new: same food, gear and warm-up'],
+  mma:['Taper both sides: last hard sparring and hard rolling about 7–10 days out', 'Stay sharp: short pad rounds and crisp takedown-to-finish chains', 'Cut overall volume by about a third to a half', 'Plan weigh-in rehydration: fluids with electrolytes and a familiar meal right after', 'Make weight safely: no crash cuts or severe dehydration', 'Sleep 8+ hours. Nothing new on fight week'] };
+TAPER.other = TAPER.grappling;
+const TAPER_TIPS = TAPER.grappling;
+const dtOk = v => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(String(v || ''));
+function sanitizeComps(l){ return (Array.isArray(l) ? l : []).filter(c => c && isoOk(c.date)).map(c => { const sport = String(c.sport || ''), kind = compKind(sport);
+  const fmt = ['tournament','bout'].includes(c.fmt) ? c.fmt : c.result === 'medal' ? 'tournament' : ['win','loss','draw'].includes(c.result) ? 'bout' : compFmtDefault(sport);
+  const n = (v, max) => { const x = Math.round(Number(v)); return x > 0 ? Math.min(max, x) : ''; };
+  return { id:String(c.id || uid()), name:String(c.name || 'Competition').slice(0, 80), date:c.date, sport, weightClass:String(c.weightClass || ''), targetWeight:posOr(c.targetWeight), fmt,
+    ...(GI_OPTS.some(g => g[0] === c.gi) ? { gi:c.gi } : {}), ...(c.division ? { division:String(c.division).slice(0, 80) } : {}),
+    ...(BOUT_TYPES.some(b => b[0] === c.bout) ? { bout:c.bout } : {}), ...(n(c.rounds, 15) ? { rounds:n(c.rounds, 15) } : {}), ...(Number(c.roundMin) > 0 ? { roundMin:Math.min(15, Math.round(Number(c.roundMin) * 2) / 2) } : {}),
+    ...(dtOk(c.weighIn) ? { weighIn:c.weighIn } : {}),
+    result:['win','loss','draw','medal','nomedal'].includes(c.result) ? c.result : '', ...(METHOD_LABEL[c.method] ? { method:c.method } : {}),
+    medal:['gold','silver','bronze'].includes(c.medal) ? c.medal : '', ...(Number(c.mw) >= 0 && c.mw !== '' && c.mw != null ? { mw:Math.min(30, Math.round(Number(c.mw))) } : {}), ...(Number(c.ml) >= 0 && c.ml !== '' && c.ml != null ? { ml:Math.min(30, Math.round(Number(c.ml))) } : {}),
+    notes:String(c.notes || ''), createdAt:Number(c.createdAt)||0, ...(c.sample ? { sample:true } : {}) }; }); }
 const nextComp = () => db.comps.filter(c => c.date >= today()).sort((a,b) => a.date.localeCompare(b.date))[0];
 const daysTo = date => daysBetween(today(), date);
-const resultLabel = c => c.result === 'win' ? 'Win' : c.result === 'loss' ? 'Loss' : c.result === 'medal' ? ({ gold:'🥇 Gold', silver:'🥈 Silver', bronze:'🥉 Bronze' }[c.medal] || 'Medal') : '';
+const MEDAL_LABEL = { gold:'🥇 Gold', silver:'🥈 Silver', bronze:'🥉 Bronze' };
+const resultLabel = c => c.result === 'win' || c.result === 'loss' ? `${c.result === 'win' ? 'Win' : 'Loss'}${c.method ? ` · ${METHOD_LABEL[c.method]}` : ''}` : c.result === 'draw' ? 'Draw'
+  : c.result === 'medal' ? (MEDAL_LABEL[c.medal] || 'Medal') : c.result === 'nomedal' ? 'No medal' : '';
+const fmtWeighIn = v => { if (!dtOk(v)) return ''; const [d, t] = v.split('T'), [H, M] = t.split(':').map(Number); return `${fmtShort(d)} · ${(H % 12) || 12}:${String(M).padStart(2, '0')} ${H < 12 ? 'AM' : 'PM'}`; };
+/* sport-specific one-liner: Gi · Adult blue · or Amateur · 3 × 3 min */
+function compDetail(c){ const k = compKind(c.sport), bits = [];
+  if (k === 'grappling' || k === 'other') { if (c.gi) bits.push(GI_OPTS.find(g => g[0] === c.gi)[1]); if (c.division) bits.push(c.division); }
+  if (k === 'striking' || k === 'mma') { if (c.bout) bits.push(BOUT_TYPES.find(b => b[0] === c.bout)[1]); if (c.rounds) bits.push(`${c.rounds} × ${c.roundMin || 3} min`); }
+  return bits; }
 function compCard(){
   const c = nextComp(), recent = db.comps.filter(x => x.date < today() && !x.result && daysTo(x.date) >= -7).sort((a,b) => b.date.localeCompare(a.date))[0];
   if (!c && !recent) return '';
   if (!c) return `<div class="card" id="compCard"><h2>${esc(recent.name)} <small>${fmtShort(recent.date)}</small></h2><div class="hint" style="margin:0 0 10px">How did it go? Add your result.</div><button type="button" class="btn block" data-comp="${esc(recent.id)}">Add result</button></div>`;
-  const n = daysTo(c.date), g = weightGoal(), tw = Number(c.targetWeight) || 0, gap = tw && g.cur != null ? Math.round((g.cur - tw) * 10) / 10 : null;
-  return `<div class="card comp tappable" id="compCard" data-comp="${esc(c.id)}"><div class="cd"><b id="compDays">${n}</b><span>day${n === 1 ? '' : 's'}</span></div>
+  const n = daysTo(c.date), g = weightGoal(), tw = Number(c.targetWeight) || 0, gap = tw && g.cur != null ? Math.round((g.cur - tw) * 10) / 10 : null, kind = compKind(c.sport);
+  return `<div class="card comp tappable" id="compCard" data-comp="${esc(c.id)}" data-kind="${kind}"><div class="cd"><b id="compDays">${n}</b><span>day${n === 1 ? '' : 's'}</span></div>
     <div class="grow"><h2 id="compTitle">${n === 0 ? `Today: ${esc(c.name)}` : `${n} day${n === 1 ? '' : 's'} to ${esc(c.name)}`}${c.sample ? ' <span class="pill sample">Sample</span>' : ''}</h2>
     <div class="cmeta">${[fmtDate(c.date), c.sport, c.weightClass].filter(Boolean).map(esc).join(' · ')}</div>
+    ${compDetail(c).length ? `<div class="cmeta" id="compDetail">${compDetail(c).map(esc).join(' · ')}</div>` : ''}
+    ${c.weighIn ? `<div class="cmeta" id="compWeigh">Weigh-in <b>${esc(fmtWeighIn(c.weighIn))}</b></div>` : ''}
     ${tw ? `<div class="cmeta">Target weight <b>${tw} ${unit()}</b>${gap != null ? ` · ${gap > 0 ? `${gap} ${unit()} to go` : 'on weight ✓'}` : ''}</div>` : ''}</div>
-    ${n <= 7 ? `<div class="taper" id="taperTips"><b>Final week</b><ul>${TAPER_TIPS.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}</div>`;
+    ${n <= 7 ? `<div class="taper" id="taperTips" data-kind="${kind}"><b>${kind === 'striking' || kind === 'mma' ? 'Fight week' : 'Final week'}</b><ul>${(TAPER[kind] || TAPER.grappling).map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}</div>`;
 }
 function compSheet(id){
-  const ex = db.comps.find(c => c.id === id), c = ex ? { ...ex } : { id:uid(), name:'', date:iso(addDays(new Date(), 28)), sport:enabled('grappling') ? 'BJJ' : COMP_SPORTS[5], weightClass:'', targetWeight:'', result:'', medal:'', notes:'', createdAt:Date.now() };
+  const ex = db.comps.find(c => c.id === id), sp0 = defaultCompSport();
+  const c = ex ? { ...ex } : { id:uid(), name:'', date:iso(addDays(new Date(), 28)), sport:sp0, fmt:compFmtDefault(sp0), weightClass:'', targetWeight:'', result:'', medal:'', notes:'', createdAt:Date.now() };
+  if (!c.fmt) c.fmt = compFmtDefault(c.sport);
   const past = () => c.date < today();
   const el = h(`<div><h3>${ex ? 'Competition' : 'Add competition'}</h3></div>`);
   const name = h(`<input class="input" type="text" autocapitalize="words" placeholder="e.g. Riverside Open" value="${esc(c.name)}" id="compName">`); name.oninput = () => c.name = name.value;
   const date = h(`<input class="input" type="date" value="${esc(c.date)}" id="compDate">`);
   el.appendChild(field('Name', name)); el.appendChild(field('Date', date));
-  el.appendChild(field('Sport', seg(COMP_SPORTS.map(x => [x, x]), c.sport, x => c.sport = x, true)));
-  const g = h('<div class="grid2"></div>');
-  const wc = h(`<input class="input" type="text" placeholder="Optional" value="${esc(c.weightClass)}" id="compClass">`); wc.oninput = () => c.weightClass = wc.value;
-  const tw = h(`<input class="input" type="text" inputmode="decimal" placeholder="Optional" value="${esc(c.targetWeight)}" id="compTarget">`); tw.oninput = () => c.targetWeight = tw.value.replace(/[^\d.]/g, '');
-  g.appendChild(field('Weight class', wc)); g.appendChild(field(`Target weight (${unit()})`, tw)); el.appendChild(g);
+  const sportF = field('Sport', seg(compSports(c.sport).map(x => [x, x]), c.sport, x => { const was = compKind(c.sport); c.sport = x; if (compKind(x) !== was) { c.fmt = compFmtDefault(x); c.result = ''; c.method = ''; } drawFields(); drawRes(); }, true));
+  sportF.querySelector('.seg').id = 'compSport'; el.appendChild(sportF);
+  const F = h('<div id="compFields"></div>'); el.appendChild(F);
+  const inp = (id, val, ph, mode = 'text') => h(`<input class="input" type="text" ${mode !== 'text' ? `inputmode="${mode}"` : ''} placeholder="${esc(ph)}" value="${esc(val ?? '')}" id="${id}">`);
+  const drawFields = () => { F.innerHTML = ''; const k = compKind(c.sport), fight = k === 'striking' || k === 'mma';
+    if (fight) { const bf = field('Bout type', seg(BOUT_TYPES, c.bout || '', x => c.bout = x, true)); bf.querySelector('.seg').id = 'compBout'; F.appendChild(bf); }
+    const ff = field('Format', seg(fight ? [['bout','Single bout'],['tournament','Tournament']] : [['tournament','Tournament'],['bout','Superfight / single match']], c.fmt, x => { c.fmt = x; c.result = ''; drawRes(); }, true)); ff.querySelector('.seg').id = 'compFmt'; F.appendChild(ff);
+    if (c.sport === 'BJJ' || c.sport === 'Other' || c.sport === 'No-Gi grappling') { const gf = field('Gi / No-Gi', seg(GI_OPTS, c.gi || '', x => c.gi = x)); gf.querySelector('.seg').id = 'compGi'; F.appendChild(gf); }
+    if (!fight) { const dv = inp('compDiv', c.division, c.sport === 'BJJ' ? 'e.g. Adult · Blue belt · Masters 1' : 'e.g. Senior · Open'); dv.oninput = () => c.division = dv.value; F.appendChild(field('Division (optional)', dv)); }
+    if (fight) { const g = h('<div class="grid2"></div>'), r = inp('compRounds', c.rounds, 'e.g. 3', 'numeric'), m = inp('compRoundMin', c.roundMin, k === 'mma' ? 'e.g. 5' : 'e.g. 3', 'decimal');
+      r.oninput = () => c.rounds = r.value.replace(/\D/g, ''); m.oninput = () => c.roundMin = m.value.replace(/[^\d.]/g, '');
+      g.appendChild(field('Rounds', r)); g.appendChild(field('Minutes per round', m)); F.appendChild(g); }
+    const g = h('<div class="grid2"></div>');
+    const wc = inp('compClass', c.weightClass, 'Optional'); wc.oninput = () => c.weightClass = wc.value;
+    const tw = inp('compTarget', c.targetWeight, 'Optional', 'decimal'); tw.oninput = () => c.targetWeight = tw.value.replace(/[^\d.]/g, '');
+    g.appendChild(field('Weight class', wc)); g.appendChild(field(`Target weight (${unit()})`, tw)); F.appendChild(g);
+    if (fight) { const wi = h(`<input class="input" type="datetime-local" id="compWeighIn" value="${esc(c.weighIn || '')}">`); wi.onchange = () => c.weighIn = wi.value; F.appendChild(field('Weigh-in time (optional)', wi)); } };
   const res = h('<div id="compResult"></div>');
-  const drawRes = () => { res.innerHTML = ''; if (!past()) return;
-    res.appendChild(field('Result', seg([['win','Win'],['loss','Loss'],['medal','Medal']], c.result, x => { c.result = x; drawRes(); })));
-    if (c.result === 'medal') res.appendChild(field('Medal', seg([['gold','🥇 Gold'],['silver','🥈 Silver'],['bronze','🥉 Bronze']], c.medal, x => c.medal = x)));
+  const drawRes = () => { res.innerHTML = ''; if (!past()) return; const k = compKind(c.sport);
+    if (c.fmt === 'tournament') {
+      res.appendChild(field('Result', seg([['medal','Medal'],['nomedal','Didn\'t place']], c.result, x => { c.result = x; drawRes(); })));
+      if (c.result === 'medal') res.appendChild(field('Medal', seg([['gold','🥇 Gold'],['silver','🥈 Silver'],['bronze','🥉 Bronze']], c.medal, x => c.medal = x)));
+      const g = h('<div class="grid2"></div>'), w = inp('compMW', c.mw, '0', 'numeric'), l = inp('compML', c.ml, '0', 'numeric');
+      w.oninput = () => c.mw = w.value.replace(/\D/g, ''); l.oninput = () => c.ml = l.value.replace(/\D/g, '');
+      g.appendChild(field('Matches won', w)); g.appendChild(field('Matches lost', l)); res.appendChild(g);
+    } else {
+      res.appendChild(field('Result', seg([['win','Win'],['loss','Loss'],['draw','Draw']], c.result, x => { c.result = x; if (x === 'draw') c.method = ''; drawRes(); })));
+      if (c.result === 'win' || c.result === 'loss') { const mf = field(c.result === 'win' ? 'How you won' : 'How it ended', seg(COMP_METHODS[k] || COMP_METHODS.other, c.method || '', x => c.method = x, true)); mf.querySelector('.seg').id = 'compMethod'; res.appendChild(mf); }
+    }
     const nt = h(`<textarea class="input" rows="3" placeholder="How did it go? What to work on?">${esc(c.notes)}</textarea>`); nt.oninput = () => c.notes = nt.value; res.appendChild(field('Notes', nt)); };
   date.onchange = () => { c.date = date.value || c.date; drawRes(); };
-  el.appendChild(res); drawRes();
+  el.appendChild(res); drawFields(); drawRes();
   const btns = h(`<div style="display:flex;gap:10px;margin-top:8px">${ex ? '<button type="button" class="btn danger" data-del>Delete</button>' : ''}<button type="button" class="btn primary" style="flex:1" data-save>${ex ? 'Save' : 'Add competition'}</button></div>`);
   btns.querySelector('[data-save]').onclick = () => { if (!c.name.trim()) { toast('Add a name'); name.focus(); return; }
-    const rec = sanitizeComps([{ ...c, name:c.name.trim(), sample:false }])[0]; db.comps = db.comps.filter(x => x.id !== rec.id).concat(rec); save(); closeSheet(); toast(ex ? 'Competition saved' : 'Competition added'); whenSettled(route); };
+    const k = compKind(c.sport), keep = { ...c };
+    if (k === 'striking' || k === 'mma') { delete keep.gi; delete keep.division; } else { delete keep.bout; delete keep.rounds; delete keep.roundMin; delete keep.weighIn; }
+    if (keep.fmt === 'tournament') delete keep.method; else { delete keep.mw; delete keep.ml; keep.medal = ''; }
+    const rec = sanitizeComps([{ ...keep, name:c.name.trim(), sample:false }])[0]; db.comps = db.comps.filter(x => x.id !== rec.id).concat(rec); save(); closeSheet(); toast(ex ? 'Competition saved' : 'Competition added'); whenSettled(route); };
   const del = btns.querySelector('[data-del]'); if (del) del.onclick = () => { const before = db.comps.slice(); db.comps = db.comps.filter(x => x.id !== c.id); save(); closeSheet(); undoToast('Competition deleted', () => { db.comps = before; save(); route(); }); whenSettled(route); };
   el.appendChild(btns); openSheet(el, null, { closeLabel:'Cancel' });
 }
-function compsList(list){ return list.map(c => `<button type="button" class="list-row comprow" data-comp="${esc(c.id)}"><div class="grow"><b>${esc(c.name)}</b><small>${[fmtShort(c.date), c.sport, c.weightClass].filter(Boolean).map(esc).join(' · ')}${c.notes && c.date < today() ? ` · ${esc(c.notes.slice(0, 60))}` : ''}</small></div>${c.date >= today() ? `<span class="pill">${daysTo(c.date)} d</span>` : c.result ? `<span class="pill res-${c.result}">${resultLabel(c)}</span>` : '<span class="pill">Add result</span>'}${c.sample ? '<span class="pill sample">Sample</span>' : ''}</button>`).join(''); }
+function compsList(list){ return list.map(c => `<button type="button" class="list-row comprow" data-comp="${esc(c.id)}" data-sport="${esc(c.sport)}"><div class="grow"><b>${esc(c.name)}</b><small>${[fmtShort(c.date), c.sport, c.weightClass, ...compDetail(c)].filter(Boolean).map(esc).join(' · ')}${c.date < today() && c.fmt === 'tournament' && (c.mw || c.ml) ? ` · ${c.mw || 0}–${c.ml || 0} in matches` : ''}${c.notes && c.date < today() ? ` · ${esc(c.notes.slice(0, 60))}` : ''}</small></div>${c.date >= today() ? `<span class="pill">${daysTo(c.date)} d</span>` : c.result ? `<span class="pill res-${c.result}">${esc(resultLabel(c))}</span>` : '<span class="pill">Add result</span>'}${c.sample ? '<span class="pill sample">Sample</span>' : ''}</button>`).join(''); }
 function wireComps(root){ root.querySelectorAll('[data-comp]').forEach(b => b.onclick = e => { if (e.target.closest('a')) return; compSheet(b.dataset.comp); }); root.querySelectorAll('[data-addcomp]').forEach(b => b.onclick = () => compSheet(null)); }
+/* record from past comps: bouts count W/L/D; tournaments add their match wins/losses and medals */
+function compRecord(list){ const r = { w:0, l:0, d:0, medals:0, gold:0, silver:0, bronze:0, n:0 };
+  list.forEach(c => { r.n++; if (c.result === 'win') r.w++; else if (c.result === 'loss') r.l++; else if (c.result === 'draw') r.d++;
+    if (c.fmt === 'tournament') { r.w += Number(c.mw) || 0; r.l += Number(c.ml) || 0; } if (c.result === 'medal') { r.medals++; if (r[c.medal] != null) r[c.medal]++; } }); return r; }
+const recText = r => `${r.w}W · ${r.l}L${r.d ? ` · ${r.d}D` : ''} · ${r.medals} medal${r.medals === 1 ? '' : 's'}`;
+function compRecordBySport(past){ const m = new Map(); past.forEach(c => { const k = c.sport || 'Other'; if (!m.has(k)) m.set(k, []); m.get(k).push(c); });
+  return [...m.entries()].map(([sport, l]) => ({ sport, ...compRecord(l) })).sort((a, b) => b.n - a.n || a.sport.localeCompare(b.sport)); }
 function viewComps(){
   setHeader('History', `<a class="btn sm" href="#/stats">Stats</a>`);
   const v = $('#view'), up = db.comps.filter(c => c.date >= today()).sort((a,b) => a.date.localeCompare(b.date)), past = db.comps.filter(c => c.date < today()).sort((a,b) => b.date.localeCompare(a.date));
-  const w = past.filter(c => c.result === 'win').length, l = past.filter(c => c.result === 'loss').length, m = past.filter(c => c.result === 'medal').length;
+  const tot = compRecord(past), by = compRecordBySport(past);
   v.innerHTML = `${histSeg('comps')}<div class="card" id="compsCard"><h2>Upcoming</h2>${up.length ? compsList(up) : '<div class="empty" style="padding:4px 0">No upcoming competitions.</div>'}<button type="button" class="btn primary block" data-addcomp style="margin-top:12px">Add competition</button></div>
-    <div class="card" id="pastComps"><h2>Past <small>${w}W · ${l}L · ${m} medal${m === 1 ? '' : 's'}</small></h2>${past.length ? compsList(past) : '<div class="empty" style="padding:4px 0">Past competitions and results show here.</div>'}</div>`;
+    <div class="card" id="pastComps"><h2>Past <small>${recText(tot)}</small></h2>
+    ${by.length ? `<div class="comprec" id="compRecord">${by.map(r => `<div class="recrow" data-sport="${esc(r.sport)}"><b>${esc(r.sport)}</b><span>${r.w}W · ${r.l}L${r.d ? ` · ${r.d}D` : ''}${r.medals ? ` · ${r.gold ? `🥇${r.gold > 1 ? r.gold : ''}` : ''}${r.silver ? `🥈${r.silver > 1 ? r.silver : ''}` : ''}${r.bronze ? `🥉${r.bronze > 1 ? r.bronze : ''}` : ''}` : ''}</span></div>`).join('')}</div>` : ''}
+    ${past.length ? compsList(past) : '<div class="empty" style="padding:4px 0">Past competitions and results show here.</div>'}</div>`;
   wireComps(v);
 }
 
@@ -3025,6 +3261,7 @@ function sanitizeGame(g){
     seenDone:arr(g.seenDone).map(String).slice(-400), seenBadges:arr(g.seenBadges).map(String),
     look:{ accent:String(g.look?.accent || 'flame'), frame:String(g.look?.frame || 'classic'), flair:String(g.look?.flair || 'none') },
     ...(isoOk(g.proUntil) ? { proUntil:g.proUntil, proGranted:isoOk(g.proGranted) ? g.proGranted : g.proUntil } : {}),
+    ...(Array.isArray(g.looksSeen) ? { looksSeen:g.looksSeen.map(String).slice(0, 60) } : {}),
     friend:arr(g.friend).filter(x => x && x.code && x.title).slice(-20) };
 }
 const game = () => (db.game = db.game && db.game.look ? db.game : sanitizeGame(db.game));
@@ -3313,6 +3550,7 @@ const LOOKS = {
 };
 function lookUnlocked(kind, id){ const it = LOOKS[kind].find(x => x.id === id); if (!it) return false; if (!it.unlock) return true;
   const b = Object.fromEntries(badgeState().map(x => [x.id, x.earned])); return !!it.unlock(gameState(), b); }
+function unlockedLooks(){ const gs = gameState(), b = Object.fromEntries(badgeState().map(x => [x.id, x.earned])); return ['accent','frame','flair'].flatMap(k => LOOKS[k].filter(x => x.unlock && x.unlock(gs, b)).map(x => `${k}:${x.id}`)); }
 function currentLook(){ const l = game().look; return { accent: lookUnlocked('accent', l.accent) ? l.accent : 'flame', frame: lookUnlocked('frame', l.frame) ? l.frame : 'classic', flair: lookUnlocked('flair', l.flair) ? l.flair : 'none' }; }
 function applyLook(){ try { const a = currentLook().accent; if (a === 'flame') delete document.documentElement.dataset.look; else document.documentElement.dataset.look = a; } catch(e) {} }
 const flairSym = () => (LOOKS.flair.find(x => x.id === currentLook().flair) || {}).sym || '';
@@ -3328,26 +3566,30 @@ function gameCheck(silent){
   if (silent || g.rankSeen == null) {
     gPending = null;   // sample load / import / first run: drop celebrations queued for the old data
     const first = g.rankSeen == null && !silent && db.sessions.some(s => !s.sample);
-    g.rankSeen = gs.rankIdx; g.levelSeen = gs.level; g.seenDone = [...new Set([...g.seenDone, ...allDone, ...doneNow])].slice(-400); g.seenBadges = bs;
+    g.rankSeen = gs.rankIdx; g.levelSeen = gs.level; g.looksSeen = unlockedLooks(); g.seenDone = [...new Set([...g.seenDone, ...allDone, ...doneNow])].slice(-400); g.seenBadges = bs;
     if (gs.rankIdx >= PRO_RANK && !g.proUntil && !silent && db.sessions.some(s => !s.sample)) grantPro();
     save(); if (first) toast(`You start at ${gs.rank} · level ${gs.level} (${gs.xp.toLocaleString()} XP from your history)`); return;
   }
   const fresh = doneNow.filter(k => !g.seenDone.includes(k)), newBadges = bs.filter(b => !g.seenBadges.includes(b));
   g.seenDone = [...new Set([...g.seenDone, ...allDone, ...doneNow])].slice(-400); g.seenBadges = bs;
   let rankUp = null;
+  // looks unlock as a surprise: nothing in Profile says how, a toast says when
+  const looksNow = unlockedLooks(), newLooks = Array.isArray(g.looksSeen) ? looksNow.filter(x => !g.looksSeen.includes(x)) : [];
+  g.looksSeen = looksNow;
   if (gs.rankIdx > g.rankSeen) { rankUp = gs; if (gs.rankIdx >= PRO_RANK && !g.proUntil) grantPro(); }
   const lvlUp = gs.level > (g.levelSeen || 0); g.rankSeen = Math.max(g.rankSeen, gs.rankIdx); g.levelSeen = Math.max(g.levelSeen || 0, gs.level); save();
   fresh.forEach(k => { const c = cur.find(x => x.key === k); ForgedSync.emit('challenge.done', { key:k, xp:c.xp }); });
   newBadges.forEach(b => ForgedSync.emit('badge.earned', { id:b }));
   // queue celebrations (merged with any not yet shown); a later reset of the data drops them
-  if (!(rankUp || fresh.length || newBadges.length || lvlUp)) return;
-  const q = gPending || { fresh:[], badges:[] };   // resets (clear, import, sample) null gPending; a reload of the same data from another tab keeps it
+  if (!(rankUp || fresh.length || newBadges.length || lvlUp || newLooks.length)) return;
+  const q = gPending || { fresh:[], badges:[], looks:[] };   // resets (clear, import, sample) null gPending; a reload of the same data from another tab keeps it
   if (rankUp) q.rankUp = rankUp; if (lvlUp) q.lvl = gs;
-  q.fresh.push(...fresh.map(k => cur.find(x => x.key === k))); q.badges.push(...newBadges);
+  q.fresh.push(...fresh.map(k => cur.find(x => x.key === k))); q.badges.push(...newBadges); (q.looks = q.looks || []).push(...newLooks);
   const scheduled = gPending === q; gPending = q; if (scheduled) return;
   const run = () => {
     const p = gPending; gPending = null; if (!p) return;
     if (p.rankUp) return rankUpSheet(p.rankUp);
+    if (p.looks && p.looks.length) return actionToast('🔓 New look unlocked!', 'See', () => go('#/settings/looks'));
     if (p.fresh.length) { const c = p.fresh[0]; return actionToast(`Challenge complete: ${c.title} · +${c.xp} XP`, 'Share', () => shareSheet('challenge', c)); }
     if (p.badges.length) { const b = BADGES.find(x => x.id === p.badges[0]); return actionToast(`Badge earned: ${b.icon} ${b.name}`, 'See', () => go('#/badges')); }
     if (p.lvl) toast(`Level ${p.lvl.level} · ${p.lvl.rank}`);
@@ -3376,7 +3618,7 @@ function rankEmblem(ri, size = 96){
 function rankUpSheet(gs){
   const el = h(`<div class="rankup" id="rankUp">${rankEmblem(gs.rankIdx, 120)}<div class="eyebrow">Rank up</div><h3>${esc(gs.rank)}</h3><p class="dim">Level ${gs.level} · ${gs.xp.toLocaleString()} XP</p>
     ${gs.rankIdx >= PRO_RANK && game().proUntil ? `<div class="pronote" id="proNote">🎁 <b>Pro week earned.</b> 7 days of Pro, until ${fmtShort(game().proUntil)}.</div>` : ''}
-    ${unlocksAt(gs.level).length ? `<div class="hint">Unlocked: ${unlocksAt(gs.level).map(esc).join(', ')}. Pick them in Profile → Looks.</div>` : ''}
+    ${unlocksAt(gs.level).length ? `<div class="hint" id="newLook">🔓 New look unlocked! Pick it in Profile → Looks.</div>` : ''}
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px"><button type="button" class="btn primary block" id="shareRank">Share</button><button type="button" class="btn block ghost" data-cancel>Nice</button></div></div>`);
   el.querySelector('[data-cancel]').onclick = () => closeSheet();
   el.querySelector('#shareRank').onclick = () => { closeSheet(); whenSettled(() => shareSheet('rank', gs)); };
@@ -3411,13 +3653,13 @@ function chRow(c){
     ${c.done ? '' : `<span class="pill xp">+${c.xp} XP</span>`}</div>`;
 }
 function viewChallenges(){
-  setHeader('Challenges', '<button type="button" class="btn sm" data-logreps="pushups" id="logRepsTop">Log reps</button>', { parent:'#/' });
+  setHeader('Challenges', `${socialOn() ? '<a class="btn sm" href="#/friends" id="friendsTop">Friends</a> ' : ''}<button type="button" class="btn sm" data-logreps="pushups" id="logRepsTop">Log reps</button>`, { parent:'#/' });
   const cur = currentChallenges(), gs = gameState(), v = $('#view');
   const sec = (p, title) => { const l = cur.filter(c => c.p === p); return l.length ? `<div class="card" id="ch-${p}"><h2>${title} <small data-left>${timeLeft(l[0].to)}</small></h2>${p === 'd' ? '<div class="hint chintro">Quick no-equipment workouts, 5–15 minutes, anywhere. Pick your level.</div>' : ''}${l.map(chRow).join('')}</div>` : ''; };
   const fr = game().friend.filter(x => x.to >= iso(addDays(new Date(), -7)));
   v.innerHTML = `${rankChip()}${sec('d','Daily')}${sec('w','Weekly')}${sec('m','Monthly')}
     <div class="card" id="friendCard"><h2>Friend challenges</h2>${fr.length ? fr.map(friendRow).join('') : '<div class="hint" style="margin:-4px 0 8px">Send a challenge link. Your friend joins on their own phone and tracks it with their own workouts (self-reported, no accounts).</div>'}
-      <button type="button" class="btn block" id="challengeFriend" style="margin-top:8px">Challenge a friend</button></div>
+      <button type="button" class="btn block" id="challengeFriend" style="margin-top:8px">Challenge a friend</button>${socialOn() ? '<a class="list-row" href="#/friends" id="friendsLink" style="text-decoration:none;color:inherit;margin-top:6px"><div class="grow"><b>Friends &amp; head-to-head</b><small>Live standings with friends (optional account)</small></div>›</a>' : ''}</div>
     <div class="hint" style="padding:0 6px 20px">New daily challenges at midnight, weekly on Monday, monthly on the 1st. Progress comes from what you log. Workouts added more than 7 days late don't count toward challenges. ${gs.done.length} completed so far.</div>`;
   v.querySelectorAll('[data-sharech]').forEach(b => b.onclick = () => shareSheet('challenge', cur.find(c => c.key === b.dataset.sharech)));
   $('#challengeFriend').onclick = friendSheet;
@@ -3426,10 +3668,10 @@ function viewChallenges(){
 /* ---------- friend challenge links (no server: the challenge rides in the URL) ---------- */
 const b64u = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64u = s => decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))));
-function friendCode(t, days, from){ return b64u(JSON.stringify({ v:1, id:t.id, d:days, f:String(from||'').slice(0, 30), s:today() })); }
+function friendCode(t, days, from, inv){ return b64u(JSON.stringify({ v:1, id:t.id, d:days, f:String(from||'').slice(0, 30), s:today(), ...(inv && INVITE_RE.test(inv) ? { i:inv } : {}) })); }
 function readFriendCode(code){
   try { const o = JSON.parse(unb64u(code)); const t = CH_POOL.find(x => x.id === o.id); if (!t || o.v !== 1 || !isoOk(o.s)) return null;
-    const days = clamp(Number(o.d) || 7, 1, 31); return { code, tid:t.id, title:t.t, from:o.f || 'A friend', days }; } catch(e) { return null; }
+    const days = clamp(Number(o.d) || 7, 1, 31); return { code, tid:t.id, title:t.t, from:o.f || 'A friend', days, inv:typeof o.i === 'string' && INVITE_RE.test(o.i) ? o.i : '' }; } catch(e) { return null; }
 }
 function friendRow(x){
   const t = CH_POOL.find(c => c.id === x.tid); if (!t) return '';
@@ -3439,7 +3681,8 @@ function friendRow(x){
 function friendSheet(){
   const pool = CH_POOL.filter(t => t.p !== 'd' && (!t.need || t.need()));
   let tid = pool[0].id, days = 7;
-  const el = h(`<div><h3>Challenge a friend</h3><div class="hint" style="margin:-6px 0 12px">They open the link on their phone and track it with their own workouts. No accounts, nothing uploaded.</div></div>`);
+  const live = !!sUser();
+  const el = h(`<div><h3>Challenge a friend</h3><div class="hint" style="margin:-6px 0 12px">${live ? 'They open the link on their phone. Signed in, they can add you as a friend from it and race you live; otherwise they track it on their own phone.' : 'They open the link on their phone and track it with their own workouts. No accounts, nothing uploaded.'}</div></div>`);
   const list = h(`<div class="focuschips" id="friendPick">${pool.map(t => `<button type="button" data-tid="${t.id}" class="${t.id === tid ? 'on' : ''}">${esc(t.t)}</button>`).join('')}</div>`);
   list.querySelectorAll('button').forEach(b => b.onclick = () => { tid = b.dataset.tid; list.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
   el.appendChild(field('Challenge', list));
@@ -3447,7 +3690,8 @@ function friendSheet(){
   const name = h(`<input class="input" type="text" id="friendFrom" placeholder="Your name (shown to them)" value="${esc(db.profile.name||'')}">`); el.appendChild(field('From', name));
   const btn = h('<button type="button" class="btn primary block" id="friendSend" style="margin-top:12px">Share challenge link</button>'); el.appendChild(btn);
   btn.onclick = async () => {
-    const t = CH_POOL.find(x => x.id === tid), url = location.href.split('#')[0] + '#/join/' + friendCode(t, days, name.value.trim()), text = `${name.value.trim() || 'I'} challenged you on Forged: ${t.t} (${days} days)`;
+    let inv = ''; if (live) { inv = sCache().invite || ''; if (!inv) try { inv = await Cloud().myInvite(); } catch(e) { inv = ''; } }
+    const t = CH_POOL.find(x => x.id === tid), url = location.href.split('#')[0] + '#/join/' + friendCode(t, days, name.value.trim(), inv), text = `${name.value.trim() || 'I'} challenged you on Forged: ${t.t} (${days} days)`;
     window.__lastFriendUrl = url;
     try { if (navigator.share) { await navigator.share({ title:'Forged challenge', text, url }); toast('Challenge sent'); }
       else if (navigator.clipboard) { await navigator.clipboard.writeText(`${text}\n${url}`); toast('Link copied. Paste it to your friend'); }
@@ -3461,8 +3705,322 @@ function viewJoin(code){
   setHeader('Challenge', '', { parent:'#/challenges' });
   const already = game().friend.some(f => f.code === x.code);
   $('#view').innerHTML = `<div class="card" id="joinCard"><h2>${esc(x.from)} challenged you</h2><div class="joint">${esc(x.title)}</div><div class="hint">${x.days} days from when you accept. Progress comes from your own logged workouts and stays on your phone.</div>
-    <button type="button" class="btn primary block" id="joinGo" style="margin-top:14px">${already ? 'Already joined: see challenges' : 'Accept challenge'}</button></div>`;
+    <button type="button" class="btn primary block" id="joinGo" style="margin-top:14px">${already ? 'Already joined: see challenges' : 'Accept challenge'}</button></div>
+    ${x.inv && socialOn() ? `<div class="card" id="joinLive"><h2>Compete live</h2><div class="hint" style="margin:-4px 0 10px">Add ${esc(x.from)} as a friend to see each other's progress and start a head-to-head.</div><button type="button" class="btn block" id="joinFriend">${sUser() ? `Add ${esc(x.from)} as a friend` : `Sign in to add ${esc(x.from)}`}</button></div>` : ''}`;
+  const jf = $('#joinFriend'); if (jf) jf.onclick = () => { if (sUser()) socialAccept(x.inv); else { sLS.set('invite', x.inv); go('#/signin'); } };
   $('#joinGo').onclick = () => { if (!already) { game().friend.push({ code:x.code, tid:x.tid, title:x.title, from:x.from, start:today(), to:iso(addDays(new Date(), x.days - 1)) }); save(); toast('Challenge accepted'); ForgedSync.emit('friend.join', { tid:x.tid }); } go('#/challenges'); };
+}
+
+/* ---------- 3.4.0: friends, head-to-head, leaderboards (optional account; network in social.js) ----------
+   Off unless FORGED_CONFIG.social is true (config.js) or this phone opted into the preview with ?social=1.
+   Local data stays the source of truth. Signed in, per-day counts sync through ForgedSync + an offline queue. */
+const CFG = window.FORGED_CONFIG || {};
+(() => { try { const q = new URLSearchParams(location.search).get('social');
+  if (q === '1') localStorage.setItem('forged.social.preview', '1'); if (q === '0') localStorage.removeItem('forged.social.preview'); } catch(e) {} })();
+const socialOn = () => { try { return !!(window.ForgedCloud && (CFG.social || localStorage.getItem('forged.social.preview') === '1')); } catch(e) { return false; } };
+const Cloud = () => window.ForgedCloud;
+const sUser = () => socialOn() ? Cloud().user : null;
+const S_ROUTES = ['friends','signin','invite','h2h'];
+const S_METRIC = { sessions:{ label:'Sessions', unit:'sessions' }, pushups:{ label:'Push-ups', unit:'push-ups' }, mat_minutes:{ label:'Mat hours', unit:'h' }, daily_streak:{ label:'Daily challenge streak', unit:'days in a row' } };
+const S_SYNC = ['sessions','xp','pushups','mat_minutes','daily_done'];
+const AV_COLORS = { flame:'#F2711C', ember:'#E5484D', gold:'#F5C542', steel:'#8FB0D9', jade:'#6FD3A8', violet:'#B48CF2', sky:'#38BDF8', rose:'#F472B6' };
+const INVITE_RE = /^[A-HJ-NP-Z2-9]{8}$/;
+const sLS = {
+  get(k, d){ try { const v = localStorage.getItem('forged.social.' + k); return v == null ? d : JSON.parse(v); } catch(e) { return d; } },
+  set(k, v){ try { localStorage.setItem('forged.social.' + k, JSON.stringify(v)); } catch(e) {} },
+  del(k){ try { localStorage.removeItem('forged.social.' + k); } catch(e) {} }
+};
+const sScore = (metric, v) => metric === 'mat_minutes' ? `${Math.round((v || 0) / 6) / 10}` : String(v || 0);
+const sAvatar = (p, cls = '') => `<span class="av ${cls}" style="--av:${AV_COLORS[p && p.avatar_color] || AV_COLORS.flame}" aria-hidden="true">${esc((p && p.avatar_initial) || '?')}</span>`;
+const sRank = i => (RANKS[clamp(Number(i) || 0, 0, RANKS.length - 1)] || RANKS[0])[0];
+const sAgo = t => { if (!t) return 'not yet'; const m = Math.round((Date.now() - t) / 6e4); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+
+/* What leaves the phone: per-day counts for the last 7 days. Nothing else (no notes, weight, food, details). */
+function socialDaily(){
+  const gs = gameState(), out = [], combatCats = ['grappling','striking','mma'];
+  for (let i = 0; i < 7; i++) {
+    const d = iso(addDays(new Date(), -i)), ss = db.sessions.filter(s => s.date === d && !s.sample && gFair(s)), n = Math.min(4, ss.length);
+    out.push({ day:d, sessions:n, xp:Math.min(XP_LOG_CAP, n * XP_LOG), pushups:Math.min(3000, Math.round(repTotal('pushups', d, d))),
+      mat_minutes:Math.min(480, Math.round(sumBy(ss.filter(s => combatCats.includes(s.category)), sessMin))),
+      daily_done:Math.min(3, gs.done.filter(r => r.p === 'd' && String(r.key).startsWith(d + ':')).length) });
+  }
+  return out;
+}
+/* Offline queue: day totals that differ from what the server last accepted. Survives reloads and offline days. */
+function socialQueueDiff(){
+  const sent = sLS.get('sent', {}), q = sLS.get('queue', {}), oldest = iso(addDays(new Date(), -6));
+  socialDaily().forEach(r => S_SYNC.forEach(m => { const k = `${m}|${r.day}`;
+    if (sent[k] === r[m] || (sent[k] === undefined && r[m] === 0)) delete q[k]; else q[k] = r[m]; }));
+  Object.keys(q).forEach(k => { if (k.split('|')[1] < oldest) delete q[k]; });
+  sLS.set('queue', q); return q;
+}
+function socialProfile(){
+  const gs = gameState(), name = String(db.profile.name || '').trim().slice(0, 30) || 'Fighter';
+  return { name, color:AV_COLORS[db.profile.avatarColor] ? db.profile.avatarColor : 'flame', rank:gs.rankIdx, level:clamp(gs.level, 1, 200), xp:clamp(gs.xp, 0, 5e6), belt:enabled('grappling') ? String(db.profile.belt || '') : '' };
+}
+let sTimer = null, sBusy = null, sPoll = null;
+function socialSchedule(ms = 3000){ if (!sUser()) return; clearTimeout(sTimer); sTimer = setTimeout(() => socialSync(), ms); }
+async function socialSync(force){
+  if (!sUser()) return;
+  if (sBusy) return sBusy;
+  const q = socialQueueDiff();
+  if (navigator.onLine === false) { socialStatus(); return; }
+  sBusy = (async () => {
+    try {
+      const prof = socialProfile(), key = JSON.stringify(prof);
+      if (force || sLS.get('prof', '') !== key) { await Cloud().saveProfile(prof); sLS.set('prof', key); }
+      const keys = Object.keys(q).sort((a, b) => (a.startsWith('sessions') ? 0 : 1) - (b.startsWith('sessions') ? 0 : 1)).slice(0, 64);
+      if (keys.length) {
+        const entries = keys.map(k => { const [metric, day] = k.split('|'); return { metric, day, value:q[k] }; });
+        await Cloud().submit(entries);   // rejected rows (e.g. too old) are dropped too, so the queue can't loop
+        const sent = sLS.get('sent', {}), q2 = sLS.get('queue', {}), oldest = iso(addDays(new Date(), -8));
+        entries.forEach(e => { const k = `${e.metric}|${e.day}`; sent[k] = e.value; if (q2[k] === e.value) delete q2[k]; });
+        Object.keys(sent).forEach(k => { if (k.split('|')[1] < oldest) delete sent[k]; });
+        sLS.set('sent', sent); sLS.set('queue', q2);
+      }
+      sLS.set('last', Date.now());
+    } catch(e) { if (!e.offline) console.warn('Forged sync:', e.message); if (e.auth) await Cloud().signOut(); }
+  })();
+  const mine = sBusy; mine.finally(() => { if (sBusy === mine) sBusy = null; socialStatus(); });   // may settle synchronously: clear after assignment
+  return mine;
+}
+function socialStatus(){
+  const el = $('#sSync'); if (!el) return;
+  const n = Object.keys(sLS.get('queue', {})).length;
+  el.textContent = navigator.onLine === false ? `Offline · ${n ? `${n} update${n === 1 ? '' : 's'} waiting to sync` : 'nothing waiting'}` : n ? `${n} update${n === 1 ? '' : 's'} waiting to sync` : `Synced ${sAgo(sLS.get('last', 0))}`;
+}
+function socialAttach(u){
+  ForgedSync.enabled = !!u;
+  ForgedSync.adapter = u ? { push:() => socialSchedule() } : null;
+  if (!u) return;
+  socialSchedule(400);
+  const inv = sLS.get('invite', ''); if (inv) { sLS.del('invite'); socialAccept(inv); }
+}
+function socialClearLocal(){ ['queue','sent','cache','prof','last','invite','openH2h'].forEach(k => sLS.del(k)); }
+async function socialRefresh(){
+  await socialSync();
+  const [invite, board, chs] = await Promise.all([sLS.get('cache', {}).invite || Cloud().myInvite(), Cloud().leaderboard(), Cloud().challenges()]);
+  const boards = {};
+  await Promise.all(chs.filter(c => c.ends_on >= iso(addDays(new Date(), -30))).slice(0, 12).map(c => Cloud().board(c.id).then(b => { boards[c.id] = b; }).catch(() => {})));
+  const cache = { invite, board, challenges:chs, boards, at:Date.now(), uid:sUser() && sUser().id };
+  sLS.set('cache', cache); return cache;
+}
+const sCache = () => { const c = sLS.get('cache', {}); return c.uid && sUser() && c.uid === sUser().id ? c : {}; };
+function socialPoll(fn){ clearInterval(sPoll); sPoll = setInterval(() => { if (!document.hidden && $('#sheet').hidden && S_ROUTES.includes(curRoute)) fn(); }, 20000); }
+function socialBoot(){
+  if (!socialOn()) return;
+  Cloud().onAuth(u => { socialAttach(u); if (S_ROUTES.includes(curRoute)) route(); });
+  const fromLink = /[?&]code=/.test(location.search);
+  if (Cloud().hasStoredSession() || fromLink) Cloud().init().then(u => {
+    if (fromLink) { history.replaceState(history.state, '', location.pathname + location.hash); if (!u) toast('That sign-in link opened outside the app. Enter the code from the email instead.'); }
+    socialAttach(u);
+  }).catch(() => {});
+  window.addEventListener('online', () => socialSync());
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) socialSchedule(500); });
+}
+async function socialAccept(code){
+  try { const f = await Cloud().acceptInvite(code); toast(f.already ? `You and ${f.display_name} are already friends` : `You and ${f.display_name} are now friends`); sLS.set('openH2h', f.friend_id); go('#/friends'); return f; }
+  catch(e) { toast(e.message); return null; }
+}
+const privacyCard = () => `<div class="card privacy" id="privacyCard"><h2>What friends see</h2>
+  <ul><li>Your name, initial, rank, level, XP and belt</li><li>Daily counts: sessions, push-ups, mat time, daily challenges done</li></ul>
+  <p><b>Never shared:</b> notes, body weight, food, injuries or workout details. Your full log stays on this phone.</p></div>`;
+
+/* ----- Friends screen ----- */
+async function viewFriends(){
+  if (!socialOn()) { replacing = true; location.replace('#/'); return; }
+  setHeader('Friends', '', { parent:'#/challenges' });
+  const v = $('#view');
+  if (!Cloud().loaded && Cloud().hasStoredSession()) { v.innerHTML = '<div class="card"><div class="hint">Loading…</div></div>'; try { await Cloud().init(); } catch(e) {} if (curRoute !== 'friends') return; }
+  const u = sUser();
+  if (!u) {
+    v.innerHTML = `<div class="card" id="friendsIntro"><h2>Train with friends</h2><p class="dim" style="margin:-4px 0 14px">Add friends, see who trained most this week, and go head-to-head on sessions, push-ups, mat hours or daily challenge streaks.</p>
+      <a class="btn primary block" href="#/signin" id="goSignin">Sign in with email</a>${CFG.apple ? '<button type="button" class="btn block" id="appleSignin" style="margin-top:10px"> Sign in with Apple</button>' : ''}
+      <div class="hint" style="margin-top:10px">Accounts are optional. Everything else in Forged works offline without one.</div></div>${privacyCard()}`;
+    const ap = $('#appleSignin'); if (ap) ap.onclick = () => Cloud().signInWithApple().catch(e => toast(e.message));
+    return;
+  }
+  const render = c => {
+    if (curRoute !== 'friends') return;
+    const me = (c.board || []).find(x => x.is_me), friends = (c.board || []).filter(x => !x.is_me), prof = socialProfile();
+    const meRow = me || { display_name:prof.name, avatar_initial:prof.name[0].toUpperCase(), avatar_color:prof.color, rank_idx:prof.rank, level:prof.level };
+    const chs = c.challenges || [], link = c.invite ? `${location.origin}${location.pathname}#/invite/${c.invite}` : '';
+    v.innerHTML = `${navigator.onLine === false ? `<div class="card offline" id="offlineNote">You're offline. Showing what was last synced${c.at ? ` (${sAgo(c.at)})` : ''}. Your progress syncs when you're back online.</div>` : ''}
+      <div class="card" id="youCard"><div class="frow me">${sAvatar(meRow, 'lg')}<div class="grow"><b>${esc(meRow.display_name)}</b><small>${esc(sRank(meRow.rank_idx))} · level ${meRow.level} · ${esc(u.email)}</small></div><button type="button" class="btn sm" id="editMe">Edit</button></div></div>
+      <div class="card" id="inviteCard"><h2>Add friends</h2>
+        <div class="invrow"><div><small class="dim">Your invite code</small><div class="invcode" id="myCode">${esc(c.invite || '········')}</div></div><button type="button" class="btn primary" id="shareInvite" ${link ? '' : 'disabled'}>Share link</button></div>
+        <div class="addrow"><input class="input" id="addCode" placeholder="Friend's code" autocapitalize="characters" autocomplete="off" maxlength="8"><button type="button" class="btn" id="addFriend">Add</button></div></div>
+      <div class="card" id="h2hCard"><h2>Head-to-head</h2>${chs.length ? chs.map(ch => h2hRow(ch, (c.boards || {})[ch.id] || [])).join('') : `<div class="hint" style="margin:-4px 0 10px">${friends.length ? 'Pick a friend and a metric. Progress comes from what you both log.' : 'Add a friend first, then challenge them.'}</div>`}
+        <button type="button" class="btn block" id="newH2h" ${friends.length ? '' : 'disabled'}>Challenge a friend</button></div>
+      <div class="card" id="boardCard"><h2>This week <small>Mon–Sun</small></h2>${(c.board || [meRow]).map(friendBoardRow).join('')}
+        ${friends.length ? '' : '<div class="hint">No friends yet. Share your code or link.</div>'}<div class="hint">Ranked by verified XP from logging (max 30 a day), then sessions.</div></div>
+      ${privacyCard()}
+      <div class="card" id="acctCard"><h2>Account</h2><div class="hint" id="sSync" style="margin:-4px 0 10px"></div>
+        <div class="btnrow"><button type="button" class="btn" id="syncNow">Sync now</button><button type="button" class="btn" id="signOut">Sign out</button></div>
+        <button type="button" class="btn block danger ghost" id="delAcct" style="margin-top:10px">Delete account</button>
+        <div class="hint">Deleting your account removes your profile, friends and challenge progress from the server. Your workouts on this phone stay.</div></div>`;
+    socialStatus();
+    $('#editMe').onclick = profileSheet;
+    $('#shareInvite').onclick = () => shareLink(link, `Add me on Forged (code ${c.invite})`);
+    $('#addFriend').onclick = () => { const code = $('#addCode').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (!INVITE_RE.test(code)) { toast('Codes are 8 letters and numbers'); return; } socialAccept(code).then(f => { if (f) refresh(); }); };
+    $('#newH2h').onclick = () => h2hSheet(c);
+    $('#syncNow').onclick = async () => { await socialSync(true); refresh(); };
+    $('#signOut').onclick = async () => { await Cloud().signOut(); socialClearLocal(); toast('Signed out'); route(); };
+    $('#delAcct').onclick = async () => { if (!(await confirmSheet('Delete your account?', 'This removes your profile, friends and challenge results from the server for good. Your workouts on this phone are not touched.', 'Delete account'))) return;
+      try { await Cloud().deleteAccount(); socialClearLocal(); toast('Account deleted'); route(); } catch(e) { toast(e.message); } };
+    v.querySelectorAll('[data-h2h]').forEach(r => r.onclick = e => { if (e.target.closest('button')) return; go('#/h2h/' + r.dataset.h2h); });
+    v.querySelectorAll('[data-acc]').forEach(b => b.onclick = () => Cloud().respond(b.dataset.acc, b.dataset.yes === '1').then(() => { toast(b.dataset.yes === '1' ? 'Challenge accepted' : 'Challenge declined'); refresh(); }).catch(e => toast(e.message)));
+    v.querySelectorAll('[data-fmenu]').forEach(b => b.onclick = () => friendMenu((c.board || []).find(x => x.user_id === b.dataset.fmenu), c));
+    const open = sLS.get('openH2h', ''); if (open && friends.some(f => f.user_id === open)) { sLS.del('openH2h'); whenSettled(() => h2hSheet(c, open)); }
+  };
+  const refresh = () => socialRefresh().then(render).catch(e => { if (curRoute === 'friends') { if (!e.offline) toast(e.message); render(sCache()); } });
+  render(sCache());
+  refresh();
+  socialPoll(refresh);
+}
+function friendBoardRow(x){
+  return `<div class="frow${x.is_me ? ' me' : ''}" data-uid="${esc(x.user_id || '')}"><span class="place">${x.place || ''}</span>${sAvatar(x)}<div class="grow"><b>${esc(x.display_name)}${x.is_me ? ' <span class="pill">You</span>' : ''}</b><small>${esc(sRank(x.rank_idx))} · level ${x.level || 1}</small></div>
+    <div class="fstat"><b>${x.week_sessions || 0}</b><small>${(x.week_sessions || 0) === 1 ? 'session' : 'sessions'} · ${x.week_xp || 0} XP</small></div>${x.is_me ? '' : `<button type="button" class="btn sm ghost fmenu" data-fmenu="${esc(x.user_id)}" aria-label="More for ${esc(x.display_name)}">⋯</button>`}</div>`;
+}
+function h2hRow(ch, board){
+  const m = S_METRIC[ch.metric] || S_METRIC.sessions, me = board.find(b => b.is_me), them = board.filter(b => !b.is_me), lead = board[0];
+  const vs = them.length === 1 ? `vs ${esc(them[0].display_name)}` : `${board.length} people`, ended = ch.ends_on < today();
+  const status = ch.my_status === 'invited' ? `<div class="btnrow" style="margin-top:8px"><button type="button" class="btn sm primary" data-acc="${esc(ch.id)}" data-yes="1">Accept</button><button type="button" class="btn sm" data-acc="${esc(ch.id)}" data-yes="0">Decline</button></div>` : '';
+  const line = me ? `You ${sScore(ch.metric, me.score)}${them.length === 1 ? ` · ${esc(them[0].display_name)} ${sScore(ch.metric, them[0].score)}` : lead ? ` · leader ${esc(lead.display_name)} ${sScore(ch.metric, lead.score)}` : ''}` : '';
+  return `<div class="list-row h2hrow" data-h2h="${esc(ch.id)}"><div class="grow"><b>${esc(ch.title || m.label)} <span class="dim">${vs}</span></b><small>${line}${line ? ' · ' : ''}${ended ? 'Ended' : ch.starts_on > today() ? `Starts ${fmtShort(ch.starts_on)}` : timeLeft(ch.ends_on)}${ch.my_status === 'invited' ? ' · invited' : ''}</small>${status}</div>›</div>`;
+}
+async function shareLink(url, text){
+  if (!url) return;
+  try { if (navigator.share) { await navigator.share({ title:'Forged', text, url }); }
+    else if (navigator.clipboard) { await navigator.clipboard.writeText(`${text}\n${url}`); toast('Link copied'); }
+    else prompt('Copy this link', url); } catch(e) { if (e && e.name !== 'AbortError') toast('Could not share'); }
+  window.__lastInviteUrl = url;
+}
+function profileSheet(){
+  let color = AV_COLORS[db.profile.avatarColor] ? db.profile.avatarColor : 'flame';
+  const el = h(`<div><h3>Your public profile</h3><div class="hint" style="margin:-6px 0 12px">Friends see this name, an initial and your rank.</div></div>`);
+  const nm = h(`<input class="input" id="sName" maxlength="30" value="${esc(db.profile.name || '')}" placeholder="Name friends know you by">`); el.appendChild(field('Name', nm));
+  const sw = h(`<div class="avpick" id="avPick">${Object.entries(AV_COLORS).map(([k, c]) => `<button type="button" data-av="${k}" class="${k === color ? 'on' : ''}" style="--av:${c}" aria-label="${k}"></button>`).join('')}</div>`);
+  sw.querySelectorAll('button').forEach(b => b.onclick = () => { color = b.dataset.av; sw.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+  el.appendChild(field('Colour', sw));
+  const btn = h('<button type="button" class="btn primary block" id="sSave" style="margin-top:12px">Save</button>'); el.appendChild(btn);
+  btn.onclick = async () => { db.profile.name = nm.value.trim().slice(0, 30); db.profile.avatarColor = color; save(); closeSheet(); await socialSync(true); toast('Profile saved'); route(); };
+  openSheet(el, null, { closeLabel:'Cancel' });
+}
+function friendMenu(f, c){
+  if (!f) return;
+  const el = h(`<div><h3>${esc(f.display_name)}</h3><p class="dim" style="margin:-6px 0 16px">${esc(sRank(f.rank_idx))} · level ${f.level} · ${f.week_sessions || 0} sessions this week</p>
+    <div style="display:flex;flex-direction:column;gap:10px"><button type="button" class="btn primary block" id="fmH2h">Challenge ${esc(f.display_name)}</button><button type="button" class="btn block danger ghost" id="fmRemove">Remove friend</button></div></div>`);
+  el.querySelector('#fmH2h').onclick = () => { closeSheet(); whenSettled(() => h2hSheet(c, f.user_id)); };
+  el.querySelector('#fmRemove').onclick = async () => { closeSheet(); try { await Cloud().removeFriend(f.user_id); toast(`Removed ${f.display_name}`); route(); } catch(e) { toast(e.message); } };
+  openSheet(el, null, { closeLabel:'Close' });
+}
+function h2hSheet(c, pre){
+  const friends = (c.board || []).filter(x => !x.is_me); if (!friends.length) return;
+  const pick = new Set([pre && friends.some(f => f.user_id === pre) ? pre : friends[0].user_id]); let metric = 'sessions', days = 7;
+  const el = h(`<div><h3>Challenge a friend</h3><div class="hint" style="margin:-6px 0 12px">Starts today. Progress syncs from what each of you logs; you'll see live standings.</div></div>`);
+  const fl = h(`<div class="focuschips" id="h2hFriends">${friends.map(f => `<button type="button" data-f="${esc(f.user_id)}" class="${pick.has(f.user_id) ? 'on' : ''}">${esc(f.display_name)}</button>`).join('')}</div>`);
+  fl.querySelectorAll('button').forEach(b => b.onclick = () => { if (pick.has(b.dataset.f)) { if (pick.size > 1) pick.delete(b.dataset.f); } else pick.add(b.dataset.f); fl.querySelectorAll('button').forEach(x => x.classList.toggle('on', pick.has(x.dataset.f))); });
+  el.appendChild(field('Who (pick 2 or more for a group)', fl));
+  el.appendChild(field('Metric', seg(Object.entries(S_METRIC).map(([k, m]) => [k, m.label]), metric, x => metric = x, true)));
+  el.appendChild(field('How long', seg([[7,'1 week'],[14,'2 weeks'],[30,'30 days']], days, x => days = x)));
+  const btn = h('<button type="button" class="btn primary block" id="h2hGo" style="margin-top:12px">Start challenge</button>'); el.appendChild(btn);
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try { const id = await Cloud().createChallenge({ kind:pick.size > 1 ? 'group' : 'h2h', metric, start:today(), end:iso(addDays(new Date(), days - 1)), friends:[...pick] });
+      closeSheet(); toast('Challenge sent'); whenSettled(() => go('#/h2h/' + id)); }
+    catch(e) { btn.disabled = false; toast(e.message); }
+  };
+  openSheet(el, null, { closeLabel:'Cancel' });
+}
+
+/* ----- head-to-head detail: live standings ----- */
+async function viewH2h(id){
+  if (!socialOn()) { replacing = true; location.replace('#/'); return; }
+  setHeader('Head-to-head', '', { parent:'#/friends' });
+  const v = $('#view');
+  if (!Cloud().loaded && Cloud().hasStoredSession()) { try { await Cloud().init(); } catch(e) {} if (curRoute !== 'h2h') return; }
+  if (!sUser()) { go('#/friends'); return; }
+  const render = (ch, board) => {
+    if (curRoute !== 'h2h') return;
+    if (!ch) { v.innerHTML = '<div class="card"><div class="hint">Loading…</div></div>'; return; }
+    const m = S_METRIC[ch.metric] || S_METRIC.sessions, max = Math.max(1, ...board.map(b => b.score || 0)), ended = ch.ends_on < today();
+    v.innerHTML = `${navigator.onLine === false ? '<div class="card offline" id="offlineNote">You\'re offline. Standings are from the last sync.</div>' : ''}
+      <div class="card" id="h2hHead"><div class="eyebrow">${ch.kind === 'group' ? `Group challenge · ${board.length} people` : `You vs ${esc((board.find(x => !x.is_me) || {}).display_name || 'friend')}`}</div><h2 class="h2ht">${esc(ch.title || m.label)}</h2>
+        <div class="dim">${fmtShort(ch.starts_on)} – ${fmtShort(ch.ends_on)} · ${ended ? 'Ended' : timeLeft(ch.ends_on)}</div></div>
+      <div class="card" id="h2hBoard"><h2>Standings <small>${esc(m.unit)}</small></h2>${board.map(b => `<div class="brow${b.is_me ? ' me' : ''}"><span class="place">${b.place}</span>${sAvatar(b)}<div class="grow"><b>${esc(b.display_name)}${b.is_me ? ' <span class="pill">You</span>' : ''}${b.status === 'invited' ? ' <span class="dim">(invited)</span>' : ''}</b><span class="sgbar"><i style="width:${Math.round((b.score || 0) / max * 100)}%"></i></span></div><b class="bscore" data-score>${sScore(ch.metric, b.score)}</b></div>`).join('')}
+        <div class="hint">Synced from your log automatically. ${ended && board[0] ? `${esc(board[0].display_name)} won.` : 'Updates every 20 seconds while this screen is open.'}</div>
+        <div class="hint" id="sSync"></div></div>
+      ${ch.my_status === 'invited' ? `<div class="btnrow"><button type="button" class="btn primary" id="h2hAccept">Accept</button><button type="button" class="btn" id="h2hDecline">Decline</button></div>` : `<button type="button" class="btn block ghost" id="h2hLeave">Leave challenge</button>`}`;
+    socialStatus();
+    const ac = $('#h2hAccept'), dc = $('#h2hDecline'), lv = $('#h2hLeave');
+    if (ac) ac.onclick = () => Cloud().respond(id, true).then(() => { toast('Challenge accepted'); refresh(); }).catch(e => toast(e.message));
+    if (dc) dc.onclick = () => Cloud().respond(id, false).then(() => { toast('Challenge declined'); go('#/friends'); }).catch(e => toast(e.message));
+    if (lv) lv.onclick = async () => { if (!(await confirmSheet('Leave this challenge?', 'Your progress stops counting here. You can still see your own log.', 'Leave'))) return; Cloud().leave(id).then(() => { toast('Left the challenge'); go('#/friends'); }).catch(e => toast(e.message)); };
+  };
+  const fromCache = () => { const c = sCache(); return [(c.challenges || []).find(x => x.id === id), (c.boards || {})[id] || []]; };
+  const refresh = async () => { try { await socialSync(); const [chs, board] = await Promise.all([Cloud().challenges(), Cloud().board(id)]);
+      const c = sCache(); if (c.uid) { c.challenges = chs; c.boards = { ...(c.boards || {}), [id]:board }; sLS.set('cache', c); }
+      const ch = chs.find(x => x.id === id); if (!ch) { toast('That challenge is no longer available'); go('#/friends'); return; } render(ch, board); }
+    catch(e) { if (curRoute === 'h2h') { if (!e.offline) toast(e.message); const [ch, b] = fromCache(); render(ch, b); } } };
+  render(...fromCache()); refresh(); socialPoll(refresh);
+}
+
+/* ----- sign in: email one-time code (magic link works too when opened on this phone) ----- */
+function viewSignin(){
+  if (!socialOn()) { replacing = true; location.replace('#/'); return; }
+  setHeader('Sign in', '', { parent:'#/friends' });
+  if (sUser()) { go('#/friends'); return; }
+  const inv = sLS.get('invite', '');
+  $('#view').innerHTML = `<div class="card" id="signinCard"><h2>Sign in or create an account</h2><p class="dim" style="margin:-4px 0 14px">We'll email you a 6-digit code. No password.${inv ? ' Then we add your friend.' : ''}</p>
+    <div class="field"><label for="siEmail">Email</label><input class="input" id="siEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="off" placeholder="you@example.com" value="${esc(sLS.get('email', ''))}"></div>
+    <button type="button" class="btn primary block" id="siSend">Email me a code</button>
+    <div id="siCodeWrap" hidden><div class="field" style="margin-top:14px"><label for="siCode">Code from the email</label><input class="input otp" id="siCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456"></div>
+      <button type="button" class="btn primary block" id="siVerify">Sign in</button><button type="button" class="btn block ghost" id="siResend" style="margin-top:8px">Send a new code</button>
+      <div class="hint">On this phone you can also tap the link in the email.</div></div>
+    ${CFG.apple ? '<button type="button" class="btn block" id="appleSignin" style="margin-top:12px"> Sign in with Apple</button>' : ''}
+    <div class="hint" style="margin-top:12px">Accounts are optional and only used for friends and head-to-head. Everything else works offline without one.</div></div>${privacyCard()}`;
+  const em = $('#siEmail'), wrap = $('#siCodeWrap'), code = $('#siCode');
+  let sentAt = 0;
+  const send = async () => {
+    const e = em.value.trim(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) { toast('Enter your email address'); em.focus(); return; }
+    if (Date.now() - sentAt < 60000) { toast('Wait a minute before asking for another code'); return; }
+    const b = $('#siSend'); b.disabled = true;
+    try { await Cloud().sendCode(e); sentAt = Date.now(); sLS.set('email', e); wrap.hidden = false; b.textContent = 'Code sent'; b.classList.remove('primary'); toast(`Code sent to ${e}`); code.focus(); }
+    catch(err) { b.disabled = false; toast(err.message); }
+  };
+  $('#siSend').onclick = send; $('#siResend').onclick = () => { $('#siSend').disabled = false; send(); };
+  em.onkeydown = e => { if (e.key === 'Enter') send(); };
+  const verify = async () => {
+    const t = code.value.replace(/\D/g, ''); if (t.length < 6) { toast('Enter the code from the email'); return; }
+    const b = $('#siVerify'); b.disabled = true;
+    try { await Cloud().verifyCode(em.value.trim(), t); toast('Signed in'); socialAttach(sUser()); if (!sLS.get('invite', '') && curRoute === 'signin') go('#/friends'); }
+    catch(err) { b.disabled = false; toast(err.message); }
+  };
+  $('#siVerify').onclick = verify; code.oninput = () => { if (code.value.replace(/\D/g, '').length === 6) verify(); };
+  const ap = $('#appleSignin'); if (ap) ap.onclick = () => Cloud().signInWithApple().catch(e => toast(e.message));
+}
+
+/* ----- #/invite/<code> ----- */
+async function viewInvite(code){
+  if (!socialOn()) { replacing = true; location.replace('#/'); return; }
+  code = String(code || '').toUpperCase();
+  setHeader('Invite', '', { parent:'#/' });
+  const v = $('#view');
+  if (!INVITE_RE.test(code)) { v.innerHTML = '<div class="card"><h2>Invite not valid</h2><div class="hint">Ask your friend to send the link again.</div></div>'; return; }
+  v.innerHTML = '<div class="card" id="inviteView"><div class="hint">Loading…</div></div>';
+  try { if (!Cloud().loaded) await Cloud().init(); } catch(e) {}
+  let p = null, err = '';
+  try { p = await Cloud().invitePreview(code); } catch(e) { err = e.message; }
+  if (curRoute !== 'invite') return;
+  const name = p ? p.display_name : 'A friend';
+  v.innerHTML = `<div class="card" id="inviteView">${p ? `<div class="frow">${sAvatar(p, 'lg')}<div class="grow"><b>${esc(name)}</b><small>${esc(sRank(p.rank_idx))}</small></div></div>` : ''}
+    <h2 style="margin-top:12px">${esc(name)} invited you to train together</h2>
+    ${err ? `<div class="hint">${esc(err)}</div>` : p && !p.valid ? '<div class="hint">This invite has expired. Ask for a new link.</div>' : !p ? '<div class="hint">We couldn\'t find this invite. Check the code.</div>' : ''}
+    <button type="button" class="btn primary block" id="invGo" style="margin-top:12px">${sUser() ? `Add ${esc(name)}` : `Sign in to add ${esc(name)}`}</button>
+    <div class="hint">Friends see each other's rank and weekly counts, never notes, weight or food.</div></div>`;
+  $('#invGo').onclick = () => { if (sUser()) socialAccept(code); else { sLS.set('invite', code); go('#/signin'); } };
 }
 
 /* ---------- Rank screen ---------- */
@@ -3498,8 +4056,8 @@ function gameProfileCard(){
   const L = card.querySelector('#looks');
   const picker = (kind, label) => {
     const wrap = h(`<div class="field"><label>${label}</label><div class="lookgrid" data-kind="${kind}">${LOOKS[kind].map(x => { const un = lookUnlocked(kind, x.id);
-      return `<button type="button" data-look="${x.id}" class="${lk[kind] === x.id ? 'on' : ''}${un ? '' : ' locked'}" aria-pressed="${lk[kind] === x.id}" ${un ? '' : 'aria-disabled="true"'} title="${esc(x.how)}">${kind === 'accent' ? `<i class="sw" style="background:${x.col}"></i>` : kind === 'flair' ? `<i class="sy">${x.sym || '–'}</i>` : `<i class="fr fr-${x.id}"></i>`}<span>${esc(x.name)}</span>${un ? '' : `<small>🔒 ${esc(x.how)}</small>`}</button>`; }).join('')}</div></div>`);
-    wrap.querySelectorAll('button').forEach(b => b.onclick = () => { if (b.classList.contains('locked')) { toast(`Locked: ${b.title}`); return; }
+      return `<button type="button" data-look="${x.id}" class="${lk[kind] === x.id ? 'on' : ''}${un ? '' : ' locked'}" aria-pressed="${lk[kind] === x.id}" ${un ? '' : 'aria-disabled="true" aria-label="' + esc(x.name) + ' (locked)"'}>${kind === 'accent' ? `<i class="sw" style="background:${x.col}"></i>` : kind === 'flair' ? `<i class="sy">${x.sym || '–'}</i>` : `<i class="fr fr-${x.id}"></i>`}<span>${esc(x.name)}</span>${un ? '' : '<b class="lk" aria-hidden="true">🔒</b>'}</button>`; }).join('')}</div></div>`);
+    wrap.querySelectorAll('button').forEach(b => b.onclick = () => { if (b.classList.contains('locked')) { toast('Keep training to unlock'); return; }
       game().look = { ...game().look, [kind]:b.dataset.look }; save(); applyLook(); toast(`${label}: ${b.querySelector('span').textContent}`); route(); });
     L.appendChild(wrap);
   };
@@ -3625,22 +4183,27 @@ function route(){
     return;
   }
   if (!$('#sheet').hidden) closeSheet({ noHistory:true });
+  clearInterval(sPoll);
   { const st = history.state || {}; if (st.idx == null) history.replaceState({ ...st, idx: replacing ? Math.max(0, navIdx) : navIdx + 1 }, ''); navIdx = history.state.idx; replacing = false; }
   updateNav();
   const [, a, b] = hash.split('/');
   curRoute = a || ''; curHash = hash;
   if (a !== 'log' && a !== 'edit') delete document.body.dataset.theme;
-  const tab = { '':'home', challenges:'home', rank:'home', join:'home', badges:'settings', history:'history', belts:'history', comps:'history', session:'history', benchmarks:'home', programs:'settings', program:'settings', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
+  const tab = { '':'home', challenges:'home', rank:'home', join:'home', friends:'home', h2h:'home', signin:'home', invite:'home', badges:'settings', history:'history', belts:'history', comps:'history', session:'history', benchmarks:'home', programs:'settings', program:'settings', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
   document.querySelectorAll('.tabbar a').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   if (a !== 'log' && a !== 'edit') form = (a === 'session' ? null : form && !form.id ? form : null);
   switch (a || '') {
     case 'history': viewHistory(); break;
-    case 'belts': viewBelts(); break;
+    case 'belts': viewBelts(b); break;
     case 'comps': viewComps(); break;
     case 'challenges': viewChallenges(); break;
     case 'rank': viewRank(); break;
     case 'badges': viewBadges(); break;
     case 'join': viewJoin(b); break;
+    case 'friends': viewFriends(); break;
+    case 'h2h': viewH2h(b || ''); break;
+    case 'signin': viewSignin(); break;
+    case 'invite': viewInvite(b); break;
     case 'benchmarks': viewBenchmarks(); break;
     case 'programs': viewPrograms(); break;
     case 'program': viewProgram(b || ''); break;
@@ -3656,10 +4219,11 @@ function route(){
   if (a !== 'settings') goalsReturn = null;
   window.scrollTo(0, 0);
   if (a === 'settings' && b === 'weight') { const g = $('#goalW')?.closest('.card'); if (g) g.scrollIntoView({ block:'start' }); }
+  if (a === 'settings' && b === 'looks') { const g = $('#looks'); if (g) g.scrollIntoView({ block:'start' }); }
   if (a === 'settings' && b === 'goals') { const g = $('#targetsCard'); if (g) g.scrollIntoView({ block:'start' }); }
   if (a === 'settings' && b === 'schedule') { const g = $('#scheduleCard'); if (g) g.scrollIntoView({ block:'start' }); }
 }
-window.DM_TEST = { waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, get db(){ return db; } };
+window.DM_TEST = { compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, get db(){ return db; } };
 window.addEventListener('hashchange', route);
 // Bottom nav: always closes whatever is open (sheet or form) and goes to that screen.
 document.querySelector('.tabbar').addEventListener('click', e => {
@@ -3673,6 +4237,7 @@ window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load()
 db = load(); if (db.belts.length) syncProfileRank();   // profile rank always follows the event log (covers migrated logs)
 applyLook();
 route();
+socialBoot();
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW registration failed', e)));

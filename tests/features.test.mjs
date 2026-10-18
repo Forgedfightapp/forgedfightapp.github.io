@@ -6,7 +6,7 @@ const SHOTS = process.env.SHOTS || '/workspace/bjj-tracker/screenshots';
 const errors = [], results = [];
 const ok = (n, c, x='') => { results.push(`${c?'PASS':'FAIL'} ${n} ${c ? '' : x}`); if (!c) process.exitCode = 1; };
 const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport:{width:390,height:844}, deviceScaleFactor:3, isMobile:true, hasTouch:true, userAgent:devices['iPhone 13'].userAgent, acceptDownloads:true });
+const ctx = await browser.newContext({ viewport:{width:390,height:844}, deviceScaleFactor:3, isMobile:true, hasTouch:true, userAgent:devices['iPhone 13'].userAgent, acceptDownloads:true }); await ctx.addInitScript(() => { window.__FORGED_QUIET_MEDALS = true; });   // 3.6.0 medal sheets are tested in marks.mjs
 const page = await ctx.newPage(); page.on('pageerror', e => errors.push('pageerror: '+e.message)); page.on('console', m => { if (m.type()==='error') errors.push(m.text()); });
 const settle = (ms=300) => page.waitForTimeout(ms);
 const db = () => page.evaluate(() => JSON.parse(localStorage.getItem('dm.bjj.v1')));

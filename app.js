@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.5.0';
+const APP_VERSION = '3.6.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -1081,12 +1081,13 @@ function viewHome(){
   v.innerHTML = `
     ${hasSample ? `<div class="banner"><span>📋 <b>Sample data</b> is loaded for the demo.</span><button class="btn sm" id="rmSample">Remove</button></div>` : ''}
     ${rankChip()}
+    ${marksStrip()}
     <div class="statrow three">
       <div class="stat hero"><div class="v">${st.week}</div><div class="l">Sessions this week</div></div>
       <div class="stat"><div class="v">${hrs(st.weekMin)}<small>h</small></div><div class="l">Hours this week</div></div>
       <div class="stat"><div class="v">${streak}<small>wk</small></div><div class="l">Week streak 🔥</div></div>
     </div>
-    ${tipCard()}
+    ${recapCard() || tipCard()}
     ${compCard()}
     ${injuryCards()}
     ${weekCard()}
@@ -1099,7 +1100,7 @@ function viewHome(){
     ${enabled('food') ? nutritionCard() : ''}
     ${beltCards()}
     <a class="btn block" href="#/stats" id="seeStats">See all stats ›</a>`;
-  wireRepeat(v); wireWeight(v); wireBelt(v); wireComps(v); wireInjuries(v); wireProg(v); wireTip(v);
+  wireRepeat(v); wireWeight(v); wireBelt(v); wireComps(v); wireInjuries(v); wireProg(v); wireTip(v); wireMarks(v); wireRecap(v);
   v.querySelectorAll('.tappable[data-comp]').forEach(c => c.onclick = e => { if (!e.target.closest('a,button')) compSheet(c.dataset.comp); });
   const rm = $('#rmSample'); if (rm) rm.onclick = removeSample;
   checkChallenge();
@@ -3059,7 +3060,7 @@ function injurySheet(id){
   const nt = h(`<textarea class="input" rows="2" placeholder="What happened? What makes it worse?">${esc(x.notes)}</textarea>`); nt.oninput = () => x.notes = nt.value; el.appendChild(field('Notes', nt));
   if (ex) { const ch = sevChart(ex); if (ch) el.appendChild(field('Severity over time', h(`<div>${ch}</div>`))); }
   const btns = h(`<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">${ex ? `<button type="button" class="btn danger" data-del>Delete</button><button type="button" class="btn" data-heal>${ex.healed ? 'Not healed yet' : 'Mark healed'}</button>` : ''}<button type="button" class="btn primary" style="flex:1" data-save>${ex ? 'Save' : 'Save injury'}</button></div>`);
-  btns.querySelector('[data-save]').onclick = () => { if (!x.area) { toast('Pick an area'); return; } const rec = sanitizeInjuries([{ ...x, sample:false }])[0]; db.injuries = db.injuries.filter(i => i.id !== rec.id).concat(rec); save(); closeSheet(); toast(ex ? 'Saved' : 'Injury logged'); whenSettled(route); };
+  btns.querySelector('[data-save]').onclick = () => { if (!x.area) { toast('Pick an area'); return; } const rec = sanitizeInjuries([{ ...x, sample:false }])[0]; db.injuries = db.injuries.filter(i => i.id !== rec.id).concat(rec); save(); closeSheet(); toast(ex ? 'Saved' : 'Injury logged'); if (!ex) offerMarksPause(rec.severity); whenSettled(route); };
   const heal = btns.querySelector('[data-heal]'); if (heal) heal.onclick = () => { ex.healed = ex.healed ? '' : today(); save(); closeSheet(); toast(ex.healed ? 'Marked healed' : 'Marked active'); whenSettled(route); };
   const del = btns.querySelector('[data-del]'); if (del) del.onclick = () => { const before = db.injuries.slice(); db.injuries = db.injuries.filter(i => i.id !== x.id); save(); closeSheet(); undoToast('Injury deleted', () => { db.injuries = before; save(); route(); }); whenSettled(route); };
   el.appendChild(btns); openSheet(el, null, { closeLabel:'Cancel' });
@@ -3500,7 +3501,12 @@ function sanitizeGame(g){
     look:{ accent:String(g.look?.accent || 'flame'), frame:String(g.look?.frame || 'classic'), flair:String(g.look?.flair || 'none') },
     ...(isoOk(g.proUntil) ? { proUntil:g.proUntil, proGranted:isoOk(g.proGranted) ? g.proGranted : g.proUntil } : {}),
     ...(Array.isArray(g.looksSeen) ? { looksSeen:g.looksSeen.map(String).slice(0, 60) } : {}),
-    friend:arr(g.friend).filter(x => x && x.code && x.title).slice(-20) };
+    friend:arr(g.friend).filter(x => x && x.code && x.title).slice(-20),
+    ...(Array.isArray(g.seenMedals) ? { seenMedals:g.seenMedals.map(String).slice(-600) } : {}),
+    ...(g.medalDates && typeof g.medalDates === 'object' ? { medalDates:Object.fromEntries(Object.entries(g.medalDates).filter(([k, v]) => isoOk(v))) } : {}),
+    ...(g.medalGoals && typeof g.medalGoals === 'object' ? { medalGoals:Object.fromEntries(Object.entries(g.medalGoals).filter(([k, v]) => v && Number(v.g) > 0)) } : {}),
+    ...(g.pw && typeof g.pw === 'object' ? { pw:Object.fromEntries(Object.entries(g.pw).filter(([k, v]) => isoOk(k) && Array.isArray(v) && v.length === 2)) } : {}),
+    ...(isoOk(g.recapSeen) ? { recapSeen:g.recapSeen } : {}) };
 }
 const game = () => (db.game = db.game && db.game.look ? db.game : sanitizeGame(db.game));
 
@@ -3801,7 +3807,9 @@ function gameCheck(silent){
   const save = () => { if (JSON.stringify(db.game) !== before) saveDb(); };
   const g = game(), gs = gameState(), cur = currentChallenges(), doneNow = cur.filter(c => c.done).map(c => c.key);
   const allDone = gs.done.map(c => c.key), bs = badgeState().filter(b => b.earned).map(b => b.id);
+  freezeWeeks(); const mev = medalEvents();
   if (silent || g.rankSeen == null) {
+    g.seenMedals = mev;
     gPending = null;   // sample load / import / first run: drop celebrations queued for the old data
     const first = g.rankSeen == null && !silent && db.sessions.some(s => !s.sample);
     g.rankSeen = gs.rankIdx; g.levelSeen = gs.level; g.looksSeen = unlockedLooks(); g.seenDone = [...new Set([...g.seenDone, ...allDone, ...doneNow])].slice(-400); g.seenBadges = bs;
@@ -3809,6 +3817,12 @@ function gameCheck(silent){
     save(); if (first) toast(`You start at ${gs.rank} · level ${gs.level} (${gs.xp.toLocaleString()} XP from your history)`); return;
   }
   const fresh = doneNow.filter(k => !g.seenDone.includes(k)), newBadges = bs.filter(b => !g.seenBadges.includes(b));
+  // medals (3.6.0): an upgrade records what's already earned silently; afterwards each new one gets its own celebration
+  let newMedals = Array.isArray(g.seenMedals) ? mev.filter(x => !g.seenMedals.includes(x)) : [];
+  if (newMedals.includes('pw')) newMedals = newMedals.filter(x => !x.startsWith('pw-'));
+  if (newMedals.some(x => /^pws\d/.test(x))) newMedals = newMedals.filter(x => !x.startsWith('pwbest-'));
+  g.seenMedals = [...new Set([...(g.seenMedals || []), ...mev])].slice(-600);
+  const medals = window.__FORGED_QUIET_MEDALS ? [] : newMedals.map(medalCelebration).filter(Boolean);   // older UI tests opt out of the medal sheets
   g.seenDone = [...new Set([...g.seenDone, ...allDone, ...doneNow])].slice(-400); g.seenBadges = bs;
   let rankUp = null;
   // looks unlock as a surprise: nothing in Profile says how, a toast says when
@@ -3819,18 +3833,20 @@ function gameCheck(silent){
   fresh.forEach(k => { const c = cur.find(x => x.key === k); ForgedSync.emit('challenge.done', { key:k, xp:c.xp }); });
   newBadges.forEach(b => ForgedSync.emit('badge.earned', { id:b }));
   // queue celebrations (merged with any not yet shown); a later reset of the data drops them
-  if (!(rankUp || fresh.length || newBadges.length || lvlUp || newLooks.length)) return;
-  const q = gPending || { fresh:[], badges:[], looks:[] };   // resets (clear, import, sample) null gPending; a reload of the same data from another tab keeps it
+  if (!(rankUp || fresh.length || medals.length || lvlUp || newLooks.length)) return;
+  const q = gPending || { fresh:[], badges:[], looks:[], medals:[] };   // resets (clear, import, sample) null gPending; a reload of the same data from another tab keeps it
   if (rankUp) q.rankUp = rankUp; if (lvlUp) q.lvl = gs;
-  q.fresh.push(...fresh.map(k => cur.find(x => x.key === k))); q.badges.push(...newBadges); (q.looks = q.looks || []).push(...newLooks);
+  q.fresh.push(...fresh.map(k => cur.find(x => x.key === k))); q.badges.push(...newBadges); (q.looks = q.looks || []).push(...newLooks); (q.medals = q.medals || []).push(...medals.filter(m => !q.medals.some(x => x.id === m.id)));
   const scheduled = gPending === q; gPending = q; if (scheduled) return;
+  // a real queue: rank-up sheet, then every medal (n of m), then the toasts; each waits for the one before it
   const run = () => {
-    const p = gPending; gPending = null; if (!p) return;
-    if (p.rankUp) return rankUpSheet(p.rankUp);
-    if (p.looks && p.looks.length) return actionToast('🔓 New look unlocked!', 'See', () => go('#/settings/looks'));
-    if (p.fresh.length) { const c = p.fresh[0]; return actionToast(`Challenge complete: ${c.title} · +${c.xp} XP`, 'Share', () => shareSheet('challenge', c)); }
-    if (p.badges.length) { const b = BADGES.find(x => x.id === p.badges[0]); return actionToast(`Badge earned: ${b.icon} ${b.name}`, 'See', () => go('#/badges')); }
-    if (p.lvl) toast(`Level ${p.lvl.level} · ${p.lvl.rank}`);
+    const p = gPending; if (!p) return;
+    if (p.rankUp) { const r = p.rankUp; p.rankUp = null; p.lvl = null; rankUpSheet(r); }
+    else if (p.medals && p.medals.length) { const l = p.medals; p.medals = []; celebrateSheet(l); }
+    else if (p.looks && p.looks.length) { p.looks = []; actionToast('🔓 New look unlocked!', 'See', () => go('#/settings/looks')); }
+    else if (p.fresh.length) { const c = p.fresh.shift(); actionToast(`Challenge complete: ${c.title} · +${c.xp} XP`, 'Share', () => shareSheet('challenge', c)); }
+    else if (p.lvl) { const l = p.lvl; p.lvl = null; toast(`Level ${l.level} · ${l.rank}`); }
+    if ((p.medals && p.medals.length) || (p.looks && p.looks.length) || p.fresh.length || p.lvl) setTimeout(() => whenSettled(() => tryRun()), 900); else gPending = null;
   };
   // wait for open sheets and undo toasts so a celebration never replaces them
   const tryRun = (n = 0) => { if (gPending !== q) return; if (!$('#sheet').hidden || $('#toast').classList.contains('act')) { if (n < 12) setTimeout(() => tryRun(n + 1), 1200); else gPending = null; return; } run(); };
@@ -3864,6 +3880,277 @@ function rankUpSheet(gs){
 }
 const unlocksAt = L => ['accent','frame','flair'].flatMap(k => LOOKS[k].filter(x => x.unlock && x.how.includes(`level ${L})`)).map(x => x.name));
 
+/* ================= 3.6.0: daily marks, Perfect Week, medals, Monday recap ================= */
+/* Daily marks: Train (session minutes vs that weekday's goal), Recover (mobility minutes), Fuel (protein + water).
+   Goals live in profile.marks { train:[Sun..Sat minutes, 0 = rest], recover, pauses:[{from,to}] }. */
+const MK_TRAIN_OPTS = [0, 20, 30, 45, 60, 90], MK_REC_OPTS = [5, 10, 15, 20, 30];
+function marksCfg(){
+  const m = db.profile.marks || {};
+  let train = Array.isArray(m.train) && m.train.length === 7 ? m.train.map(n => clamp(Math.round(Number(n) || 0), 0, 300)) : null;
+  if (!train) { const days = new Set(Object.values(schedule()).flat().map(Number)); train = [0,1,2,3,4,5,6].map(d => (days.size ? days.has(d) : [1,3,5].includes(d)) ? 45 : 0); }
+  const pauses = (Array.isArray(m.pauses) ? m.pauses : []).filter(p => p && isoOk(p.from) && isoOk(p.to) && p.from <= p.to);
+  return { train, recover:clamp(Math.round(Number(m.recover) || 10), 5, 120), pauses, custom:Array.isArray(m.train) };
+}
+const setMarks = patch => { const c = marksCfg(); db.profile.marks = { train:c.train, recover:c.recover, pauses:c.pauses, ...patch }; save(); };
+const pausedOn = (d, c = marksCfg()) => c.pauses.some(p => d >= p.from && d <= p.to);
+const curPause = () => { const t = today(); return marksCfg().pauses.find(p => p.to >= t && p.from <= t) || null; };
+function pauseMarks(days){ const c = marksCfg(), t = today(); setMarks({ pauses:c.pauses.filter(p => p.to < t).concat({ from:t, to:iso(addDays(new Date(), days - 1)) }).slice(-20) }); }
+function resumeMarks(){ const c = marksCfg(), t = today(), y = iso(addDays(new Date(), -1));
+  setMarks({ pauses:c.pauses.flatMap(p => p.from <= t && p.to >= t ? (p.from <= y ? [{ ...p, to:y }] : []) : p.from > t ? [] : [p]) }); }
+const trainMin = d => sumBy(db.sessions.filter(s => s.date === d && s.category !== 'mobility'), sessMin);
+const recoverMin = d => sumBy(db.sessions.filter(s => s.date === d && s.category === 'mobility'), sessMin) + (repTotal('mobility', d, d) || 0);
+const fuelOn = () => enabled('food') && !!(goals().p || waterGoalMl());
+function marksDay(d = today(), c = marksCfg()){
+  const tg = c.train[parse(d).getDay()], tm = trainMin(d), rm = recoverMin(d);
+  const train = { v:tm, goal:tg, rest:!tg, pct:tg ? Math.min(100, Math.round(tm / tg * 100)) : 100, met:tg ? tm >= tg : true };
+  const recover = { v:rm, goal:c.recover, pct:Math.min(100, Math.round(rm / c.recover * 100)), met:rm >= c.recover };
+  let fuel = null;
+  if (fuelOn()) { const parts = [];
+    if (goals().p) parts.push({ k:'protein', v:Math.round(totals(entriesOn(d)).p), goal:goals().p, u:'g' });
+    if (waterGoalMl()) parts.push({ k:'water', v:waterOn(d), goal:waterGoalMl(), u:'ml' });
+    const r = parts.map(p => Math.min(1, p.v / p.goal)); fuel = { parts, pct:Math.round(r.reduce((a, x) => a + x, 0) / r.length * 100), met:r.every(x => x >= 1) }; }
+  return { date:d, paused:pausedOn(d, c), train, recover, fuel, all:train.met && recover.met && (!fuel || fuel.met) };
+}
+function marksStrip(){
+  const m = marksDay(), p = curPause(), wp = weekPlan(gWeekKey(today()));
+  const seg = (k, label, pct, txt, cls) => `<span class="mk-seg mk-${k}${cls}" data-mk="${k}"><span class="mk-bar"><i style="width:${pct}%"></i></span><b>${label}</b><small>${txt}</small></span>`;
+  const segs = seg('train', 'Train', m.train.rest ? 100 : m.train.pct, m.train.rest ? 'Rest day' : `${m.train.v}/${m.train.goal} min`, (m.train.rest ? ' rest' : '') + (m.train.met && !m.train.rest ? ' met' : ''))
+    + seg('recover', 'Recover', m.recover.pct, `${m.recover.v}/${m.recover.goal} min`, m.recover.met ? ' met' : '')
+    + (m.fuel ? seg('fuel', 'Fuel', m.fuel.pct, `${m.fuel.pct}%`, m.fuel.met ? ' met' : '') : '');
+  const wk = wp.neutral ? '' : wp.perfect ? '<em class="mk-pw on">Perfect week ✓</em>' : `<em class="mk-pw">Week ${Math.min(wp.trained, wp.planned)}/${wp.planned} days</em>`;
+  return `<button type="button" class="marks${p ? ' paused' : ''}${m.fuel ? '' : ' two'}" id="marks" aria-label="Today's marks${p ? ', paused' : ''}. Open details">
+    <span class="mk-head"><span>${p ? `Marks paused until ${fmtDay(p.to)}` : 'Today'}</span>${p ? '' : wk}</span><span class="mk-segs">${segs}</span></button>`;
+}
+const fmtDay = d => { const x = parse(d); return `${DOW[x.getDay()]} ${MONTHS[x.getMonth()]} ${x.getDate()}`; };
+function marksSheet(){
+  const el = h('<div id="marksSheet"></div>');
+  const draw = () => {
+    const c = marksCfg(), m = marksDay(today(), c), p = curPause(), wp = weekPlan(gWeekKey(today())), st = pwStats();
+    const row = (k, label, val, met, act) => `<div class="mk-row${met ? ' met' : ''}" data-mkrow="${k}"><span class="mk-dot"></span><div class="grow"><b>${label}</b><small>${val}</small></div>${act || ''}</div>`;
+    el.innerHTML = `<h3>Today's marks</h3>
+      ${p ? `<div class="pronote" id="mkPaused">⏸ Paused until ${esc(fmtDay(p.to))}. Paused days don't count toward Perfect Week.</div>` : ''}
+      ${row('train', 'Train', m.train.rest ? `Rest day${m.train.v ? ` · ${m.train.v} min logged` : ''}` : `${m.train.v} of ${m.train.goal} min`, m.train.met, m.train.met ? '' : '<a class="btn sm" href="#/log" id="mkLog">Log</a>')}
+      ${row('recover', 'Recover', `${m.recover.v} of ${m.recover.goal} min mobility`, m.recover.met, m.recover.met ? '' : '<button type="button" class="btn sm" data-logreps="mobility" id="mkMob">Log</button>')}
+      ${m.fuel ? row('fuel', 'Fuel', m.fuel.parts.map(x => `${x.k} ${x.v.toLocaleString()}/${x.goal.toLocaleString()} ${x.u}`).join(' · '), m.fuel.met, m.fuel.met ? '' : '<a class="btn sm" href="#/food" id="mkFood">Food</a>') : `<div class="hint">Turn on Food and set a protein or water goal to add a Fuel mark.</div>`}
+      <h4 class="mk-h">Perfect Week</h4>
+      <div class="pwdots" id="pwDots">${wp.days.map(x => `<span class="pwd${x.planned ? ' plan' : ''}${x.trained ? ' done' : ''}${x.paused ? ' paused' : ''}${x.d === today() ? ' today' : ''}" title="${x.d}"><b>${DOW1[parse(x.d).getDay()]}</b><i>${x.paused ? '⏸' : x.trained ? '✓' : x.planned ? '' : '·'}</i></span>`).join('')}</div>
+      <div class="hint" id="pwLine">${wp.neutral ? 'No training days planned this week.' : wp.perfect ? 'Perfect week! Every planned day is in.' : `${Math.min(wp.trained, wp.planned)} of ${wp.planned} planned days done. Rest days never break it.`} Streak <b id="pwStreak">${st.streak}</b> · best <b id="pwBest">${st.best}</b> · ${st.count} perfect ${st.count === 1 ? 'week' : 'weeks'}.</div>
+      <h4 class="mk-h">Train goal by weekday</h4><div id="mkGoals"></div>
+      <div class="field"><label>Recover goal (min / day)</label><div id="mkRec"></div></div>
+      <div class="hint" style="margin:-4px 0 10px">Goal changes apply from this week. Past weeks keep the plan they had.</div>
+      <div id="mkPause" style="display:flex;gap:10px;flex-wrap:wrap">${p ? '<button type="button" class="btn block" id="mkResume">Resume marks</button>' : '<button type="button" class="btn" id="mkPause7">Pause 1 week</button><button type="button" class="btn" id="mkPause14">Pause 2 weeks</button>'}</div>
+      <div class="hint" style="margin-top:8px">Pause while you're injured or away. Paused days aren't counted against you.</div>`;
+    const G = el.querySelector('#mkGoals');
+    DOW_MON.forEach(d => { const opts = [...new Set([...MK_TRAIN_OPTS, c.train[d]])].sort((a, b) => a - b);
+      const f = field(DOW[d], seg(opts.map(n => [n, n ? String(n) : 'Rest']), c.train[d], v => { const t = marksCfg().train.slice(); t[d] = Number(v); setMarks({ train:t }); draw(); })); f.dataset.dow = d; f.classList.add('mkday'); G.appendChild(f); });
+    el.querySelector('#mkRec').appendChild(seg([...new Set([...MK_REC_OPTS, c.recover])].sort((a, b) => a - b).map(n => [n, String(n)]), c.recover, v => { setMarks({ recover:Number(v) }); draw(); }));
+    const b = id => el.querySelector(id);
+    if (b('#mkResume')) b('#mkResume').onclick = () => { resumeMarks(); toast('Marks resumed'); draw(); };
+    if (b('#mkPause7')) b('#mkPause7').onclick = () => { pauseMarks(7); toast('Marks paused for 1 week'); draw(); };
+    if (b('#mkPause14')) b('#mkPause14').onclick = () => { pauseMarks(14); toast('Marks paused for 2 weeks'); draw(); };
+    ['#mkLog', '#mkFood'].forEach(id => { const a = b(id); if (a) a.onclick = () => closeSheet(); });
+    const mob = b('#mkMob'); if (mob) mob.onclick = e => { e.stopPropagation(); closeSheet(); whenSettled(() => repsSheet('mobility')); };
+  };
+  draw(); openSheet(el, () => { if (!curRoute) whenSettled(route); });
+}
+function wireMarks(v){ const b = v.querySelector('#marks'); if (b) b.onclick = marksSheet; }
+function offerMarksPause(sev){
+  if (curPause()) return;
+  const days = sev >= 4 ? 14 : 7;
+  setTimeout(() => actionToast(`Injury logged. Pause daily marks for ${days === 14 ? '2 weeks' : '1 week'} while you recover?`, 'Pause', () => { pauseMarks(days); toast('Marks paused'); route(); }), 400);
+}
+
+/* Perfect Week: every planned training day (Train goal > 0, not paused) has a session; count-based, so swapping days is fine.
+   Finished weeks freeze in game().pw so later goal edits don't rewrite history. */
+let trainDaysCache = null, trainDaysKey = '';
+function trainDays(){ const k = db.sessions.length + ':' + db.sessions.reduce((a, s) => a + (s.updatedAt || s.createdAt || 0) % 1e7, 0);
+  if (trainDaysKey !== k) { trainDaysKey = k; trainDaysCache = new Set(db.sessions.filter(s => s.category !== 'mobility').map(s => s.date)); } return trainDaysCache; }
+function weekPlan(wk, c = marksCfg()){
+  const td = trainDays(), days = [];
+  for (let i = 0; i < 7; i++) { const d = iso(addDays(parse(wk), i)); days.push({ d, planned:c.train[parse(d).getDay()] > 0, paused:pausedOn(d, c), trained:td.has(d) }); }
+  const frozen = wk < gWeekKey(today()) && db.game && db.game.pw && db.game.pw[wk];
+  const planned = frozen ? frozen[0] : days.filter(x => x.planned && !x.paused).length, trained = frozen ? frozen[1] : days.filter(x => x.trained).length;
+  return { wk, days, planned, trained, perfect:planned > 0 && trained >= planned, neutral:planned === 0 };
+}
+function pwHistory(){
+  const real = db.sessions.filter(s => s.category !== 'mobility'); if (!real.length) return [];
+  const first = gWeekKey(real.reduce((a, s) => s.date < a ? s.date : a, today())), cur = gWeekKey(today()), c = marksCfg(), out = [];
+  for (let w = parse(first), n = 0; iso(w) <= cur && n < 260; w = addDays(w, 7), n++) out.push(weekPlan(iso(w), c));
+  return out;
+}
+function pwStats(hist = pwHistory()){
+  let run = 0, best = 0, bestWk = '', count = 0; const cur = gWeekKey(today());
+  hist.forEach(w => { if (w.neutral) return; if (w.perfect) { run++; count++; if (run > best) { best = run; bestWk = w.wk; } } else if (w.wk !== cur) run = 0; });
+  return { streak:run, best, bestWk, count, weeks:hist.filter(w => w.perfect).map(w => w.wk) };
+}
+function freezeWeeks(){ const g = game(), cur = gWeekKey(today()); g.pw = g.pw || {};
+  pwHistory().forEach(w => { if (w.wk < cur && !g.pw[w.wk]) g.pw[w.wk] = [w.planned, w.trained]; });
+  const keys = Object.keys(g.pw).sort(); if (keys.length > 260) keys.slice(0, keys.length - 260).forEach(k => delete g.pw[k]); }
+
+/* Monthly medals: one per month, rotating metric, goal personalised from your previous 3 months (~10% more), frozen once the month starts.
+   Limited medals: short fighter-themed windows. Both run through evalChallenge (no XP). */
+const MEDAL_COLS = ['#8FB0D9','#E5484D','#6FD3A8','#F5C542','#F28FB0','#F2711C','#E5484D','#4FC3F7','#C98A3A','#B48CF2','#C98A3A','#8FB0D9'];
+const MEDAL_ICONS = ['🧊','🥊','🌱','⚡','🌸','☀️','🔥','🌊','🍂','🌙','🍁','❄️'];
+const matMin = c => sumBy(c.s.filter(s => ['grappling','striking','mma'].includes(s.category)), sessMin);
+const MEDAL_KINDS = [
+  { id:'sess', t:n => `Log ${n} workouts`, unit:'workouts', metric:c => c.s.length, min:4, max:40 },
+  { id:'days', t:n => `Train on ${n} different days`, unit:'days', metric:c => new Set(c.s.filter(s => s.category !== 'mobility').map(s => s.date)).size, min:4, max:28 },
+  { id:'mins', t:n => `Train for ${n} minutes`, unit:'min', metric:c => sumBy(c.s, sessMin), min:180, max:3000, step:30 },
+  { id:'mat', need:combat, t:n => `${n} minutes of mat or bag time`, unit:'min', metric:matMin, min:120, max:2400, step:30 },
+  { id:'mob', t:n => `${n} minutes of mobility`, unit:'min', metric:c => sumBy(c.s.filter(s => s.category === 'mobility'), sessMin) + repTotal('mobility', c.from, c.to), min:30, max:600, step:10 },
+  { id:'prot', need:() => enabled('food') && !!goals().p, t:n => `Hit your protein goal on ${n} days`, unit:'days', metric:c => daysMeeting(c.from, c.to, protOk), min:6, max:28 },
+];
+const LTD = [
+  { id:'firstroll', name:'First Roll of the Year', icon:'🎆', col:'#F5C542', from:'01-01', to:'01-07', kind:'sess', fixed:3 },
+  { id:'springcamp', name:'Spring Camp', icon:'🌱', col:'#6FD3A8', from:'03-20', to:'04-02', kind:'days' },
+  { id:'summergrind', name:'Summer Grind', icon:'☀️', col:'#F2711C', from:'07-01', to:'07-14', kind:'mins' },
+  { id:'frightrounds', name:'Fright Night Rounds', icon:'🎃', col:'#B48CF2', from:'10-25', to:'10-31', kind:'sess' },
+  { id:'yearend', name:'Year-End Grind', icon:'⚒️', col:'#E5484D', from:'12-15', to:'12-31', kind:'days' },
+];
+const mKind = id => MEDAL_KINDS.find(k => k.id === id);
+const roundTo = (x, s = 1) => Math.round(x / s) * s;
+function medalBase(k, from, to){ const per = { from, to }, s = db.sessions.filter(x => x.date >= from && x.date <= to && gFair(x)); return k.metric({ s, from, to, prs:0 }) || 0; }
+function personalGoal(k, start, days, mult = 1.1){
+  // average over the 3 months (≈91 days) before start, scaled to this window's length
+  const to = iso(addDays(parse(start), -1)), from = iso(addDays(parse(start), -91)), avg = medalBase(k, from, to) / 91 * days;
+  return clamp(roundTo(Math.max(avg * mult, k.min), k.step || 1), k.min, k.max);
+}
+function medalKindFor(m){ const [y, mo] = m.split('-').map(Number), el = MEDAL_KINDS.filter(k => !k.need || k.need()); return el[(y * 12 + mo) % el.length]; }
+function frozenGoal(key, kind, calc){ const g = game(); g.medalGoals = g.medalGoals || {};
+  const f = g.medalGoals[key]; if (f && f.k === kind && f.g > 0) return f.g;
+  const v = calc(); if (key >= 'mm-' + today().slice(0, 7) || key.startsWith('lt-')) g.medalGoals[key] = { k:kind, g:v }; return v; }
+function monthMedal(m){
+  const k = medalKindFor(m), from = m + '-01', to = gMonthEnd(m), days = Math.round((parse(to) - parse(from)) / G_DAY) + 1, key = 'mm-' + m;
+  const goal = frozenGoal(key, k.id, () => personalGoal(k, from, days)), mo = Number(m.slice(5)) - 1;
+  const t = { id:key, p:'m', tier:2, t:k.t(goal), goal, unit:k.unit, val:k.metric };
+  return { ...medalEval(t, { key, from, to }), id:key, kind:'month', name:`${MONTH_FULL[mo]} ${m.slice(0, 4)}`, icon:MEDAL_ICONS[mo], col:MEDAL_COLS[mo], how:k.t(goal) };
+}
+const MONTH_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function ltdMedal(x, y){
+  const from = `${y}-${x.from}`, to = `${y}-${x.to}`, k = mKind(x.kind), key = `lt-${x.id}-${y}`, days = Math.round((parse(to) - parse(from)) / G_DAY) + 1;
+  const goal = x.fixed || frozenGoal(key, k.id, () => personalGoal(k, from, days, 1.15));
+  const t = { id:key, p:'m', tier:3, t:k.t(goal), goal, unit:k.unit, val:k.metric };
+  return { ...medalEval(t, { key, from, to }), id:key, kind:'ltd', name:`${x.name} ${y}`, icon:x.icon, col:x.col, how:k.t(goal) };
+}
+function medalEval(t, per){ const r = evalChallenge(t, per, []); delete r.xp; return r; }
+function medalsFrom(){ const real = db.sessions.filter(s => !s.sample); const f = (real.length ? real : db.sessions).reduce((a, s) => s.date < a ? s.date : a, today()); return f < iso(addDays(new Date(), -730)) ? iso(addDays(new Date(), -730)) : f; }
+function timedMedals(){
+  const t = today(), from = db.sessions.length ? medalsFrom() : t, out = [];
+  for (let m = from.slice(0, 7); m <= t.slice(0, 7); m = iso(addDays(parse(gMonthEnd(m)), 1)).slice(0, 7)) out.push(monthMedal(m));
+  for (let y = Number(from.slice(0, 4)); y <= Number(t.slice(0, 4)); y++) LTD.forEach(x => { const a = `${y}-${x.from}`, b = `${y}-${x.to}`; if (a <= t && b >= from) out.push(ltdMedal(x, y)); });
+  return out.map(m => ({ ...m, active:m.from <= t && m.to >= t, earned:m.done }));
+}
+function upcomingLtd(){ const t = today(), y = Number(t.slice(0, 4)); return LTD.map(x => ({ ...x, start:`${y}-${x.from}` <= t ? `${y + 1}-${x.from}` : `${y}-${x.from}` })).filter(x => !(`${y}-${x.from}` <= t && `${y}-${x.to}` >= t)).sort((a, b) => a.start.localeCompare(b.start)); }
+
+/* one list for the medal case and the celebration queue */
+function medalList(){
+  const bs = badgeState(), st = pwStats(), dates = (db.game && db.game.medalDates) || {};
+  const list = bs.map(b => ({ id:'b-' + b.id, kind:'badge', name:b.name, icon:b.icon, col:'#F2711C', earned:b.earned, sub:b.how }));
+  list.push({ id:'pw', kind:'pw', name:'Perfect Week', icon:'📅', col:'#6FD3A8', earned:st.count > 0, count:st.count, sub:`${st.count} perfect ${st.count === 1 ? 'week' : 'weeks'}` });
+  [2, 4, 8, 12, 26, 52].forEach(n => list.push({ id:'pws' + n, kind:'pwstreak', name:`${n} perfect weeks in a row`, icon:'⛓️', col:'#F5C542', earned:st.best >= n, sub:`Best streak: ${st.best} weeks` }));
+  timedMedals().filter(m => !m.active || m.earned).forEach(m => list.push({ ...m, sub:m.earned ? m.how : '' }));
+  return list.map(m => ({ ...m, date:dates[m.id] || ((m.kind === 'month' || m.kind === 'ltd') && m.earned ? m.to : '') }));
+}
+/* ids that celebrate: each earned medal once, plus each new perfect week and each new best streak */
+function medalEvents(){
+  const st = pwStats(), ev = medalList().filter(m => m.earned).map(m => m.id);
+  st.weeks.forEach(w => ev.push('pw-' + w));
+  if (st.best >= 2) ev.push('pwbest-' + st.best);
+  return ev;
+}
+function medalCelebration(id){
+  const L = medalList(), st = pwStats();
+  if (id.startsWith('pw-')) { const wk = id.slice(3); return { id, kind:'pw', icon:'📅', col:'#6FD3A8', name:'Perfect Week', eyebrow:'Perfect week', sub:`Week of ${fmtShort(wk)} · every planned day trained`, medalId:'pw' }; }
+  if (id.startsWith('pwbest-')) return { id, kind:'pwbest', icon:'⛓️', col:'#F5C542', name:`${id.slice(7)} perfect weeks in a row`, eyebrow:'New best streak', sub:'Your longest run of perfect weeks yet', medalId:'pws' };
+  const m = L.find(x => x.id === id); if (!m) return null;
+  return { ...m, eyebrow:{ badge:'Badge earned', pwstreak:'Streak medal', month:'Monthly medal', ltd:'Limited medal', pw:'Medal earned' }[m.kind] || 'Medal earned', sub:m.kind === 'badge' ? m.sub : m.how || m.sub, medalId:m.id };
+}
+function medalHTML(m, size = 'lg', locked = false){
+  if (locked) return `<span class="medal3d ${size} locked" aria-label="Locked"><span class="m-face"><span class="m-icon">🔒</span></span></span>`;
+  return `<span class="medal3d ${size}" style="--mc:${m.col}" data-tilt><span class="m-rim"></span><span class="m-face"><span class="m-icon">${m.icon}</span></span><i class="m-sheen"></i></span>`;
+}
+function wireTilt(root){
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  root.querySelectorAll('[data-tilt]').forEach(m => {
+    const wrap = m.parentElement;
+    const mv = e => { const r = m.getBoundingClientRect(), pt = e.touches ? e.touches[0] : e, x = (pt.clientX - r.left) / r.width - .5, y = (pt.clientY - r.top) / r.height - .5;
+      m.classList.add('held'); m.style.transform = `rotateY(${(x * 50).toFixed(1)}deg) rotateX(${(-y * 40).toFixed(1)}deg)`; m.style.setProperty('--sx', `${(x + .5) * 100}%`); };
+    const up = () => { m.classList.remove('held'); m.style.transform = ''; };
+    wrap.addEventListener('pointermove', mv); wrap.addEventListener('pointerleave', up); wrap.addEventListener('pointerup', up);
+    wrap.addEventListener('touchmove', mv, { passive:true }); wrap.addEventListener('touchend', up);
+  });
+}
+/* the celebration sheet: one medal at a time, "n of m", Next until the queue is empty */
+function celebrateSheet(items, i = 0, done){
+  const m = items[i]; if (!m) { done && done(); return; }
+  const last = i === items.length - 1;
+  const el = h(`<div class="celebrate" id="celebrate" data-medal="${esc(m.id)}"><div class="medalstage">${medalHTML(m)}</div>
+    <div class="eyebrow">${esc(m.eyebrow)}</div><h3 id="celebName">${esc(m.name)}</h3><p class="dim">${esc(m.sub || '')}</p>
+    ${items.length > 1 ? `<div class="hint" id="celebCount">${i + 1} of ${items.length}</div>` : ''}
+    <div style="display:flex;gap:10px;margin-top:16px"><button type="button" class="btn block" id="celebShare">Share</button><button type="button" class="btn primary block" id="celebNext">${last ? 'Done' : 'Next'}</button></div></div>`);
+  el.querySelector('#celebShare').onclick = () => { closeSheet(); whenSettled(() => shareSheet('medal', m)); };
+  el.querySelector('#celebNext').onclick = () => { if (last) closeSheet(); else celebrateSheet(items, i + 1, done); };
+  const g = game(); g.medalDates = g.medalDates || {}; if (m.medalId && !g.medalDates[m.medalId]) { g.medalDates[m.medalId] = today(); saveDb(); }
+  // closed early: the rest stay one tap away (and in the medal case), never silently dropped
+  openSheet(el, last ? done : () => { const rest = items.slice(i + 1); if (rest.length) setTimeout(() => actionToast(`${rest.length} more ${rest.length === 1 ? 'medal' : 'medals'} earned`, 'See', () => celebrateSheet(rest, 0, done)), 400); else done && done(); }, { closeLabel:'Close' });
+  wireTilt(el); confettiBurst();
+}
+function medalViewSheet(id){
+  const m = medalList().find(x => x.id === id); if (!m || !m.earned) return;
+  const el = h(`<div class="celebrate" id="medalView" data-medal="${esc(m.id)}"><div class="medalstage">${medalHTML(m)}</div><h3>${esc(m.name)}</h3><p class="dim">${esc(m.kind === 'badge' ? m.sub : m.how || m.sub || '')}</p>${m.date ? `<div class="hint">Earned ${fmtShort(m.date)}</div>` : ''}
+    <button type="button" class="btn primary block" id="medalShare" style="margin-top:16px">Share</button></div>`);
+  el.querySelector('#medalShare').onclick = () => { closeSheet(); whenSettled(() => shareSheet('medal', { ...m, eyebrow:'Medal earned' })); };
+  openSheet(el); wireTilt(el);
+}
+function medalGrid(list, opts = {}){
+  return `<div class="medalgrid${opts.mini ? ' mini' : ''}">${list.map(m => m.earned
+    ? `<button type="button" class="medalcell on" data-medalid="${esc(m.id)}">${medalHTML(m, 'sm')}<b>${esc(m.name)}</b>${m.count > 1 ? `<small>×${m.count}</small>` : ''}</button>`
+    : `<span class="medalcell locked" data-medalid="${esc(m.id)}" aria-label="Locked">${medalHTML(m, 'sm', true)}</span>`).join('')}</div>`;
+}
+function wireMedalGrid(root){ root.querySelectorAll('.medalcell.on').forEach(b => b.onclick = () => medalViewSheet(b.dataset.medalid)); }
+function medalsCard(){
+  const tm = timedMedals(), act = tm.filter(m => m.active), up = upcomingLtd().slice(0, 2);
+  const row = m => `<div class="chrow medalrow${m.done ? ' done' : ''}" data-medalrow="${esc(m.id)}">${medalHTML(m, 'xs', false)}<div class="grow"><b>${esc(m.name)}</b><small>${esc(m.how)}</small><span class="sgbar"><i style="width:${m.pct}%"></i></span><small>${esc(m.progress)}${m.done ? ' · earned ✓' : ` · ${timeLeft(m.to)}`}</small></div></div>`;
+  return `<div class="card" id="medalsCard"><h2>Medals</h2><div class="hint" style="margin:-4px 0 8px">Monthly medal goals are set from your last 3 months. Earn them by the end of the month.</div>
+    ${act.map(row).join('')}${up.map(x => `<div class="list-row ltdnext" data-ltd="${x.id}"><span class="mk-lock">🔒</span><div class="grow"><b>Limited medal</b><small>Starts ${fmtShort(x.start)}</small></div></div>`).join('')}
+    <a class="list-row" href="#/badges" style="text-decoration:none;color:inherit"><div class="grow"><b>Medal case</b></div>›</a></div>`;
+}
+
+/* Monday recap (Mon–Wed until dismissed): last week, one goal suggestion, share card */
+function recapData(){
+  const wk = iso(addDays(weekStart(new Date()), -7)), to = iso(addDays(parse(wk), 6)), s = db.sessions.filter(x => x.date >= wk && x.date <= to);
+  const c = marksCfg(), plan = weekPlan(wk, c); let tMet = 0, rMet = 0, fMet = 0, planned = 0;
+  plan.days.forEach(x => { const m = marksDay(x.d, c); if (x.planned && !x.paused) { planned++; if (m.train.met) tMet++; } if (m.recover.met) rMet++; if (m.fuel && m.fuel.met) fMet++; });
+  const ws = weightSeries().filter(p => p.date <= to), wa = weeklyAverages(ws, 20).filter(a => a.week <= wk).slice(-2);
+  const w = wa.length === 2 && wa[1].week === wk ? r1(wa[1].avg - wa[0].avg) : null;
+  return { wk, to, sessions:s.length, min:sumBy(s, sessMin), plan, tMet, planned, rMet, fMet, fuel:fuelOn(), w, sug:recapSuggest(plan, s, c) };
+}
+function recapSuggest(plan, s, c){
+  const goalsOn = c.train.filter(x => x > 0), g = goalsOn.length ? Math.round(goalsOn.reduce((a, x) => a + x, 0) / goalsOn.length) : 45;
+  const tdays = [...new Set(s.filter(x => x.category !== 'mobility').map(x => x.date))], avgMin = tdays.length ? Math.round(sumBy(s.filter(x => x.category !== 'mobility'), sessMin) / tdays.length) : 0;
+  if (plan.perfect && avgMin >= g + 10 && g < 120) return { kind:'up', text:`You averaged ${avgMin} min a session. Raise your Train goal to ${g + 10} min?`, to:g + 10 };
+  if (!plan.neutral && plan.trained < plan.planned / 2 && g > 20) return { kind:'down', text:`Last week was tough. Ease your Train goal to ${g - 10} min to rebuild the habit?`, to:g - 10 };
+  return { kind:'keep', text:'Your goals fit how you train. Keep them for this week.' };
+}
+function recapApply(sug){ if (!sug || sug.kind === 'keep') return; const t = marksCfg().train.map(x => x > 0 ? sug.to : 0); setMarks({ train:t }); }
+const recapDue = () => { const dw = new Date().getDay(); if (dw < 1 || dw > 3) return false; const r = recapData(); return game().recapSeen !== r.wk && (r.sessions > 0 || r.planned > 0) && db.sessions.some(s => s.date < r.wk || s.date <= r.to); };
+function recapCard(){
+  if (!recapDue()) return '';
+  const r = recapData(), sg = r.sug, u = unit();
+  return `<div class="card recap" id="recapCard"><h2>Your week <small>${fmtShort(r.wk).replace(/, \d{4}$/, '')} – ${fmtShort(r.to).replace(/, \d{4}$/, '')}</small></h2>
+    <div class="recapstats"><span><b>${r.sessions}</b><small>sessions</small></span><span><b>${hrs(r.min)}</b><small>hours</small></span><span><b>${r.tMet}/${r.planned}</b><small>train days</small></span>${r.w != null ? `<span><b>${signed(r.w)}</b><small>${u} avg</small></span>` : ''}</div>
+    <div class="hint" id="recapPw">${r.plan.neutral ? 'No planned days last week.' : r.plan.perfect ? '✓ Perfect week.' : `${Math.min(r.plan.trained, r.plan.planned)} of ${r.plan.planned} planned days.`} Recover met ${r.rMet} of 7 days${r.fuel ? ` · Fuel met ${r.fMet} of 7` : ''}.</div>
+    <div class="recapsug" id="recapSug" data-kind="${sg.kind}"><span>${esc(sg.text)}</span>${sg.kind !== 'keep' ? '<button type="button" class="btn sm primary" id="recapApply">Apply</button>' : ''}</div>
+    <div style="display:flex;gap:10px;margin-top:10px"><button type="button" class="btn sm" id="recapShare" style="flex:1">Share</button><button type="button" class="btn sm" id="recapDone" style="flex:1">Done</button></div></div>`;
+}
+function wireRecap(v){
+  const c = v.querySelector('#recapCard'); if (!c) return; const r = recapData();
+  const ap = c.querySelector('#recapApply'); if (ap) ap.onclick = () => { const before = marksCfg().train; recapApply(r.sug); c.querySelector('#recapSug').innerHTML = `<span>✓ Train goal set to ${r.sug.to} min on your training days.</span>`;
+    actionToast(`Train goal: ${r.sug.to} min`, 'Undo', () => { setMarks({ train:before }); route(); }); const m = v.querySelector('#marks'); if (m) { m.outerHTML = marksStrip(); wireMarks(v); } };
+  c.querySelector('#recapShare').onclick = () => shareSheet('recap', r);
+  c.querySelector('#recapDone').onclick = () => { game().recapSeen = r.wk; saveDb(); c.remove(); };
+}
+
 /* ---------- Home pieces (max: rank chip + one challenge card) ---------- */
 function rankChip(){
   const gs = gameState();
@@ -3895,7 +4182,7 @@ function viewChallenges(){
   const cur = currentChallenges(), gs = gameState(), v = $('#view');
   const sec = (p, title) => { const l = cur.filter(c => c.p === p); return l.length ? `<div class="card" id="ch-${p}"><h2>${title} <small data-left>${timeLeft(l[0].to)}</small></h2>${p === 'd' ? '<div class="hint chintro">Quick no-equipment workouts, 5–15 minutes, anywhere. Pick your level.</div>' : ''}${l.map(chRow).join('')}</div>` : ''; };
   const fr = game().friend.filter(x => x.to >= iso(addDays(new Date(), -7)));
-  v.innerHTML = `${rankChip()}${sec('d','Daily')}${sec('w','Weekly')}${sec('m','Monthly')}
+  v.innerHTML = `${rankChip()}${sec('d','Daily')}${sec('w','Weekly')}${sec('m','Monthly')}${medalsCard()}
     <div class="card" id="friendCard"><h2>Friend challenges</h2>${fr.length ? fr.map(friendRow).join('') : '<div class="hint" style="margin:-4px 0 8px">Send a challenge link. Your friend joins on their own phone and tracks it with their own workouts (self-reported, no accounts).</div>'}
       <button type="button" class="btn block" id="challengeFriend" style="margin-top:8px">Challenge a friend</button>${socialOn() ? '<a class="list-row" href="#/friends" id="friendsLink" style="text-decoration:none;color:inherit;margin-top:6px"><div class="grow"><b>Friends &amp; head-to-head</b><small>Live standings with friends (optional account)</small></div>›</a>' : ''}</div>
     <div class="hint" style="padding:0 6px 20px">New daily challenges at midnight, weekly on Monday, monthly on the 1st. Progress comes from what you log. Workouts added more than 7 days late don't count toward challenges. ${gs.done.length} completed so far.</div>`;
@@ -4278,18 +4565,22 @@ function viewRank(){
 
 /* ---------- Badges screen ---------- */
 function viewBadges(){
-  setHeader('Badges', '', { parent:'#/settings' });
-  const bs = badgeState(), n = bs.filter(b => b.earned).length;
-  $('#view').innerHTML = `<div class="card" id="badgeCase"><h2>Badge case <small>${n} of ${bs.length}</small></h2><div class="badgegrid">${bs.map(b => `<div class="badge${b.earned ? ' on' : ' locked'}" data-badge="${b.id}"><span class="bi">${b.earned ? b.icon : '🔒'}</span><b>${esc(b.name)}</b><small>${esc(b.earned ? 'Earned' : b.how)}</small></div>`).join('')}</div></div>
-    <div class="hint" style="padding:0 6px 20px">Badges come from your history and update as you log. Locked badges show how to earn them.</div>`;
+  setHeader('Medal case', '', { parent:'#/settings' });
+  const L = medalList(), n = L.filter(m => m.earned).length, grp = (title, id, f) => { const l = L.filter(f); return l.length ? `<div class="card" id="${id}"><h2>${title} <small>${l.filter(m => m.earned).length} of ${l.length}</small></h2>${medalGrid(l)}</div>` : ''; };
+  $('#view').innerHTML = `<div id="badgeCase"><div class="hint" style="padding:0 6px 10px" id="medalCount">${n} earned. Tap a medal to look closer.</div>
+    ${grp('Monthly &amp; limited', 'mcTimed', m => m.kind === 'month' || m.kind === 'ltd')}${grp('Perfect weeks', 'mcPw', m => m.kind === 'pw' || m.kind === 'pwstreak')}${grp('Badges', 'mcBadges', m => m.kind === 'badge')}</div>
+    <div class="hint" style="padding:0 6px 20px">Medals come from what you log. Keep training to unlock the rest.</div>`;
+  wireMedalGrid($('#view'));
 }
 
 /* ---------- Profile card: rank, badges, looks, Pro week ---------- */
 function gameProfileCard(){
   const gs = gameState(), bs = badgeState(), n = bs.filter(b => b.earned).length, lk = currentLook();
-  const card = h(`<div class="card" id="gameProfile"><h2>Rank, badges &amp; looks</h2>
+  const ml = medalList(), mOn = ml.filter(m => m.earned), peek = mOn.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 7).concat(ml.filter(m => !m.earned).slice(0, Math.max(1, 8 - Math.min(7, mOn.length)))).slice(0, 8);
+  const card = h(`<div class="card" id="gameProfile"><h2>Rank, medals &amp; looks</h2>
     <a class="list-row" href="#/rank" style="text-decoration:none;color:inherit"><div class="grow"><b>${flairSym() ? flairSym() + ' ' : ''}${esc(gs.rank)} · level ${gs.level}</b><small>${gs.xp.toLocaleString()} XP${proActive() ? ` · 🎁 Pro week earned (until ${fmtShort(game().proUntil)})` : ''}</small></div>›</a>
-    <a class="list-row" href="#/badges" id="badgesLink" style="text-decoration:none;color:inherit"><div class="grow"><b>Badge case</b><small>${n} of ${bs.length} earned</small></div><span class="badgepeek">${bs.filter(b => b.earned).slice(-4).map(b => b.icon).join('')}</span>›</a>
+    <div id="medalCase"><div class="mc-head"><b>Medal case</b><small>${mOn.length} earned</small></div>${medalGrid(peek, { mini:true })}</div>
+    <a class="list-row" href="#/badges" id="badgesLink" style="text-decoration:none;color:inherit"><div class="grow"><b>All medals &amp; badges</b><small>${n} of ${bs.length} badges · ${mOn.length - n} medals</small></div>›</a>
     <div id="looks"></div></div>`);
   const L = card.querySelector('#looks');
   const picker = (kind, label) => {
@@ -4301,6 +4592,7 @@ function gameProfileCard(){
   };
   picker('accent', 'Accent colour'); picker('frame', 'Share card frame'); picker('flair', 'Rank flair');
   L.appendChild(h('<div class="hint">The log form still uses each workout type\'s colour.</div>'));
+  wireMedalGrid(card);
   return card;
 }
 
@@ -4325,6 +4617,8 @@ function shareContent(kind, x, showNums){
   if (kind === 'challenge') return { eyebrow:`${{ d:'Daily', w:'Weekly', m:'Monthly' }[x.p]} challenge complete`, title:x.title, sub:fmtShort(today()), stats:[[`+${x.xp}`, 'XP'], [TIER[x.tier], 'tier']], color:'#6FD3A8' };
   if (kind === 'streak') return { eyebrow:'Streak', title:`${x.weeks}-week streak`, sub:'Training every week', stats:[[String(x.weeks), 'weeks'], [hide(String(x.sessions)), 'sessions']], color:'#F2711C' };
   if (kind === 'ring') return { eyebrow:'Monthly goal hit', title:x.label, sub:'Ring closed', stats:[[hide(`${x.n}`), 'workouts'], [hide(`${x.target}`), 'goal']], color:'#F2711C', ring:true };
+  if (kind === 'medal') return { eyebrow:x.eyebrow || 'Medal earned', title:x.name, sub:x.date ? fmtShort(x.date) : fmtShort(today()), stats:x.count > 1 ? [[String(x.count), 'times']] : [], color:x.col || '#F2711C', medal:x, foot:x.kind === 'badge' ? '' : (x.how || x.sub || '') };
+  if (kind === 'recap') return { eyebrow:'Week recap', title:`Week of ${MONTHS[parse(x.wk).getMonth()]} ${parse(x.wk).getDate()}`, sub:x.plan.perfect ? 'Perfect week ✓' : `${Math.min(x.plan.trained, x.plan.planned)} of ${x.plan.planned} planned days`, stats:[[hide(String(x.sessions)), 'sessions'], [hide(String(hrs(x.min))), 'hours'], [`${x.tMet}/${x.planned}`, 'train days']], color:'#6FD3A8' };
   return { eyebrow:'Forged', title:'For the fight', sub:'', stats:[], color:'#F2711C' };
 }
 async function renderShareCard(kind, x, fmt = 'square', showNums = true){
@@ -4350,6 +4644,11 @@ async function renderShareCard(kind, x, fmt = 'square', showNums = true){
   const title = String(c.title || '').toUpperCase(); while (g.measureText(title).width > W - 180 && fs > 60) { fs -= 6; g.font = `800 ${fs}px "Barlow Condensed", Impact, sans-serif`; }
   g.fillText(title, 90, midY + fs + 10);
   g.fillStyle = '#C7CDD4'; g.font = '600 38px "Barlow", sans-serif'; if (c.sub) g.fillText(c.sub, 90, midY + fs + 70);
+  if (c.medal) { const R = fmt === 'story' ? 150 : 95, cx = W - 90 - R, cy = fmt === 'story' ? 560 : top + 20 + R * .4;
+    const rim = g.createLinearGradient(cx - R, cy - R, cx + R, cy + R); rim.addColorStop(0, '#E9EDF2'); rim.addColorStop(.5, '#7B808A'); rim.addColorStop(1, '#D9DDE3');
+    g.fillStyle = rim; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
+    const face = g.createRadialGradient(cx - R * .3, cy - R * .35, R * .1, cx, cy, R * .86); face.addColorStop(0, '#FFFFFF'); face.addColorStop(.25, c.color); face.addColorStop(1, '#111'); g.fillStyle = face; g.beginPath(); g.arc(cx, cy, R * .84, 0, Math.PI * 2); g.fill();
+    g.font = `${Math.round(R * .9)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(c.medal.icon || '🏅', cx, cy + 4); g.textAlign = 'left'; g.textBaseline = 'alphabetic'; }
   const sy = fmt === 'story' ? 1300 : 790, cw = (W - 180) / Math.max(1, c.stats.length);
   c.stats.forEach(([v, l], i) => { const x0 = 90 + i * cw; g.fillStyle = '#FFFFFF'; g.font = '800 110px "Barlow Condensed", Impact, sans-serif'; g.fillText(String(v), x0, sy);
     g.fillStyle = '#9AA3AE'; g.font = '600 32px "Barlow", sans-serif'; g.fillText(String(l).toUpperCase(), x0 + 4, sy + 50); });
@@ -4461,7 +4760,7 @@ function route(){
   if (a === 'settings' && b === 'goals') { const g = $('#targetsCard'); if (g) g.scrollIntoView({ block:'start' }); }
   if (a === 'settings' && b === 'schedule') { const g = $('#scheduleCard'); if (g) g.scrollIntoView({ block:'start' }); }
 }
-window.DM_TEST = { inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, get db(){ return db; } };
+window.DM_TEST = { inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, get db(){ return db; } };
 window.addEventListener('hashchange', route);
 // Bottom nav: always closes whatever is open (sheet or form) and goes to that screen.
 document.querySelector('.tabbar').addEventListener('click', e => {

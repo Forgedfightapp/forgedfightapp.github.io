@@ -4,7 +4,7 @@ const SHOTS = process.env.SHOTS || '/workspace/bjj-tracker/screenshots';
 const errors = [], results = [];
 const ok = (n, c, x='') => { const l = `${c?'PASS':'FAIL'} ${n} ${x}`; results.push(l); if (!process.env.QUIET) console.error(l); if (!c) process.exitCode = 1; };
 const browser = await chromium.launch();
-const mk = async () => { const ctx = await browser.newContext({ viewport:{width:390,height:844}, deviceScaleFactor:3, isMobile:true, hasTouch:true, userAgent:devices['iPhone 13'].userAgent, acceptDownloads:true });
+const mk = async () => { const ctx = await browser.newContext({ viewport:{width:390,height:844}, deviceScaleFactor:3, isMobile:true, hasTouch:true, userAgent:devices['iPhone 13'].userAgent, acceptDownloads:true }); await ctx.addInitScript(() => { window.__FORGED_QUIET_MEDALS = true; });   // 3.6.0 medal sheets are tested in marks.mjs
   const page = await ctx.newPage(); page.on('console', m => { if (m.type()==='error') errors.push(m.text()); }); page.on('pageerror', e => errors.push('pageerror: '+e.message));
   page.on('response', r => { if (r.status() >= 400) errors.push(`HTTP ${r.status()} ${r.url()}`); }); return { ctx, page }; };
 let { ctx, page } = await mk();

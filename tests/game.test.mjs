@@ -6,7 +6,7 @@ const SHOTS = process.env.SHOTS || '/workspace/bjj-tracker/screenshots';
 const errors = [], results = [];
 const ok = (n, c, x='') => { results.push(`${c?'PASS':'FAIL'} ${n} ${c ? '' : x}`); if (!c) process.exitCode = 1; };
 const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport:{width:390,height:844}, deviceScaleFactor:3, isMobile:true, hasTouch:true, userAgent:devices['iPhone 13'].userAgent, acceptDownloads:true });
+const ctx = await browser.newContext({ viewport:{width:390,height:844}, deviceScaleFactor:3, isMobile:true, hasTouch:true, userAgent:devices['iPhone 13'].userAgent, acceptDownloads:true }); await ctx.addInitScript(() => { window.__FORGED_QUIET_MEDALS = true; });   // 3.6.0 medal sheets are tested in marks.mjs
 await ctx.grantPermissions(['clipboard-read','clipboard-write'], { origin:new URL(BASE).origin });
 const page = await ctx.newPage(); page.on('pageerror', e => errors.push('pageerror: '+e.message)); page.on('console', m => { if (m.type()==='error') errors.push(m.text()); });
 page.on('dialog', d => d.dismiss());
@@ -101,10 +101,10 @@ await page.locator('#joinGo').tap(); await settle();
 ok('accepting stores the friend challenge on this phone', (await db()).game.friend.length === 1 && await page.evaluate(() => location.hash) === '#/challenges' && await page.locator('#friendCard').count() === 1);
 // badges
 await page.goto(BASE + '#/badges'); await page.waitForSelector('#badgeCase'); await settle();
-const nOn = await page.locator('.badge.on').count(), nLock = await page.locator('.badge.locked').count();
+const nOn = await page.locator('#mcBadges .medalcell.on').count(), nLock = await page.locator('#mcBadges .medalcell.locked').count();
 ok('badge case: some earned, the rest locked', nOn >= 2 && nLock >= 5 && nOn + nLock === 20, `${nOn}/${nLock}`);
-ok('locked badges say how to earn them', /Log 50 workouts/i.test(await page.locator('.badge.locked[data-badge="s50"]').innerText()));
-ok('First strike earned', await page.locator('.badge.on[data-badge="first"]').count() === 1);
+ok('locked badges show only a lock (3.6.0: no how-to hints)', (await page.locator('#mcBadges .medalcell.locked[data-medalid="b-s50"]').textContent()).trim() === '🔒');
+ok('First strike earned', await page.locator('#mcBadges .medalcell.on[data-medalid="b-first"]').count() === 1);
 await hideToast(); await page.evaluate(() => window.scrollTo(0, 0)); await settle(200);
 await page.screenshot({ path:`${SHOTS}/54-badges.png` });
 // share card

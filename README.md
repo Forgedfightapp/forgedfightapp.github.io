@@ -21,6 +21,33 @@ Weigh-ins and workout body weight merge into one history (latest entry per day).
 progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
 projected goal date.
 
+## 3.5.0: weight management (Lose / Maintain / Gain) + weight plans
+- **3-way goal everywhere:** Lose weight / Maintain / Gain weight (muscle & size). It's on the Home weight card (`#homeMode`), Profile → Body & units (`#modeSeg`), onboarding step 2 "About you" (`#mcMode`, in the calculator) and step 3 goals (`#setupMode`). The default comes from goal vs current weight until you pick one. Stored as `profile.weightMode`.
+- **Maintain:** no goal weight. You set a range of ±3 lb / ±1.5 kg around `profile.maintainW`, which defaults to your current 7-day average. Status is "In range ✓" or "X lb above/below", based on the 7-day average.
+- **Gain:** "Gained so far / To gain", "8 lb to gain · gained 3 lb · 27%", and an estimated goal date from the 28-day trend. A goal on the wrong side of current weight for the chosen mode shows a one-tap fix. Changing the goal in Profile to the other side switches the mode.
+- **Calculator** (`macroCalc(i.mode)`):
+  - Gain = maintenance +250 / +350 / +500 (slow / steady / aggressive), protein ~1 g/lb of current weight, fat 25%, the rest carbs.
+  - Maintain = maintenance.
+  - Lose is unchanged, and results without a mode are identical to 3.4.
+  - Switching mode offers "Update targets".
+- **Pace notes:** gaining faster than ~1 lb/week shows "mostly fat at this pace". Losing faster than 1% of body weight a week shows a caution.
+- **Weekly-average trend:** the weight card chart shows faint daily weigh-ins, a bold weekly-average line, and a shaded band in Maintain. Below it: "Weekly avg X · ±Y vs last week". The same line appears on the Trend page.
+- **Weight plans** (Programs → Weight plans, `#/program/wp-<id>`, data in `programs.js` `weightPlans`). The three plans:
+  - **Lean Gain**, 8/10/12 weeks: +250 for weeks 1–2, then +350; 1 g/lb protein. Pairs with the 3-day lower/upper/full lifting program.
+  - **Maintain & Perform**: maintenance; 0.9 g/lb. Pairs with the 2-day program.
+  - **Cut for Comp / Fat Loss**, 6–12 weeks: −500, capped at 1% of body weight a week and at the calorie floor; easier final week. Pairs with the 2-day program, or the comp prep block when a comp is 4–6 weeks out.
+- **Each plan page** shows:
+  - Weekly kcal, protein and expected weekly-average weight.
+  - Check-in guidance: weigh 3–4×/week and use the weekly average.
+  - Auto-adjust rules.
+  - The lifting pairing.
+  - A disclaimer.
+- **Maintenance figure:** comes from the calculator details, or is a rough body weight × 15 with a "Calculate mine" link.
+- **Plan status:** "Start plan" sets the mode and week-1 targets (with undo). The Home weight card shows "Plan · week N of M · kcal · protein".
+- **Auto-adjust:** every 2 weeks the app compares weekly averages and suggests ±150 kcal: flat on Gain/Cut, too fast, or outside the Maintain range. It also suggests the new week's target when the plan steps. You choose "Apply" or "Not now" (snoozes 7 days).
+- **Migration:** existing users get `weightMode` saved on first load. Goal < current → Lose, goal > current → Gain, otherwise Maintain. A goal that's already been passed keeps its start → goal direction.
+- New tests: `tests/weight.test.mjs` (78 checks). Screenshots `68-weight-modes.png`, `69-gain-program.png`.
+
 ## 3.4.0: friends + head-to-head + leaderboards (behind a flag), surprise looks, Profile order, Stairs, 3-step onboarding, tip of the day, comps for every sport, belts for every art
 **Friends (off by default; see `docs/social-setup.md`):**
 - Supabase backend: `supabase/migrations/001_social.sql` (one idempotent script: tables, strict RLS, security-definer RPCs, friends leaderboard view, account deletion) and `supabase/verify.sql`. Local SQL tests: `supabase/tests/run-local.sh`.
@@ -162,7 +189,7 @@ On every release, bump `APP_VERSION` in `app.js` **and** the `CACHE` name in `sw
     ./restart-preview.sh                            # optional: server + Cloudflare quick tunnel (temporary preview URL, changes on restart)
 
 ## Tests (Playwright, iPhone 13 emulation)
-`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/social.test.mjs` (Supabase mocked by `tests/mock-supabase.js`, no network), `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/game.test.mjs`, `tests/macro-calc.test.mjs`, `tests/food-calc.test.mjs`, `tests/tip.test.mjs`, `tests/multisport.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
+`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/social.test.mjs` (Supabase mocked by `tests/mock-supabase.js`, no network), `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/game.test.mjs`, `tests/macro-calc.test.mjs`, `tests/food-calc.test.mjs`, `tests/tip.test.mjs`, `tests/multisport.test.mjs`, `tests/weight.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 

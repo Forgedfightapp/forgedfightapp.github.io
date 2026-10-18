@@ -867,3 +867,35 @@ h3 .artname{font-size:13px;color:var(--muted);font-weight:650;margin-left:6px}
 .comprec{display:flex;flex-direction:column;gap:6px;margin:-2px 0 10px;padding:10px 12px;border-radius:12px;background:var(--surface2)}
 .recrow{display:flex;justify-content:space-between;gap:10px;font-size:14px}
 .recrow span{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:650}
+
+/* ---------- 3.5.0 weight modes, weekly-average trend, weight plans ---------- */
+.seg.wmodes{margin:-2px 0 12px}
+.seg.wmodes button{min-height:40px;font-size:14px;padding:0 4px;white-space:nowrap}
+.field .seg.wmodes{margin:0}
+.spark .daily{stroke:var(--muted);stroke-width:1.2;opacity:.55}
+.spark .wavg{stroke:var(--brand);stroke-width:2.8}
+.spark .band{fill:var(--brand);opacity:.14}
+.spark .goal{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
+.wavgline{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px;margin:-4px 0 10px}
+.wavgline i{display:inline-block;width:14px;height:3px;border-radius:2px;background:var(--brand)}
+.wavgline b{color:var(--text)}
+.wgrid b.ok{color:#5fd38a}.wgrid b.off{color:var(--accent)}
+.rbar{position:relative;height:10px;border-radius:5px;background:var(--surface2);margin:0 0 10px}
+.rbar .rb-band{position:absolute;left:25%;right:25%;top:0;bottom:0;border-radius:5px;background:rgba(95,211,138,.35)}
+.rbar .rb-dot{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:var(--text);border:2px solid var(--surface)}
+.hint.wwarn{margin-top:8px;padding:9px 11px;border-radius:10px;background:rgba(245,138,69,.10);border:1px solid rgba(245,138,69,.28);color:var(--text)}
+.hint.wwarn::before{content:"⚠️ "}
+.planline{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--surface2);font-size:14px;color:var(--muted);line-height:1.4}
+.planline b{color:var(--text)}
+.planline.quiet{background:transparent;padding:4px 0 0;margin-top:6px}
+.planadv{margin-top:8px;display:flex;flex-direction:column;gap:8px;color:var(--text)}
+.planadv .rc-btns{display:flex;gap:8px}
+.wptable{display:flex;flex-direction:column;font-variant-numeric:tabular-nums;font-size:14px}
+.wptable>div{display:grid;grid-template-columns:.8fr 1fr 1fr 1.3fr;gap:6px;padding:8px 4px;border-bottom:1px solid var(--line);align-items:start}
+.wptable .wph{color:var(--dim);font-size:12px;font-weight:650;text-transform:uppercase;letter-spacing:.04em}
+.wptable .wpr.now{background:var(--surface2);border-radius:8px;color:var(--text);font-weight:700}
+.wptable small{display:block;color:var(--dim);font-size:11px;font-weight:600}
+.wplist{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;color:var(--muted);font-size:14px;line-height:1.45}
+.wpbtns{margin:4px 0 12px}
+.hint button.lnk,#weightHint button.lnk{background:none;border:0;padding:0;cursor:pointer;font-family:inherit;min-height:32px}
+.field[hidden],.grid2>.field[hidden],.grid3>.field[hidden]{display:none}

@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.4.0';
+const APP_VERSION = '3.5.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -337,19 +337,55 @@ function weightTrend(ws, days=28){
   const sxx = xs.reduce((a,x) => a + (x-mx)**2, 0), sxy = xs.reduce((a,x,i) => a + (x-mx)*(ys[i]-my), 0);
   return { perWeek: Math.round(sxy/sxx*7*100)/100, n: pts.length, days: Math.round(span) };
 }
-/* Goal progress; direction (lose/gain) is inferred from start vs goal. */
+/* ---- 3.5.0 weight mode: Lose / Maintain / Gain. Stored in profile.weightMode once chosen (or migrated); until then inferred from goal vs current. ---- */
+const WMODES = [['lose','Lose weight'],['maintain','Maintain'],['gain','Gain weight']];
+const WMODE_SUB = { lose:'Fat loss / make weight', maintain:'Stay in a range', gain:'Muscle & size' };
+const MAINT_BAND = () => unit() === 'kg' ? 1.5 : 3;   // ± range for Maintain
+/* goal < current → lose, goal > current → gain, else maintain. If the goal is already passed (it sits between start and current), keep the start → goal direction. */
+function inferMode(goal, cur, start){ const g = Number(goal), c = Number(cur), st = Number(start); if (!(g > 0) || !(c > 0)) return 'maintain';
+  if (st > 0 && Math.abs(g - st) >= 0.1 && (g - st) * (g - c) < 0) return g < st ? 'lose' : 'gain';
+  return g < c ? 'lose' : g > c ? 'gain' : 'maintain'; }
+function weightMode(){ const m = db.profile.weightMode; if (['lose','maintain','gain'].includes(m)) return m;
+  const ws = weightSeries(), cur = ws.length ? ws[ws.length-1].w : Number(db.profile.startWeight) || null; return inferMode(db.profile.goalWeight, cur, Number(db.profile.startWeight) || (ws.length ? ws[0].w : null)); }
+/* 3.5.0 migration: existing users get an explicit mode from goal vs current (goal < current = Lose, goal > current = Gain, otherwise Maintain) */
+function migrateWeightMode(quiet){
+  const p = db.profile; if (['lose','maintain','gain'].includes(p.weightMode)) return;
+  if (!p.setupDone && !db.sessions.length) return;   // brand-new: onboarding asks
+  p.weightMode = weightMode(); if (!quiet) save();
+}
+/* weekly averages (Mon–Sun) of the daily series, oldest first */
+function weeklyAverages(ws, n = 12){
+  const m = new Map(); ws.forEach(p => { const k = iso(weekStart(parse(p.date))); const o = m.get(k) || { week:k, sum:0, n:0 }; o.sum += p.w; o.n++; m.set(k, o); });
+  return [...m.values()].sort((a, b) => a.week.localeCompare(b.week)).slice(-n).map(o => ({ week:o.week, avg:Math.round(o.sum / o.n * 10) / 10, n:o.n }));
+}
+/* average of the last 7 days of weigh-ins (falls back to the latest value) */
+function avg7(ws){ if (!ws.length) return null; const from = iso(addDays(parse(ws[ws.length-1].date), -6)), pts = ws.filter(p => p.date >= from); return Math.round(pts.reduce((a, p) => a + p.w, 0) / pts.length * 10) / 10; }
+/* pace notes: gaining > ~1 lb/week, or losing > 1% of body weight per week */
+function paceWarn(g){
+  const t = g.trend, u = unit(); if (!t || g.cur == null) return null;
+  const lbWk = convW(t.perWeek, u, 'lb');
+  if (lbWk > 1.05) return { kind:'gain', text:`Gaining about ${Math.abs(t.perWeek)} ${u}/week. At this pace it's mostly fat; a lean gain is usually about ${u === 'kg' ? '0.1–0.25 kg' : '0.25–0.5 lb'} a week.` };
+  if (t.perWeek < 0 && Math.abs(t.perWeek) > g.cur * 0.01) return { kind:'lose', text:`Losing about ${Math.abs(t.perWeek)} ${u}/week, more than 1% of your body weight. Faster loss can cost muscle and energy for training, so consider easing the deficit.` };
+  return null;
+}
+/* Goal progress. 3.5.0: direction comes from the chosen mode; Maintain uses a ± range around maintainW. */
 function weightGoal(){
   const p = db.profile, ws = weightSeries(), r = x => Math.round(x*10)/10;
   const nz = v => { const n = Number(v); return n > 0 ? n : null; };
   const cur = ws.length ? ws[ws.length-1].w : nz(p.startWeight);
   const start = nz(p.startWeight) ?? (ws.length ? ws[0].w : null);
   const goal = nz(p.goalWeight);
-  const out = { ws, cur, start, goal, dir:0, change:null, done:0, total:0, left:null, pct:0, reached:false, trend:weightTrend(ws), eta:null, goalDate:p.goalDate || '' };
+  const mode = weightMode();
+  const out = { ws, cur, start, goal:mode === 'maintain' ? null : goal, mode, dir:mode === 'lose' ? -1 : mode === 'gain' ? 1 : 0, change:null, done:0, total:0, left:null, pct:0, reached:false, trend:weightTrend(ws), eta:null, goalDate:mode === 'maintain' ? '' : p.goalDate || '', mismatch:false };
   if (cur == null) return out;
   if (start != null) out.change = r(cur - start);
+  if (mode === 'maintain') {
+    const band = MAINT_BAND(), center = nz(p.maintainW) ?? (goal != null && Math.abs(goal - cur) <= band ? goal : null) ?? start ?? cur, a = avg7(ws) ?? cur;
+    Object.assign(out, { center:r(center), lo:r(center - band), hi:r(center + band), band, avg:a, inRange:a >= center - band && a <= center + band, off:r(a > center + band ? a - (center + band) : a < center - band ? a - (center - band) : 0) });
+    return out;
+  }
   if (goal != null && start != null) {
-    out.dir = goal < start ? -1 : goal > start ? 1 : 0;
-    if (!out.dir) out.dir = cur > goal ? -1 : cur < goal ? 1 : 0;
+    if (Math.sign(goal - start) === -out.dir && Math.abs(goal - start) >= 0.1 && Math.sign(goal - cur) === -out.dir) { out.mismatch = true; out.left = r(Math.abs(goal - cur)); out.total = r(Math.abs(goal - start)); return out; }
     out.total = r(Math.abs(goal - start));
     out.done = r((cur - start) * out.dir);
     out.left = r(Math.max(0, (goal - cur) * out.dir));
@@ -360,34 +396,68 @@ function weightGoal(){
   }
   return out;
 }
-function sparkline(ws){
-  const pts = ws.slice(-20); if (pts.length < 2) return '';
-  const W = 120, H = 40, vals = pts.map(p => p.w), lo = Math.min(...vals), hi = Math.max(...vals), rg = Math.max(0.5, hi-lo);
-  const xy = pts.map((p,i) => [2 + (W-4) * i/(pts.length-1), 4 + (H-8) * (1 - (p.w-lo)/rg)]);
-  const d = xy.map((q,i) => `${i?'L':'M'}${q[0].toFixed(1)},${q[1].toFixed(1)}`).join('');
-  const l = xy[xy.length-1];
-  return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-label="Weight trend, last ${pts.length} weigh-ins" role="img"><path d="${d}"/><circle cx="${l[0].toFixed(1)}" cy="${l[1].toFixed(1)}" r="3.5"/></svg>`;
+/* daily weigh-ins (faint) + the weekly average (bold) as one small chart; Maintain shows its range band, Lose/Gain a dashed goal line */
+function sparkline(ws, g){
+  const pts = ws.slice(-42); if (pts.length < 2) return '';
+  const W = 120, H = 40, wk = weeklyAverages(pts, 8), extra = g && g.mode === 'maintain' && g.lo != null ? [g.lo, g.hi] : g && g.goal != null ? [g.goal] : [];
+  const vals = pts.map(p => p.w), lo = Math.min(...vals), hi = Math.max(...vals), lo2 = Math.min(lo, ...extra.filter(v => v >= lo - 6)), hi2 = Math.max(hi, ...extra.filter(v => v <= hi + 6)), rg = Math.max(0.5, hi2 - lo2);
+  const t0 = parse(pts[0].date).getTime(), t1 = Math.max(t0 + 864e5, parse(pts[pts.length-1].date).getTime());
+  const Xt = t => 2 + (W - 4) * (Math.max(t0, Math.min(t1, t)) - t0) / (t1 - t0), X = d => Xt(parse(d).getTime()), Y = w => 4 + (H - 8) * (1 - (w - lo2) / rg);
+  const path = l => l.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(1)},${q[1].toFixed(1)}`).join('');
+  const daily = pts.map(p => [X(p.date), Y(p.w)]), wavg = wk.map(o => [Xt(addDays(parse(o.week), 3).getTime()), Y(o.avg)]);   // each week's average sits mid-week
+  const l = daily[daily.length-1], clip = v => Math.max(1, Math.min(H - 1, v));
+  const band = g && g.mode === 'maintain' && g.lo != null ? `<rect class="band" x="0" width="${W}" y="${clip(Y(g.hi)).toFixed(1)}" height="${Math.max(1, clip(Y(g.lo)) - clip(Y(g.hi))).toFixed(1)}"/>` : '';
+  const gl = g && g.mode !== 'maintain' && g.goal != null && g.goal >= lo2 && g.goal <= hi2 ? `<line class="goal" x1="0" x2="${W}" y1="${Y(g.goal).toFixed(1)}" y2="${Y(g.goal).toFixed(1)}"/>` : '';
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-label="Weight trend: ${pts.length} weigh-ins and ${wk.length} weekly averages" role="img">${band}${gl}<path class="daily" d="${path(daily)}"/>${wavg.length > 1 ? `<path class="wavg" d="${path(wavg)}"/>` : ''}<circle cx="${l[0].toFixed(1)}" cy="${l[1].toFixed(1)}" r="3.5"/></svg>`;
 }
 const signed = n => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)}`;
+const modeSegHtml = (id, m) => `<div class="seg wmodes" role="radiogroup" aria-label="Weight goal" id="${id}">${WMODES.map(([k, l]) => `<button type="button" role="radio" data-wmode="${k}" class="${k === m ? 'on' : ''}" aria-checked="${k === m}">${l}</button>`).join('')}</div>`;
+/* switch mode from any screen: Maintain centres its range on your current weekly average the first time */
+function setWeightMode(k, opts = {}){
+  const p = db.profile, was = weightMode(); if (!['lose','maintain','gain'].includes(k)) return;
+  p.weightMode = k; p.sampleProfile = false;
+  if (p.wplan && wplanOf(p.wplan.id)?.mode !== k) p.wplan = null;   // a plan only makes sense for its own goal
+  if (k === 'maintain' && !(Number(p.maintainW) > 0)) { const g = weightGoal(); const c = avg7(g.ws) ?? g.cur; if (c) p.maintainW = String(r1(c)); }
+  save();
+  if (opts.quiet) return;
+  const label = WMODES.find(x => x[0] === k)[1];
+  if (k !== was && p.calc) actionToast(`${label}. Update your calorie targets to match?`, 'Update', () => macroCalcSheet({ pre:{ mode:k } }));
+  else toast(`Goal: ${label}`);
+  if (opts.route !== false) route();
+}
+/* the last week's average vs the week before */
+function weekAvgLine(ws){ const wk = weeklyAverages(ws, 2); if (!wk.length) return ''; const a = wk[wk.length-1], b = wk.length > 1 ? wk[wk.length-2] : null, u = unit();
+  return `<div class="wavgline" id="wAvg"><i></i>Weekly avg <b>${a.avg} ${u}</b>${b ? ` · ${signed(r1(a.avg - b.avg))} vs last week` : ''}</div>`; }
 function weightCard(){
-  const g = weightGoal(), u = unit();
+  const g = weightGoal(), u = unit(), m = g.mode;
   const logBtn = `<button type="button" class="btn primary block" id="logWeight" style="margin-top:12px"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Log weight</button>`;
-  if (g.cur == null) return `<div class="card" id="weightCard"><h2>Weight goal</h2><div class="empty" style="padding:2px 0 6px">Log your weight to track progress toward a goal.</div>${logBtn}</div>`;
-  const doneLbl = g.dir > 0 ? 'Gained so far' : g.dir < 0 ? 'Lost so far' : 'Change';
-  const doneVal = g.dir ? Math.max(0, g.done) : (g.change ?? 0);
-  const rate = g.trend ? `${signed(g.trend.perWeek)} ${u}/wk` : '';
-  let hint;
-  if (g.goal == null) hint = `<a href="#/settings/weight" class="lnk setgoals">Set a goal weight</a> to see progress.`;
-  else if (g.reached) hint = 'Goal reached 🎉';
-  else hint = `${g.pct}% of the way${rate ? ` · ${rate}` : ''}${g.dir && g.done < 0 ? ` · ${signed(-g.done*g.dir)} ${u} from start` : ''}`;
-  return `<div class="card" id="weightCard"><h2>Weight goal <a href="#/stats" class="lnk" id="weightMore">Trend ›</a></h2>
-    <div class="wtop"><div class="wnow"><b data-w="current">${g.cur}<small> ${u}</small></b><span>Current</span></div>${sparkline(g.ws)}</div>
-    ${g.goal != null ? `<div class="wgrid">
+  const top = `<h2>Weight goal <a href="#/stats" class="lnk" id="weightMore">Trend ›</a></h2>${modeSegHtml('homeMode', m)}`;
+  if (g.cur == null) return `<div class="card" id="weightCard" data-mode="${m}">${top}<div class="empty" style="padding:2px 0 6px">Log your weight to track progress${m === 'maintain' ? ' and stay in range' : ' toward a goal'}.</div>${logBtn}</div>`;
+  const warn = paceWarn(g), plan = planLine();
+  let body = '', hint;
+  if (m === 'maintain') {
+    const pos = Math.max(0, Math.min(100, (g.avg - (g.lo - g.band)) / (4 * g.band) * 100));
+    body = `<div class="wgrid"><div><b data-w="range">${g.lo}–${g.hi}</b><span>Range (${u})</span></div><div><b data-w="avg">${g.avg}</b><span>7-day avg</span></div><div><b data-w="status" class="${g.inRange ? 'ok' : 'off'}">${g.inRange ? 'In range' : `${signed(g.off)}`}</b><span>${g.inRange ? 'Status' : g.off > 0 ? 'Above range' : 'Below range'}</span></div></div>
+      <div class="rbar" aria-hidden="true"><i class="rb-band"></i><i class="rb-dot" data-w="dot" style="left:${pos.toFixed(1)}%"></i></div>`;
+    hint = g.inRange ? `In range ✓ Staying within ±${g.band} ${u} of ${g.center} ${u}.` : `${Math.abs(g.off)} ${u} ${g.off > 0 ? 'above' : 'below'} your range. Small, steady changes bring it back.`;
+    hint += ` <a href="#/settings/weight" class="lnk setgoals">Change range</a>`;
+  } else {
+    const lostG = m === 'gain' ? 'Gained so far' : 'Lost so far', toLbl = m === 'gain' ? 'To gain' : 'To lose';
+    if (g.goal != null) body = `<div class="wgrid">
       <div><b data-w="goal">${g.goal}</b><span>Goal (${u})</span></div>
-      <div><b data-w="done">${doneVal}</b><span>${doneLbl}</span></div>
-      <div><b data-w="left">${g.left}</b><span>Left to go</span></div></div>
-      <div class="mbar"><div class="b"><i data-w="pct" style="width:${g.pct}%"></i></div></div>` : ''}
-    <div class="hint" id="weightHint">${hint}</div>${logBtn}</div>`;
+      <div><b data-w="done">${g.mismatch ? '—' : Math.max(0, g.done)}</b><span>${lostG}</span></div>
+      <div><b data-w="left">${g.left}</b><span>${toLbl}</span></div></div>
+      <div class="mbar"><div class="b"><i data-w="pct" style="width:${g.pct}%"></i></div></div>`;
+    const rate = g.trend ? `${signed(g.trend.perWeek)} ${u}/wk` : '';
+    if (g.goal == null) hint = `<a href="#/settings/weight" class="lnk setgoals">Set a goal weight</a> to see progress.`;
+    else if (g.mismatch) { const other = g.goal > g.cur ? 'gain' : 'lose'; hint = `Your goal (${g.goal} ${u}) is ${other === 'gain' ? 'above' : 'below'} your current weight. <button type="button" class="lnk" data-wmode="${other}" id="modeFix">Switch to ${other === 'gain' ? 'Gain' : 'Lose'} weight</button>`; }
+    else if (g.reached) hint = 'Goal reached 🎉';
+    else hint = [m === 'gain' ? `${g.left} ${u} to gain` : `${g.left} ${u} to lose`, g.done > 0 ? `${m === 'gain' ? 'gained' : 'lost'} ${g.done} ${u}` : '', `${g.pct}%`, rate, g.eta ? `est. ${fmtShort(g.eta)}` : ''].filter(Boolean).join(' · ');
+  }
+  return `<div class="card" id="weightCard" data-mode="${m}">${top}
+    <div class="wtop"><div class="wnow"><b data-w="current">${g.cur}<small> ${u}</small></b><span>Current</span></div>${sparkline(g.ws, g)}</div>
+    ${weekAvgLine(g.ws)}${body}
+    <div class="hint" id="weightHint">${hint}</div>${warn ? `<div class="hint wwarn ${warn.kind}" id="weightWarn">${esc(warn.text)}</div>` : ''}${plan}${logBtn}</div>`;
 }
 /* Log weight: one tap opens it prefilled with the last value, one tap saves. */
 function logWeightSheet(){
@@ -422,7 +492,9 @@ function weightStatsCard(){
   const series = recent.length > 1 ? recent : ws;
   const t = g.trend;
   let proj = '';
-  if (g.goal != null) {
+  if (g.mode === 'maintain' && g.lo != null) proj = g.inRange ? `In range ✓ 7-day average ${g.avg} ${u} (range ${g.lo}–${g.hi} ${u}).` : `7-day average ${g.avg} ${u} is ${Math.abs(g.off)} ${u} ${g.off > 0 ? 'above' : 'below'} your ${g.lo}–${g.hi} ${u} range.`;
+  else if (g.mismatch) proj = `Your goal is on the other side of your current weight for “${WMODES.find(x => x[0] === g.mode)[1]}”. Change the goal or the mode in Profile.`;
+  else if (g.goal != null) {
     if (g.reached) proj = 'Goal reached 🎉';
     else if (g.eta) proj = `Projected goal date: <b id="eta">${fmtShort(g.eta)}</b>${g.goalDate ? (g.eta <= g.goalDate ? ' · on track for your target' : ` · target ${fmtShort(g.goalDate)}`) : ''}`;
     else if (t && t.perWeek * g.dir <= 0.05) proj = 'Trend isn’t moving toward your goal yet.';
@@ -432,15 +504,19 @@ function weightStatsCard(){
   return `<div class="card" id="weightStats"><h2>Weight <small>${ws.length} entries</small></h2>
     <div style="display:flex;align-items:baseline;gap:10px;margin:-4px 0 6px;flex-wrap:wrap"><span style="font-size:30px;font-weight:760;letter-spacing:-.03em">${g.cur}<small style="font-size:15px;color:var(--muted)"> ${u}</small></span>
       ${g.change != null ? `<span style="font-weight:700;color:${g.change * (g.dir || -1) >= 0 ? 'var(--accent)' : 'var(--danger)'}">${signed(g.change)} ${u}</span><span style="color:var(--dim);font-size:13px">since start (${g.start} ${u})</span>` : ''}</div>
-    ${series.length > 1 ? lineChart(series, g.goal) : ''}
+    ${series.length > 1 ? lineChart(series, g.goal) : ''}${weekAvgLine(ws)}
     <div class="wfacts"><div><span>Weekly average</span><b id="wRate">${t ? `${signed(t.perWeek)} ${u}/wk` : '—'}</b><small>${t ? `last ${t.days} days` : 'needs 3+ entries over a week'}</small></div>
-      <div><span>Goal</span><b>${g.goal != null ? `${g.goal} ${u}` : '—'}</b><small>${g.goal != null ? (g.reached ? 'reached' : `${g.left} ${u} to go · ${g.pct}%`) : '<a class="lnk setgoals" href="#/settings/weight">Set a goal</a>'}</small></div></div>
+      ${g.mode === 'maintain' ? `<div><span>Maintain</span><b>${g.lo != null ? `${g.lo}–${g.hi}` : '—'}</b><small>${g.lo != null ? (g.inRange ? 'in range' : g.off > 0 ? 'above range' : 'below range') : ''}</small></div>`
+        : `<div><span>Goal · ${g.mode === 'gain' ? 'gain' : 'lose'}</span><b>${g.goal != null ? `${g.goal} ${u}` : '—'}</b><small>${g.goal != null ? (g.reached ? 'reached' : `${g.left} ${u} to ${g.mode === 'gain' ? 'gain' : 'lose'} · ${g.pct}%`) : '<a class="lnk setgoals" href="#/settings/weight">Set a goal</a>'}</small></div>`}</div>
+    ${(() => { const w = paceWarn(g); return w ? `<div class="hint wwarn ${w.kind}" id="statsWarn">${esc(w.text)}</div>` : ''; })()}
     ${proj ? `<div class="hint" id="wProj" style="margin-top:8px">${proj}</div>` : ''}
     ${log.length ? `<div class="month" style="margin-top:12px">Recent weigh-ins</div>${log.map(x => `<div class="list-row wrow"><div class="grow"><b>${Math.round(convW(x.w, x.u, u)*10)/10} ${u}</b><small>${fmtShort(x.date)}${x.sample ? ' · sample' : ''}</small></div><button type="button" class="iconbtn" data-wdel="${esc(x.id)}" aria-label="Delete weigh-in"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>`).join('')}` : ''}
     <button type="button" class="btn block" id="logWeight2" style="margin-top:12px">Log weight</button></div>`;
 }
 function wireWeight(root){
   root.querySelectorAll('#logWeight,#logWeight2').forEach(b => b.onclick = logWeightSheet);
+  root.querySelectorAll('#weightCard [data-wmode]').forEach(b => b.onclick = () => setWeightMode(b.dataset.wmode));
+  wirePlanLine(root);
   root.querySelectorAll('[data-wdel]').forEach(b => b.onclick = () => { const before = JSON.parse(JSON.stringify(db.weights)); db.weights = db.weights.filter(x => x.id !== b.dataset.wdel); save(); route(); undoToast('Weigh-in deleted', () => { db.weights = before; save(); route(); }); });
 }
 
@@ -861,20 +937,34 @@ function viewSetupGoals(){
     <button type="button" class="lnk skip" id="skipGoals">Skip for now</button></div>`;
   const F = $('#goalForm'), sec = (t, hint) => { const c = h(`<div class="card goalsec"><h2>${esc(t)}</h2>${hint ? `<div class="hint" style="margin:-6px 0 10px">${esc(hint)}</div>` : ''}</div>`); F.appendChild(c); return c; };
   const inp = (id, ph, mode='decimal') => h(`<input class="input" type="text" inputmode="${mode}" placeholder="${esc(ph)}" id="${id}">`);
-  let wNow, wGoal, wDate, tIn = {}, water;
+  let wNow, wGoal, wDate, tIn = {}, water, wMode = cs?.mode || (cs ? inferMode(cs.gw, cs.w) : null), modeTouched = !!cs, modeSync = () => {}, noteSync = () => {};
+  // 3.5.0: changing the goal here re-runs the calculator (if step 2 was filled) and refills the targets
+  const reCalc = () => { if (!calc) return; const s2 = { ...cs, mode:wMode, gw:wMode === 'maintain' ? '' : (wGoal && num(wGoal.value) ? r1(convW(num(wGoal.value), wu, cs.u)) : cs.gw), w:wNow && num(wNow.value) ? r1(convW(num(wNow.value), wu, cs.u)) : cs.w };
+    const r2 = macroCalc(calcInputsKg(s2)); calc.s = s2; calc.r = r2; if (tIn.cal) { tIn.cal.value = r2.cal; tIn.p.value = r2.p; tIn.c.value = r2.c; tIn.f.value = r2.f; } noteSync(); };
   if (pick.weight) { const c = sec('Weight goal');
+    const mf = h(`<div class="field"><label>Your goal</label>${modeSegHtml('setupMode', wMode)}</div>`); c.appendChild(mf);
+    modeSync = () => { mf.querySelectorAll('[data-wmode]').forEach(b => { b.classList.toggle('on', b.dataset.wmode === wMode); b.setAttribute('aria-checked', b.dataset.wmode === wMode); });
+      const m = wMode === 'maintain'; c.querySelector('#setupGoalWrap').hidden = m; c.querySelector('#setupDateWrap').hidden = m;
+      c.querySelector('#setupModeHint').textContent = !wMode ? 'Pick one, or type a goal weight and we’ll pick for you.' : m ? `We'll keep you within ±${wu === 'kg' ? 1.5 : 3} ${wu} of today's weight and show when you're in range.` : wMode === 'gain' ? 'Lean gain: a small surplus and ~1 g protein per lb. Slow and steady keeps it mostly muscle.' : 'Steady fat loss. Keep protein high to hold on to muscle.'; };
+    mf.querySelectorAll('[data-wmode]').forEach(b => b.onclick = () => { modeTouched = true; wMode = b.dataset.wmode; modeSync(); reCalc(); });
     c.appendChild(field('Units', seg([['lb','lb'],['kg','kg']], wu, x => { wu = x; const l = $('#setupWater')?.closest('.field')?.querySelector('label'); if (l) { l.textContent = `Water (${x === 'kg' ? 'ml' : 'oz'})`; $('#setupWater').placeholder = x === 'kg' ? 'e.g. 2500' : 'e.g. 96'; } })));
     wNow = inp('setupW', 'Today'); wGoal = inp('setupGoal', 'Target'); wDate = h(`<input class="input" type="date" id="setupGoalDate" min="${today()}">`);
-    const g = h('<div class="grid2"></div>'); g.appendChild(field('Current weight', wNow)); g.appendChild(field('Goal weight', wGoal)); c.appendChild(g); c.appendChild(field('Goal date (optional)', wDate));
+    const g = h('<div class="grid2"></div>'), gf = field('Goal weight', wGoal), df = field('Goal date (optional)', wDate); gf.id = 'setupGoalWrap'; df.id = 'setupDateWrap';
+    g.appendChild(field('Current weight', wNow)); g.appendChild(gf); c.appendChild(g); c.appendChild(df); c.appendChild(h('<div class="hint" id="setupModeHint"></div>'));
+    const follow = () => { if (modeTouched) return; const a = num(wNow.value), b = num(wGoal.value); if (a && b) { wMode = Math.abs(convW(b - a, wu, 'lb')) <= 1 ? 'maintain' : inferMode(b, a); modeSync(); } };
+    wGoal.addEventListener('input', follow); wNow.addEventListener('input', follow); wGoal.addEventListener('change', reCalc);
     wNow.oninput = () => { const w = num(wNow.value); if (tIn.p) tIn.p.placeholder = w ? `e.g. ${Math.round(w * (wu === 'kg' ? 2.2 * .9 : .9))}` : 'e.g. 160'; };
-    if (cs) { wNow.value = cs.w; if (cs.gw) wGoal.value = cs.gw; if (cr.dir && cr.goalDate) wDate.value = cr.goalDate; } }
+    if (cs) { wNow.value = cs.w; if (cs.gw) wGoal.value = cs.gw; if (cr.dir && cr.goalDate) wDate.value = cr.goalDate; }
+    modeSync(); }
   if (pick.food || calc) { const c = sec('Daily nutrition', 'Rough guide: protein ≈ 0.8–1 g per lb of body weight (1.8–2.2 g per kg).'), g = h('<div class="grid2"></div>');
     [['cal','Calories','e.g. 2400'],['p','Protein (g)','e.g. 160'],['c','Carbs (g)','e.g. 250'],['f','Fat (g)','e.g. 75']].forEach(([k, l, ph]) => { tIn[k] = inp(`setupT-${k}`, ph, 'numeric'); g.appendChild(field(l, tIn[k])); });
     water = inp('setupWater', waterMetric() ? 'e.g. 2500' : 'e.g. 96'); g.appendChild(field(`Water (${waterU()})`, water)); c.appendChild(g);
     const wp = waterPresets(water, () => (wNow && num(wNow.value) ? convW(num(wNow.value), wu, unit()) : cs ? convW(cs.w, cs.u, unit()) : weightGoal().cur)); c.appendChild(wp); if (wNow) wNow.addEventListener('input', () => wp._refresh());
-    const note = calc ? h(`<div class="hint calchint ok" id="setupCalcNote">Calculated from your details${cr.dir ? ` (${cr.dir < 0 ? 'lose' : 'gain'} ${fmtWk(cr)})` : ' (maintain)'}. Edit any number.</div>`)
+    const noteTxt = () => `Calculated from your details${calc.r.dir ? ` (${calc.r.dir < 0 ? 'lose' : 'gain'} ${fmtWk(calc.r)})` : ' (maintain)'}. Edit any number.`;
+    const note = calc ? h(`<div class="hint calchint ok" id="setupCalcNote">${noteTxt()}</div>`)
       : h('<div class="hint calchint" id="setupCalcNote">Don\'t know your numbers? <button type="button" class="lnk" id="toAbout">Go back to About you</button> and we\'ll work them out.</div>');
     c.insertBefore(note, c.children[1] || null);
+    if (calc) noteSync = () => { note.textContent = noteTxt(); };
     if (calc) { tIn.cal.value = cr.cal; tIn.p.value = cr.p; tIn.c.value = cr.c; tIn.f.value = cr.f; water.value = waterSuggest(cs.w, cs.u, waterMetric()); water.dispatchEvent(new Event('input')); wp._refresh?.(); }
     else note.querySelector('#toAbout').onclick = () => { viewSetupAbout(); window.scrollTo(0, 0); }; }
   const sgIn = {}; let sgDate;
@@ -896,7 +986,11 @@ function viewSetupGoals(){
     if (saveGoals) {
       if (pick.weight) { const now = num(wNow.value), gw = num(wGoal.value); db.profile.unit = wu;
         if (now) { db.weights.push({ id:uid(), date:today(), w:r1(now), u:wu, createdAt:Date.now() }); db.profile.startWeight = String(r1(now)); }
-        if (gw) db.profile.goalWeight = String(r1(gw)); if (wDate.value) db.profile.goalDate = wDate.value; }
+        if (!wMode || (!modeTouched && !gw && now)) wMode = gw && now && Math.abs(convW(gw - now, wu, 'lb')) > 1 ? inferMode(gw, now) : 'maintain';   // no choice made: follow the goal, or just keep it steady
+        db.profile.weightMode = wMode;
+        if (wMode === 'maintain') { if (now) db.profile.maintainW = String(r1(now)); db.profile.goalWeight = ''; db.profile.goalDate = ''; }
+        else { if (gw) db.profile.goalWeight = String(r1(gw)); if (wDate.value) db.profile.goalDate = wDate.value; } }
+      else if (calc?.s?.mode) db.profile.weightMode = calc.s.mode;
       if (tIn.cal) { const t = {}; Object.entries(tIn).forEach(([k, i]) => { const n = Math.round(num(i.value)); if (n > 0) t[k] = n; }); if (Object.keys(t).length) db.profile.targets = t;
         const ml = num(water.value) ? toMl(water.value) : 0; if (ml >= 250 && ml <= 10000) db.profile.waterGoal = Math.round(ml); }
       if (pick.weights) { const u0 = pick.weight ? wu : unit(); Object.entries(sgIn).forEach(([k, i]) => { const t = num(i.value); if (t > 0) db.strength.push(sanitizeStrength([{ id:uid(), key:k, target:t, u:u0, date:sgDate.value, createdAt:Date.now() }])[0]); }); }
@@ -1630,31 +1724,35 @@ const ACTIVITY = [
 ];
 const PACE = { lose:{ slow:250, steady:500, aggressive:750 }, gain:{ slow:250, steady:350, aggressive:500 } };
 const LB_PER_KG = 1 / KG_PER_LB;
-/* pure: inputs in any unit → targets. i = { sex:'m'|'f', age, cm, kg, goalKg, act, pace } */
+/* pure: inputs in any unit → targets. i = { sex:'m'|'f', age, cm, kg, goalKg, act, pace, mode? }
+   mode (3.5.0): 'lose' | 'maintain' | 'gain'. Without it the direction comes from goal vs current (as before). */
 function macroCalc(i){
-  const kg = Number(i.kg), cm = Number(i.cm), age = Number(i.age), goalKg = Number(i.goalKg) > 0 ? Number(i.goalKg) : kg;
+  const mode = ['lose','maintain','gain'].includes(i.mode) ? i.mode : null;
+  const kg = Number(i.kg), cm = Number(i.cm), age = Number(i.age), goalKg = mode === 'maintain' ? kg : Number(i.goalKg) > 0 ? Number(i.goalKg) : kg;
   const act = ACTIVITY.find(a => a[0] === i.act) || ACTIVITY[2], pace = ['slow','steady','aggressive'].includes(i.pace) ? i.pace : 'steady';
   const bmr = Math.round(10 * kg + 6.25 * cm - 5 * age + (i.sex === 'f' ? -161 : 5));
   const maint = Math.round(bmr * act[3]), lbNow = kg * LB_PER_KG, lbGoal = goalKg * LB_PER_KG;
-  const dir = lbGoal < lbNow - 1 ? -1 : lbGoal > lbNow + 1 ? 1 : 0;
+  const dir = mode ? { lose:-1, maintain:0, gain:1 }[mode] : lbGoal < lbNow - 1 ? -1 : lbGoal > lbNow + 1 ? 1 : 0;
   const floor = Math.max(bmr, i.sex === 'f' ? 1200 : 1500);
   let cal = dir < 0 ? maint - PACE.lose[pace] : dir > 0 ? maint + PACE.gain[pace] : maint, floored = false;
   if (dir < 0 && cal < floor) { cal = floor; floored = true; }
   cal = Math.round(cal / 10) * 10;
-  // protein 1 g per lb of goal weight, capped at 250 g and at 40% of calories
-  const p = Math.round(Math.min(lbGoal, 250, cal * 0.40 / 4));
+  // Gain (lean bulk): protein ~1 g per lb of current weight, fat 25% of calories, the rest carbs (fuel for training)
+  const gainMode = mode === 'gain';
+  // otherwise protein 1 g per lb of goal weight, capped at 250 g and at 40% of calories
+  const p = gainMode ? Math.round(Math.min(lbNow, 250, cal * 0.35 / 4)) : Math.round(Math.min(lbGoal, 250, cal * 0.40 / 4));
   // fat ≈ 0.35 g per lb of goal weight, kept within 25–30% of calories
-  const f = Math.round(Math.min(Math.max(0.35 * lbGoal, cal * 0.25 / 9), cal * 0.30 / 9));
+  const f = gainMode ? Math.round(cal * 0.25 / 9) : Math.round(Math.min(Math.max(0.35 * lbGoal, cal * 0.25 / 9), cal * 0.30 / 9));
   const c = Math.max(0, Math.round((cal - p * 4 - f * 9) / 4));
   const perWeekLb = (cal - maint) * 7 / 3500, perWeekKg = (cal - maint) * 7 / 7700;
   let weeks = null, goalDate = '';
-  if (dir && Math.abs(perWeekLb) > 0.01 && Math.sign(perWeekLb) === dir) { weeks = Math.abs(lbGoal - lbNow) / Math.abs(perWeekLb); goalDate = iso(addDays(new Date(), Math.ceil(weeks * 7))); }
-  return { bmr, maint, cal, p, c, f, dir, pace, floored, floor, perWeekLb, perWeekKg, weeks, goalDate, act:act[0] };
+  if (dir && Math.abs(perWeekLb) > 0.01 && Math.sign(perWeekLb) === dir && (lbGoal - lbNow) * dir > 1) { weeks = Math.abs(lbGoal - lbNow) / Math.abs(perWeekLb); goalDate = iso(addDays(new Date(), Math.ceil(weeks * 7))); }
+  return { bmr, maint, cal, p, c, f, dir, pace, floored, floor, perWeekLb, perWeekKg, weeks, goalDate, act:act[0], mode:mode || (dir < 0 ? 'lose' : dir > 0 ? 'gain' : 'maintain') };
 }
 /* stored inputs (profile.calc) → macroCalc inputs */
 function calcInputsKg(s){
   const u = s.u === 'kg' ? 'kg' : 'lb', cm = s.hu === 'cm' ? Number(s.cm) : ((Number(s.ft) || 0) * 12 + (Number(s.inch) || 0)) * 2.54;
-  return { sex:s.sex, age:s.age, cm, kg:convW(Number(s.w), u, 'kg'), goalKg:Number(s.gw) > 0 ? convW(Number(s.gw), u, 'kg') : convW(Number(s.w), u, 'kg'), act:s.act, pace:s.pace };
+  return { sex:s.sex, age:s.age, cm, kg:convW(Number(s.w), u, 'kg'), goalKg:Number(s.gw) > 0 ? convW(Number(s.gw), u, 'kg') : convW(Number(s.w), u, 'kg'), act:s.act, pace:s.pace, mode:s.mode };
 }
 /* guess activity from the last 4 weeks of logged training */
 function guessActivity(){
@@ -1689,6 +1787,7 @@ function macroCalcForm(opts = {}){
     w:pre.w > 0 ? r1(pre.w) : calcCurW() > 0 ? r1(convW(calcCurW(), unit(), u0)) : prev.w ? conv(prev.w, prev.u) : '',
     gw:pre.gw > 0 ? r1(pre.gw) : Number(db.profile.goalWeight) > 0 ? r1(convW(Number(db.profile.goalWeight), unit(), u0)) : prev.gw ? conv(prev.gw, prev.u) : '',
     act:prev.act || guessActivity(), pace:prev.pace || 'steady', u:u0 };
+  if (!opts.state) { const m = pre.mode || db.profile.weightMode || prev.mode; st.mode = ['lose','maintain','gain'].includes(m) ? m : Number(st.gw) > 0 ? inferMode(st.gw, st.w) : null; st.modeTouched = !!pre.mode; }   // null: nothing picked yet (new user)
   const IN = h('<div class="mcform"></div>');
   const box = (id, val, ph, mode = 'decimal') => h(`<input class="input big" type="text" inputmode="${mode}" id="${id}" placeholder="${esc(ph)}" value="${esc(val)}">`);
   IN.appendChild(field('Sex (for the formula)', seg([['m','Male'],['f','Female']], st.sex, x => { st.sex = x; })));
@@ -1711,11 +1810,20 @@ function macroCalcForm(opts = {}){
     wF.querySelector('label').textContent = `Current weight (${x})`; gwF.querySelector('label').textContent = `Goal weight (${x})`; w.placeholder = x === 'kg' ? 'e.g. 80' : 'e.g. 180'; paceSync();
     if (opts.onUnit) opts.onUnit(x); })));
   if (opts.units) IN.lastChild.id = 'mcUnits';
-  IN.appendChild(g1); IN.appendChild(g2);
-  const paceF = field('Pace', seg([['slow','Slow'],['steady','Steady'],['aggressive','Aggressive']], st.pace, x => { st.pace = x; }));
-  const paceSync = () => { const a = Number(w.value), b = Number(gw.value); paceF.hidden = !(a > 0 && b > 0 && Math.abs(convW(b - a, st.u, 'lb')) > 1);
-    paceF.querySelector('label').textContent = b > a ? 'How fast to gain' : 'How fast to lose'; };
-  w.oninput = () => { st.w = w.value; paceSync(); }; gw.oninput = () => { st.gw = gw.value; paceSync(); };
+  // 3.5.0: the goal itself, as an explicit 3-way choice (follows goal vs current until you tap it)
+  const modeF = h(`<div class="field"><label>Your goal</label>${modeSegHtml('mcMode', st.mode)}<div class="hint" id="mcModeSub"></div></div>`);
+  const modeSet = m => { st.mode = m; modeF.querySelectorAll('[data-wmode]').forEach(b => { b.classList.toggle('on', b.dataset.wmode === m); b.setAttribute('aria-checked', b.dataset.wmode === m); }); paceSync(); };
+  modeF.querySelectorAll('[data-wmode]').forEach(b => b.onclick = () => { st.modeTouched = true; modeSet(b.dataset.wmode); if (opts.onMode) opts.onMode(b.dataset.wmode); });
+  IN.appendChild(modeF); IN.appendChild(g1); IN.appendChild(g2);
+  const paceF = field('Pace', seg([['slow','Slow'],['steady','Steady'],['aggressive','Aggressive']], st.pace, x => { st.pace = x; paceSync(); }), ' ');
+  const paceSync = () => { const m = st.mode, P = PACE[m === 'gain' ? 'gain' : 'lose'];
+    gwF.hidden = m === 'maintain'; paceF.hidden = m === 'maintain' || !m;
+    modeF.querySelector('#mcModeSub').textContent = !m ? 'Pick one, or type a goal weight and we’ll pick for you.' : m === 'maintain' ? `Maintenance calories. Stay within ±${st.u === 'kg' ? 1.5 : 3} ${st.u} of your current weight.` : m === 'gain' ? 'Lean gain: a small surplus, ~1 g protein per lb, more carbs for training.' : 'A steady deficit, high protein to keep muscle.';
+    gw.placeholder = m === 'gain' ? 'Optional, e.g. +10' : 'Optional';
+    paceF.querySelector('label').textContent = m === 'gain' ? 'How fast to gain' : 'How fast to lose';
+    paceF.querySelector('.hint').textContent = `${m === 'gain' ? '+' : '−'}${P[st.pace] || P.steady} kcal a day vs maintenance (slow ${P.slow} · steady ${P.steady} · aggressive ${P.aggressive})${m === 'gain' ? '. Slower = leaner.' : ''}`; };
+  const follow = () => { if (st.modeTouched) return; const a = Number(w.value), b = Number(gw.value); if (!(a > 0 && b > 0)) return; modeSet(Math.abs(convW(b - a, st.u, 'lb')) <= 1 ? 'maintain' : inferMode(b, a)); };
+  w.oninput = () => { st.w = w.value; follow(); paceSync(); }; gw.oninput = () => { st.gw = gw.value; follow(); paceSync(); };
   const actF = h(`<div class="field"><label>Activity</label><div class="actlist" id="mcAct" role="radiogroup">${ACTIVITY.map(([k, l, d]) => `<button type="button" role="radio" data-act="${k}" class="${st.act === k ? 'on' : ''}" aria-checked="${st.act === k}"><b>${l}</b><small>${d}</small></button>`).join('')}</div><div class="hint">Count your training days (BJJ, lifting, cardio) here.</div></div>`);
   actF.querySelectorAll('[data-act]').forEach(b => b.onclick = () => { st.act = b.dataset.act; actF.querySelectorAll('[data-act]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', x === b); }); });
   IN.appendChild(actF); IN.appendChild(paceF); paceSync();
@@ -1725,12 +1833,14 @@ function macroCalcForm(opts = {}){
     if (!(Number(age.value) >= 14 && Number(age.value) <= 100)) return 'Enter your age (14–100)';
     if (!(hcm >= 120 && hcm <= 230)) return 'Enter your height';
     if (!(wk >= 30 && wk <= 300)) return `Enter your current weight in ${u}`;
-    if (gw.value && !(convW(Number(gw.value), u, 'kg') >= 30 && convW(Number(gw.value), u, 'kg') <= 300)) return `Enter your goal weight in ${u}`;
+    if (st.mode !== 'maintain' && gw.value && !(convW(Number(gw.value), u, 'kg') >= 30 && convW(Number(gw.value), u, 'kg') <= 300)) return `Enter your goal weight in ${u}`;
+    if (st.mode === 'lose' && Number(gw.value) > Number(w.value)) return 'Your goal is above your current weight. Pick Gain weight, or lower the goal';
+    if (st.mode === 'gain' && Number(gw.value) > 0 && Number(gw.value) < Number(w.value)) return 'Your goal is below your current weight. Pick Lose weight, or raise the goal';
     return null;
   };
   const stored = () => ({ sex:st.sex, age:Math.round(Number(age.value)), hu:st.hu, ft:st.hu === 'ftin' ? Number(st.ft) || 0 : '', inch:st.hu === 'ftin' ? Number(st.inch) || 0 : '', cm:st.hu === 'cm' ? Math.round(Number(st.cm)) : '',
-    w:r1(Number(w.value)), gw:Number(gw.value) > 0 ? r1(Number(gw.value)) : '', u:st.u, act:st.act, pace:st.pace, at:today() });
-  return { el:IN, st, validate, stored, calc(){ const s = stored(); return { s, r:macroCalc(calcInputsKg(s)) }; } };
+    w:r1(Number(w.value)), gw:st.mode !== 'maintain' && Number(gw.value) > 0 ? r1(Number(gw.value)) : '', u:st.u, act:st.act, pace:st.pace, mode:st.mode || (Number(gw.value) > 0 && Math.abs(convW(Number(gw.value) - Number(w.value), st.u, 'lb')) > 1 ? inferMode(gw.value, w.value) : 'maintain'), at:today() });
+  return { el:IN, st, validate, stored, setMode:modeSet, calc(){ const s = stored(); return { s, r:macroCalc(calcInputsKg(s)) }; } };
 }
 /* water suggestion: half your body weight (lb) in oz; metric rounded to 50 ml. Returns the value in the display unit. */
 const waterSuggest = (w, u, metric) => { const oz = Math.round(convW(Number(w), u, 'lb') / 2); return metric ? Math.round(oz * ML_PER_OZ / 50) * 50 : oz; };
@@ -1749,7 +1859,8 @@ function macroCalcSheet(opts = {}){
       <div class="mcmac"><div><b data-r="p">${r.p}</b><small>g protein</small></div><div><b data-r="c">${r.c}</b><small>g carbs</small></div><div><b data-r="f">${r.f}</b><small>g fat</small></div></div>
       <div class="list-row"><div class="grow">Maintenance</div><b data-r="maint">${r.maint.toLocaleString()} kcal</b></div>
       <div class="list-row"><div class="grow">${r.dir < 0 ? 'Estimated loss' : r.dir > 0 ? 'Estimated gain' : 'Weight'}</div><b data-r="wk">${r.dir ? fmtWk(r) : 'maintain'}</b></div>
-      ${r.dir ? `<div class="list-row"><div class="grow">Reach ${s.gw} ${u} around</div><b data-r="date">${r.goalDate ? fmtShort(r.goalDate) : '—'}</b></div>` : ''}
+      ${r.mode === 'gain' ? `<div class="hint" data-r="gainnote">Lean gain: aim for ${u === 'kg' ? '0.1–0.25 kg' : '0.25–0.5 lb'} a week. Use your weekly average, not single weigh-ins.</div>` : ''}
+      ${r.dir && s.gw ? `<div class="list-row"><div class="grow">Reach ${s.gw} ${u} around</div><b data-r="date">${r.goalDate ? fmtShort(r.goalDate) : '—'}</b></div>` : ''}
       ${r.floored ? `<div class="hint" data-r="floor">Kept at ${r.floor.toLocaleString()} kcal: we don't go lower than that, so it may take longer.</div>` : ''}</div>
       <div class="mcbtns"><button type="button" class="btn primary block big" id="mcUse">Use these</button><button type="button" class="btn block" id="mcAdjust">Adjust</button></div>
       <div class="hint">You can still edit every number afterwards.</div>`;
@@ -1764,7 +1875,10 @@ function useCalc(r, s){
   const before = JSON.parse(JSON.stringify(db.profile));
   db.profile.targets = { ...(db.profile.targets || {}), cal:r.cal, p:r.p, c:r.c, f:r.f };
   db.profile.calc = s;
-  if (s.gw && !(Number(db.profile.goalWeight) > 0)) db.profile.goalWeight = String(r1(convW(Number(s.gw), s.u, unit())));
+  if (s.mode) { if (db.profile.weightMode !== s.mode) setWeightMode(s.mode, { quiet:true }); db.profile.sampleProfile = false;
+    if (s.mode === 'maintain' && !(Number(db.profile.maintainW) > 0)) db.profile.maintainW = String(r1(convW(Number(s.w), s.u, unit()))); }
+  const og = Number(db.profile.goalWeight), cw = convW(Number(s.w), s.u, unit()), wrongSide = og > 0 && (s.mode === 'gain' ? og < cw : s.mode === 'lose' ? og > cw : false);
+  if (s.gw && (!(og > 0) || wrongSide)) db.profile.goalWeight = String(r1(convW(Number(s.gw), s.u, unit())));
   save(); undoToast(`Goals set: ${r.cal.toLocaleString()} kcal · ${r.p} g protein`, () => { db.profile = before; save(); route(); }); route();
 }
 document.addEventListener('click', e => {
@@ -2339,7 +2453,7 @@ function viewSettings(){
 
   const wcard = h('<div class="card"><h2>Weight</h2></div>');
   wcard.appendChild(field('Units', seg([['lb','lb'],['kg','kg']], unit(), x => { if (x === unit()) return; const from = unit(), cv = v => v === '' || v == null || !(Number(v) > 0) ? v : Math.round(convW(Number(v), from, x)*10)/10;
-    p.startWeight = cv(p.startWeight); p.goalWeight = cv(p.goalWeight); db.sessions.forEach(s => { s.weight = cv(s.weight); }); p.unit = x; save(); toast(`Weights shown in ${x}`); viewSettings(); })));
+    p.startWeight = cv(p.startWeight); p.goalWeight = cv(p.goalWeight); p.maintainW = cv(p.maintainW); db.sessions.forEach(s => { s.weight = cv(s.weight); }); p.unit = x; save(); toast(`Weights shown in ${x}`); viewSettings(); })));
   const firstW = weightSeries()[0];
   const wnum = (val, ph, id) => h(`<input class="input" type="text" inputmode="decimal" placeholder="${esc(ph)}" value="${esc(val)}" id="${id}">`);
   const startIn = wnum(p.startWeight, firstW ? `${firstW.w} (first weigh-in)` : 'e.g. 210', 'startW');
@@ -2347,12 +2461,24 @@ function viewSettings(){
   const curRow = h(`<div class="field"><label>Current weight</label><div style="display:flex;gap:10px;align-items:center"><b style="font-size:20px;flex:1" id="curW">${weightGoal().cur != null ? `${weightGoal().cur} ${unit()}` : '—'}</b><button type="button" class="btn sm" id="logWeightP">Log weight</button></div></div>`);
   curRow.querySelector('#logWeightP').onclick = logWeightSheet;
   const goal = wnum(p.goalWeight, 'Optional', 'goalW');
-  goal.onchange = () => { p.goalWeight = goal.value.replace(/[^\d.]/g,''); p.sampleProfile = false; save(); toast('Goal saved'); };
+  goal.onchange = () => { p.goalWeight = goal.value.replace(/[^\d.]/g,''); p.sampleProfile = false;
+    // a goal on the other side of today's weight means the other direction: switch, and say so
+    const c = weightGoal().cur, gN = Number(p.goalWeight), m = weightMode(), flip = c > 0 && gN > 0 && ((m === 'lose' && gN > c + 0.1) || (m === 'gain' && gN < c - 0.1)) ? (gN > c ? 'gain' : 'lose') : null;
+    if (flip) { setWeightMode(flip, { quiet:true }); toast(`Goal saved. Switched to ${flip === 'gain' ? 'Gain' : 'Lose'} weight`); viewSettings(); return; }
+    save(); toast('Goal saved'); };
   const gdate = h(`<input class="input" type="date" id="goalDate" value="${esc(p.goalDate||'')}" min="${today()}">`);
   gdate.onchange = () => { p.goalDate = gdate.value; save(); toast(gdate.value ? 'Goal date saved' : 'Goal date cleared'); };
-  if (enabled('weight')) { wcard.appendChild(field('Starting weight', startIn, 'Leave blank to use your first weigh-in.')); wcard.appendChild(curRow); }
-  const g2 = h('<div class="grid2"></div>'); g2.appendChild(field('Goal weight', goal)); g2.appendChild(field('Goal date (optional)', gdate));
-  wcard.appendChild(g2);
+  const wm = weightMode();
+  if (enabled('weight')) { const mf = h(`<div class="field"><label>Your goal</label>${modeSegHtml('modeSeg', wm)}<div class="hint">${esc(WMODE_SUB[wm])}. Changing it can update your calorie targets.</div></div>`);
+    mf.querySelectorAll('[data-wmode]').forEach(b => b.onclick = () => { if (b.dataset.wmode !== weightMode()) setWeightMode(b.dataset.wmode); });
+    wcard.appendChild(mf); wcard.appendChild(field('Starting weight', startIn, 'Leave blank to use your first weigh-in.')); wcard.appendChild(curRow); }
+  const g2 = h('<div class="grid2"></div>'); g2.appendChild(field(wm === 'gain' ? 'Goal weight (gain to)' : 'Goal weight', goal)); g2.appendChild(field('Goal date (optional)', gdate));
+  if (wm === 'maintain' && enabled('weight')) {
+    const g = weightGoal(), mw = wnum(p.maintainW || (g.center ?? ''), g.cur != null ? String(g.cur) : 'e.g. 180', 'maintainW');
+    const mfield = field('Maintain around', mw, g.lo != null ? `Range ${g.lo}–${g.hi} ${unit()} (±${g.band}). Status uses your 7-day average.` : `We keep you within ±${MAINT_BAND()} ${unit()}.`);
+    mw.onchange = () => { const n = Number(mw.value.replace(/[^\d.]/g,'')); if (!(n > 0)) { toast('Enter a weight'); return; } p.maintainW = String(r1(n)); save(); toast('Range saved'); viewSettings(); };
+    wcard.appendChild(mfield);
+  } else wcard.appendChild(g2);
   if (enabled('cardio')) wcard.appendChild(field('Distance', seg([['mi','Miles'],['km','Kilometers']], distU(), x => { p.distUnit = x; save(); })));
   const mhr = h(`<input class="input" type="text" inputmode="numeric" placeholder="e.g. 190" value="${esc(p.maxHR||'')}">`);
   mhr.onchange = () => { p.maxHR = mhr.value.replace(/\D/g,''); save(); toast('Max heart rate saved'); };
@@ -2525,6 +2651,7 @@ function loadSample(){
   if (!db.profile.targets) db.profile = { ...db.profile, targets:{ cal:2300, p:190, c:220, f:75 } };
   if (!db.profile.sampleProfile && !db.profile.goalWeight) db.profile = { ...db.profile, goalWeight:'195', sampleProfile:true };
   if (!db.profile.startWeight && !(db.weights||[]).some(x => !x.sample)) db.profile = { ...db.profile, goalWeight: db.profile.goalWeight || String(Math.round(convW(195, 'lb', unit())*10)/10), startWeight: String(Math.round(convW(215, 'lb', unit())*10)/10), goalDate: db.profile.goalDate || iso(addDays(new Date(), 70)) };
+  if (db.profile.sampleProfile || !db.profile.weightMode) db.profile.weightMode = inferMode(db.profile.goalWeight, weightGoal().cur, db.profile.startWeight);   // the demo shows a Lose goal
   save(); gameCheck(true); toast(`Loaded ${sessions.length} sample sessions`); route();
 }
 function sampleWeights(){
@@ -3019,12 +3146,14 @@ function viewPrograms(){
   v.innerHTML = `${p ? `<div class="card" id="activeProg"><h2>Current program</h2><div class="list-row"><div class="grow"><b>${esc(t.name)}</b><small>Started ${fmtShort(p.start)} · ${p.weeks} weeks · ${p.days.map(d => DOW[d]).join('/')} · ${nx.done ? 'complete' : `${nx.doneN}/${nx.sch.length} done`}</small></div></div>
       ${!nx.done ? `<button type="button" class="btn primary block" data-progi="${nx.item.i}" style="margin-top:10px">${nx.due ? 'Start today\u2019s workout' : 'Start next workout'}</button>` : ''}<button type="button" class="btn block ghost" id="endProg" style="margin-top:8px">End program</button></div>` : ''}
     <div class="card" id="progList"><h2>Strength programs for grapplers</h2>${PROG.templates.map(x => `<a class="list-row tmpl" href="#/program/${x.id}" data-tmpl="${x.id}"><div class="grow"><b>${esc(x.name)}</b><small>${esc(x.short)} · ${x.lengths ? `${x.lengths[0]}–${x.lengths[x.lengths.length-1]}` : x.weeks} weeks · ${x.days} days/wk</small></div>${p && p.tid === x.id ? '<span class="pill">Active</span>' : ''}<span class="chev">›</span></a>`).join('')}</div>
+    ${wplanListCard()}
     <div class="card" id="finList"><h2>Add-on finishers <small>8–10 min after any session</small></h2>${PROG.finishers.map(f => `<a class="list-row" href="#/program/fin-${f.id}"><div class="grow"><b>${esc(f.name)}</b><small>${esc(f.short)} · ${f.ex.length} exercises</small></div>${p && (p.finishers||[]).includes(f.id) ? '<span class="pill">Added</span>' : ''}<span class="chev">›</span></a>`).join('')}</div>
     <div class="disclaimer" id="progDisclaimer">⚠️ ${esc(PROG.disclaimer)}</div>`;
   wireProg(v);
   const end = $('#endProg'); if (end) end.onclick = async () => { if (await confirmSheet('End this program?', 'Your logged workouts stay in History.', 'End program')) { db.program = null; save(); toast('Program ended'); route(); } };
 }
 function viewProgram(id){
+  if (id.startsWith('wp-')) { const pl = wplanOf(id.slice(3)); if (pl) { viewWeightPlan(pl); return; } go('#/programs'); return; }
   const fin = id.startsWith('fin-') ? finOf(id.slice(4)) : null, t = fin ? null : tmplOf(id);
   if (!fin && !t) { go('#/programs'); return; }
   setHeader(fin ? `${fin.name} finisher` : t.name, '', { parent:'#/programs' });
@@ -3076,9 +3205,118 @@ function startSheet(t){
     db.program = pr; if (!enabled('weights')) db.profile.enabled = { ...(db.profile.enabled||{}), weights:true }; save(); closeSheet(); toast(`${t.name} started`); whenSettled(() => go('#/')); };
   openSheet(el, null, { closeLabel:'Cancel' });
 }
+/* ---------------- weight plans (3.5.0): Lean Gain / Maintain & Perform / Cut, paired with a lifting program ---------------- */
+const WPLANS = () => PROG.weightPlans || [];
+const wplanOf = id => WPLANS().find(x => x.id === id) || null;
+/* maintenance: from your calculator details (re-run at today's weight), or a rough body weight × 15 */
+function planBase(){
+  const c = db.profile.calc, cur = weightGoal().cur; if (!(cur > 0)) return null;
+  const lb = convW(cur, unit(), 'lb');
+  if (c && Number(c.w) > 0 && c.sex && Number(c.age) > 0) { const cu = c.u === 'kg' ? 'kg' : 'lb', r = macroCalc(calcInputsKg({ ...c, w:r1(convW(cur, unit(), cu)), gw:'', mode:'maintain' })); return { maint:r.maint, floor:r.floor, est:false, lb }; }
+  return { maint:Math.round(lb * 15 / 10) * 10, floor:c?.sex === 'f' ? 1200 : 1500, est:true, lb };
+}
+/* week-by-week targets. adj (kcal) applies from week `from` onward */
+function planRows(pl, weeks, base, adj = 0, from = 1){
+  const lb = base.lb, cap = pl.capPct ? Math.round(lb * pl.capPct / 100 * 3500 / 7) : Infinity, prot = Math.round(Math.min(250, pl.prot * lb));
+  let exp = lb; const rows = [];
+  for (let w = 1; w <= weeks; w++) {
+    let d = w <= 2 ? pl.kcal[0] : pl.kcal[1], note = '';
+    if (pl.mode === 'lose') { d = -Math.min(-d, cap); if (w === weeks && weeks >= 4) { d = Math.round(d / 2); note = 'Ease off: train fresh'; } }
+    if (pl.mode === 'gain' && w === 3) note = 'Surplus steps up';
+    let cal = Math.round((base.maint + d + (w >= from ? adj : 0)) / 10) * 10;
+    if (pl.mode === 'lose' && cal < base.floor) { cal = base.floor; note = note || 'At the floor'; }
+    const f = Math.round(cal * pl.fat / 9), p = Math.min(prot, Math.round(cal * 0.40 / 4)), c = Math.max(0, Math.round((cal - p * 4 - f * 9) / 4));
+    exp += pl.mode === 'gain' ? pl.rate : pl.mode === 'lose' ? Math.max((cal - base.maint) * 7 / 3500, -lb * 0.01) : 0;
+    rows.push({ w, cal, p, c, f, delta:cal - base.maint, expLb:exp, exp:r1(convW(exp, 'lb', unit())), note });
+  }
+  return rows;
+}
+function activeWPlan(){ const wp = db.profile.wplan, pl = wp && wplanOf(wp.id); if (!pl) return null;
+  const wk = Math.floor(daysBetween(wp.start, today()) / 7) + 1; return { wp, pl, wk, done:wk > wp.weeks }; }
+/* auto-adjust suggestion (2-week check on weekly averages), or this week's new target */
+function planAdvice(){
+  const a = activeWPlan(); if (!a || a.done || a.wk < 1) return null; const { wp, pl } = a, u = unit(), g = weightGoal();
+  const base = { maint:wp.maint, floor:wp.floor || 1500, lb:convW(Number(wp.startW), wp.u || u, 'lb') };
+  const row = planRows(pl, wp.weeks, base, wp.adj || 0, 1)[a.wk - 1];
+  const since = wp.adjAt && wp.adjAt > wp.start ? wp.adjAt : wp.start;
+  if (!(wp.snooze && wp.snooze > today()) && daysBetween(since, today()) >= 14) {
+    const wk = weeklyAverages(g.ws.filter(x => x.date >= iso(weekStart(parse(since)))), 6);
+    if (wk.length >= 3) {
+      const last = wk[wk.length-1], prev = wk[wk.length-3], perWk = convW(last.avg - prev.avg, u, 'lb') / 2, lbNow = convW(last.avg, u, 'lb');
+      let d = 0, why = '';
+      if (pl.mode === 'gain') { if (perWk < 0.1) { d = 150; why = 'Your weekly average hasn’t gone up in 2 weeks.'; } else if (perWk > 1) { d = -150; why = 'You’re gaining more than 1 lb a week, which is mostly fat.'; } }
+      if (pl.mode === 'lose') { if (perWk > -0.1 && row.cal - 150 >= base.floor) { d = -150; why = 'Your weekly average hasn’t dropped in 2 weeks.'; } else if (-perWk > lbNow * 0.01) { d = 150; why = 'You’re losing more than 1% of your body weight a week.'; } }
+      if (pl.mode === 'maintain' && g.lo != null) { const w2 = wk.slice(-2); if (w2.every(x => x.avg > g.hi)) { d = -150; why = 'Your weekly average has been above your range for 2 weeks.'; } else if (w2.every(x => x.avg < g.lo)) { d = 150; why = 'Your weekly average has been below your range for 2 weeks.'; } }
+      if (d) return { kind:'adjust', d, why, cal:row.cal + d };
+    }
+  }
+  if (wp.cal && Math.abs(row.cal - wp.cal) >= 50) return { kind:'week', d:row.cal - wp.cal, why:`Week ${a.wk}${row.note ? ` (${row.note.toLowerCase()})` : ''}.`, cal:row.cal };
+  return null;
+}
+function applyPlanAdvice(adv){
+  const p = db.profile, wp = p.wplan, t = { ...(p.targets || {}) }, old = Number(t.cal) || wp.cal || adv.cal - adv.d, before = JSON.parse(JSON.stringify(p));
+  t.cal = adv.cal; if (Number(t.c) > 0) t.c = Math.max(0, Math.round(Number(t.c) + (adv.cal - old) / 4));
+  p.targets = t; wp.cal = adv.cal; if (adv.kind === 'adjust') { wp.adj = (wp.adj || 0) + adv.d; wp.adjAt = today(); }
+  save(); undoToast(`Calories now ${adv.cal.toLocaleString()} kcal a day`, () => { db.profile = before; save(); route(); }); route();
+}
+function planLine(){
+  const a = activeWPlan();
+  if (!a || a.pl.mode !== weightMode()) { const pl = WPLANS().find(x => x.mode === weightMode()); return isPro() && pl ? `<div class="planline quiet" id="planLine"><a class="lnk" href="#/program/wp-${pl.id}" id="planSuggest">Try the ${esc(pl.name)} plan ›</a></div>` : ''; }
+  if (a.done) return `<div class="planline" id="planLine"><b>${esc(a.pl.name)}</b> complete 🎉 <a class="lnk" href="#/program/wp-${a.pl.id}">Next step ›</a></div>`;
+  const adv = planAdvice(), t = db.profile.targets || {};
+  return `<div class="planline" id="planLine"><div><b>${esc(a.pl.name)}</b> · week ${a.wk} of ${a.wp.weeks}${t.cal ? ` · ${Number(t.cal).toLocaleString()} kcal · ${t.p || '—'} g protein` : ''} <a class="lnk" href="#/program/wp-${a.pl.id}">Plan ›</a></div>
+    ${adv ? `<div class="planadv" id="planAdvice" data-kind="${adv.kind}"><span>${esc(adv.why)} ${adv.kind === 'adjust' ? `Try ${adv.d > 0 ? '+' : '−'}${Math.abs(adv.d)} kcal a day.` : `Target: ${adv.cal.toLocaleString()} kcal.`}</span><div class="rc-btns"><button type="button" class="btn sm primary" id="planApply">${adv.kind === 'adjust' ? `Apply ${adv.d > 0 ? '+' : '−'}${Math.abs(adv.d)}` : 'Update'}</button><button type="button" class="btn sm ghost" id="planSnooze">Not now</button></div></div>` : ''}</div>`;
+}
+function wirePlanLine(root){
+  const ap = root.querySelector('#planApply'); if (ap) ap.onclick = () => { const adv = planAdvice(); if (adv) applyPlanAdvice(adv); };
+  const sn = root.querySelector('#planSnooze'); if (sn) sn.onclick = () => { const adv = planAdvice(), wp = db.profile.wplan; if (adv?.kind === 'week') wp.cal = adv.cal; else wp.snooze = iso(addDays(new Date(), 7)); save(); route(); };
+}
+function startWeightPlan(pl, weeks){
+  const base = planBase(); if (!base) { toast('Log your weight first'); logWeightSheet(); return; }
+  const before = JSON.parse(JSON.stringify(db.profile)), rows = planRows(pl, weeks, base), r0 = rows[0], cur = weightGoal().cur, u = unit();
+  setWeightMode(pl.mode, { quiet:true });
+  const p = db.profile; p.targets = { ...(p.targets || {}), cal:r0.cal, p:r0.p, c:r0.c, f:r0.f };
+  p.wplan = { id:pl.id, start:today(), weeks, maint:base.maint, floor:base.floor, est:base.est, startW:r1(cur), u, adj:0, cal:r0.cal, adjAt:'', snooze:'' };
+  if (pl.mode === 'maintain') p.maintainW = String(r1(avg7(weightGoal().ws) ?? cur));
+  else { const g = Number(p.goalWeight), wrong = !(g > 0) || (pl.mode === 'gain' ? g <= cur : g >= cur);
+    if (wrong) { p.goalWeight = String(rows[rows.length-1].exp); p.goalDate = iso(addDays(new Date(), weeks * 7)); } }
+  if (!enabled('weight')) p.enabled = { ...(p.enabled || {}), weight:true };
+  save(); undoToast(`${pl.name} started: ${r0.cal.toLocaleString()} kcal · ${r0.p} g protein`, () => { db.profile = before; save(); route(); }); route();
+}
+function wplanListCard(){
+  const a = activeWPlan();
+  return `<div class="card" id="wplanList"><h2>Weight plans <small>eat for your goal</small></h2>${WPLANS().map(x => `<a class="list-row tmpl" href="#/program/wp-${x.id}" data-wplan="${x.id}"><div class="grow"><b>${esc(x.name)}</b><small>${esc(x.short)} · pairs with ${esc(tmplOf(x.pair)?.name || '')}</small></div>${a && a.wp.id === x.id && !a.done ? '<span class="pill">Active</span>' : ''}<span class="chev">›</span></a>`).join('')}</div>`;
+}
+function viewWeightPlan(pl){
+  setHeader(pl.name, '', { parent:'#/programs' });
+  const v = $('#view'), a = activeWPlan(), mine = a && a.wp.id === pl.id, u = unit(), base = mine ? { maint:a.wp.maint, floor:a.wp.floor || 1500, est:a.wp.est, lb:convW(Number(a.wp.startW), a.wp.u || u, 'lb') } : planBase();
+  let weeks = mine ? a.wp.weeks : pl.weeks;
+  const comp = nextComp(), pairId = pl.pairComp && comp && daysTo(comp.date) <= 7 * 6 && daysTo(comp.date) >= 28 ? pl.pairComp : pl.pair, pt = tmplOf(pairId), lp = activeProgram();
+  const kc = pl.mode === 'gain' ? `+${pl.kcal[0]}–${pl.kcal[1]} kcal` : pl.mode === 'lose' ? `−${-pl.kcal[0]} kcal` : 'Maintenance';
+  const table = () => { if (!base) return `<div class="empty" id="wpTable">Log your weight to see your weekly targets. <button type="button" class="btn sm" id="wpLog">Log weight</button></div>`;
+    const rows = planRows(pl, weeks, base, mine ? a.wp.adj || 0 : 0, 1);
+    return `<div class="wptable" id="wpTable" role="table"><div class="wph" role="row"><span>Week</span><span>kcal</span><span>Protein</span><span>Avg weight</span></div>${rows.map(r => `<div class="wpr ${mine && r.w === a.wk ? 'now' : ''}" role="row"><span>${r.w}${mine && r.w === a.wk ? ' ←' : ''}</span><span>${r.cal.toLocaleString()}</span><span>${r.p} g</span><span>~${r.exp}${r.note ? `<small>${esc(r.note)}</small>` : ''}</span></div>`).join('')}</div>
+      <div class="hint">${base.est ? `Based on a rough maintenance of ~${base.maint.toLocaleString()} kcal (body weight × 15). <button type="button" class="lnk" data-calc id="wpCalc">Calculate mine</button> for better numbers.` : `Based on your maintenance of ~${base.maint.toLocaleString()} kcal from the calculator.`} Expected weights are rough; your weekly average is what counts.</div>`; };
+  v.innerHTML = `<div class="card" id="wpInfo" data-mode="${pl.mode}"><h2>${esc(pl.short)}</h2><div class="hint" style="margin:-4px 0 8px">${esc(pl.blurb)}</div>
+      <div class="wfacts"><div><span>Calories</span><b>${kc}</b><small>${pl.mode === 'maintain' ? 'eat what you burn' : 'a day vs maintenance'}</small></div><div><span>Protein</span><b>${pl.prot === 1 ? '~1 g / lb' : '0.8–1 g / lb'}</b><small>of body weight</small></div></div>
+      <div class="hint" style="margin-top:8px">${esc(pl.aim)}</div>
+      ${mine ? `<div class="hint" style="margin-top:8px"><b>Your current plan.</b> Week ${Math.min(a.wk, a.wp.weeks)} of ${a.wp.weeks}, started ${fmtShort(a.wp.start)}.${a.wp.adj ? ` Adjusted ${a.wp.adj > 0 ? '+' : '−'}${Math.abs(a.wp.adj)} kcal so far.` : ''}</div>` : pl.lengths.length > 1 ? `<div id="wpLenWrap"></div>` : ''}</div>
+    <div class="card" id="wpWeeks"><h2>Weekly targets</h2><div id="wpTableWrap">${table()}</div></div>
+    <div class="card" id="wpCheck"><h2>Check-ins</h2><ul class="wplist">${pl.checkin.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>
+    <div class="card" id="wpAdjust"><h2>Auto-adjust</h2><ul class="wplist">${pl.adjust.map(x => `<li>${esc(x)}</li>`).join('')}</ul><div class="hint">Forged checks your weekly average every 2 weeks and suggests these changes on the Home weight card. You choose whether to apply them.</div></div>
+    <div class="card" id="wpPair"><h2>Pair it with</h2>${pt ? `<a class="list-row tmpl" href="#/program/${pt.id}"><div class="grow"><b>${esc(pt.name)}</b><small>${esc(pt.short)} · ${pt.days} days/wk</small></div>${lp && lp.tid === pt.id ? '<span class="pill">Active</span>' : ''}<span class="chev">›</span></a><div class="hint">${esc(pl.pairNote)}${pairId !== pl.pair ? ` You have ${esc(comp.name)} coming up, so the comp prep block fits best.` : ''}</div>` : ''}
+      ${pt && !lp ? `<button type="button" class="btn block" id="wpStartLift" style="margin-top:10px">Start ${esc(pt.name)}</button>` : ''}</div>
+    <div class="wpbtns">${mine ? `<button type="button" class="btn block ghost" id="wpEnd">End plan</button>` : `<button type="button" class="btn primary block big" id="wpStart">Start plan</button>`}</div>
+    <div class="disclaimer" id="wpDisclaimer">⚠️ ${esc(PROG.weightDisclaimer || '')}</div>`;
+  const lw = $('#wpLenWrap'); if (lw) { const sg = seg(pl.lengths.map(n => [n, `${n} weeks`]), weeks, x => { weeks = x; $('#wpTableWrap').innerHTML = table(); wireT(); }); sg.id = 'wpLen'; lw.appendChild(field('Length', sg)); }
+  const wireT = () => { const l = $('#wpLog'); if (l) l.onclick = logWeightSheet; }; wireT();
+  const st = $('#wpStart'); if (st) st.onclick = () => startWeightPlan(pl, weeks);
+  const en = $('#wpEnd'); if (en) en.onclick = async () => { if (await confirmSheet('End this plan?', 'Your calorie targets and weigh-ins stay as they are.', 'End plan')) { db.profile.wplan = null; save(); toast('Plan ended'); route(); } };
+  const sl = $('#wpStartLift'); if (sl) sl.onclick = () => startSheet(pt);
+}
 function programProfileCard(){
   const p = activeProgram(), t = p && tmplOf(p.tid), nx = p && progNext(p);
-  return h(`<div class="card" id="programsCard"><h2>Programs <a class="lnk" href="#/programs">Browse ›</a></h2>${p ? `<div class="list-row"><div class="grow"><b>${esc(t.name)}</b><small>${nx.done ? 'Complete' : `${nx.doneN}/${nx.sch.length} sessions · next ${fmtShort(nx.item.date)}`}</small></div></div>` : '<div class="hint" style="margin:-4px 0 10px">Lifting templates built around your mat training: 2-day, 3-day, home, comp prep and finishers.</div>'}<a class="btn block" href="#/programs" style="margin-top:8px">${p ? 'Manage program' : 'See programs'}</a></div>`);
+  return h(`<div class="card" id="programsCard"><h2>Programs <a class="lnk" href="#/programs">Browse ›</a></h2>${p ? `<div class="list-row"><div class="grow"><b>${esc(t.name)}</b><small>${nx.done ? 'Complete' : `${nx.doneN}/${nx.sch.length} sessions · next ${fmtShort(nx.item.date)}`}</small></div></div>` : '<div class="hint" style="margin:-4px 0 10px">Lifting templates built around your mat training (2-day, 3-day, home, comp prep, finishers) plus weight plans: Lean Gain, Maintain & Perform, Cut.</div>'}<a class="btn block" href="#/programs" style="margin-top:8px">${p ? 'Manage program' : 'See programs'}</a></div>`);
 }
 
 /* ---- storage helpers for the new collections ---- */
@@ -4223,7 +4461,7 @@ function route(){
   if (a === 'settings' && b === 'goals') { const g = $('#targetsCard'); if (g) g.scrollIntoView({ block:'start' }); }
   if (a === 'settings' && b === 'schedule') { const g = $('#scheduleCard'); if (g) g.scrollIntoView({ block:'start' }); }
 }
-window.DM_TEST = { compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, get db(){ return db; } };
+window.DM_TEST = { inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, get db(){ return db; } };
 window.addEventListener('hashchange', route);
 // Bottom nav: always closes whatever is open (sheet or form) and goes to that screen.
 document.querySelector('.tabbar').addEventListener('click', e => {
@@ -4233,8 +4471,9 @@ document.querySelector('.tabbar').addEventListener('click', e => {
   if (same) { if (!$('#sheet').hidden) closeSheet(); else if (!onForm()) route(); window.scrollTo(0, 0); return; }
   guardLeave(() => { if (!$('#sheet').hidden) closeSheet(); go(href); });
 });
-window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load(); if (db.belts.length) syncProfileRank(); applyLook(); route(); } });
+window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load(); if (db.belts.length) syncProfileRank(); migrateWeightMode(true); applyLook(); route(); } });
 db = load(); if (db.belts.length) syncProfileRank();   // profile rank always follows the event log (covers migrated logs)
+migrateWeightMode();
 applyLook();
 route();
 socialBoot();

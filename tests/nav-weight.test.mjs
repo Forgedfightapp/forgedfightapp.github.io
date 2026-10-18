@@ -174,7 +174,7 @@ await page.evaluate(() => {
   localStorage.setItem('dm.bjj.v1', JSON.stringify(d));
 });
 await page.reload(); await page.waitForSelector('#weightCard');
-ok('home card: current from latest weigh-in, sparkline drawn', await wv('current') === '205' && await page.locator('#weightCard svg.spark path').count() === 1);
+ok('home card: current from latest weigh-in, sparkline drawn', await wv('current') === '205' && await page.locator('#weightCard svg.spark path.daily').count() === 1);
 await page.locator('#weightMore').tap(); await page.waitForSelector('#weightStats');
 const ws = await page.locator('#weightStats').innerText();
 ok('stats: merged history (5 weigh-ins + 1 workout weight)', ws.includes('6 entries'), ws.split('\n')[0]);
@@ -186,9 +186,9 @@ ok('stats: projected goal date ≈ 10 weeks out', !!eta && Math.abs(new Date(eta
 await hideToast(); await page.locator('#weightStats').scrollIntoViewIfNeeded(); await page.locator('#weightStats').screenshot({ path:`${SHOTS}/23-weight-stats.png` });
 
 // gain goal + reached goal
-await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); d.profile.startWeight = '150'; d.profile.goalWeight = '160'; d.sessions = d.sessions.filter(s => s.id !== 's1'); d.weights = [{ id:'g1', date:new Date().toISOString().slice(0,10), w:155, u:'lb', createdAt:Date.now() + 1000 }]; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
+await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); d.profile.startWeight = '150'; d.profile.goalWeight = '160'; delete d.profile.weightMode; d.sessions = d.sessions.filter(s => s.id !== 's1'); d.weights = [{ id:'g1', date:new Date().toISOString().slice(0,10), w:155, u:'lb', createdAt:Date.now() + 1000 }]; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
 await page.goto(BASE); await page.reload(); await page.waitForSelector('#weightCard');
-ok('gain goal: direction inferred (Gained so far 5, left 5, 50%)', (await page.locator('#weightCard').innerText()).includes('Gained so far') && await wv('done') === '5' && await wv('left') === '5' && (await page.locator('#weightCard [data-w="pct"]').getAttribute('style')).includes('width:50%'));
+ok('gain goal: mode re-inferred as Gain (Gained so far 5, left 5, 50%)', (await page.locator('#weightCard').innerText()).includes('Gained so far') && await wv('done') === '5' && await wv('left') === '5' && (await page.locator('#weightCard [data-w="pct"]').getAttribute('style')).includes('width:50%'));
 await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); d.weights[0].w = 161; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
 await page.reload(); await page.waitForSelector('#weightCard');
 ok('goal reached: 100% + message', (await page.locator('#weightHint').innerText()).includes('Goal reached') && (await page.locator('#weightCard [data-w="pct"]').getAttribute('style')).includes('width:100%') && await wv('left') === '0');
@@ -235,7 +235,7 @@ await hideToast();
 await page.evaluate(() => { const c = document.querySelector('#weightCard'); window.scrollTo(0, c.getBoundingClientRect().top + window.scrollY - 120); }); await settle(200);
 await page.screenshot({ path:`${SHOTS}/20-weight-goal-card.png` });
 const sw = await page.locator('#weightCard').innerText();
-ok('sample data includes weigh-ins + goal', (await db()).weights.length > 30 && sw.includes('Lost so far') && sw.includes('Left to go'));
+ok('sample data includes weigh-ins + goal', (await db()).weights.length > 30 && /Lost so far/i.test(sw) && /To lose/i.test(sw));
 
 ok('no console errors', errors.length === 0, JSON.stringify(errors));
 console.log(results.join('\n'));

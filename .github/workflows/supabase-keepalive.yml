@@ -1,0 +1,33 @@
+# Keeps the free Supabase project from pausing (free projects pause after 7 days without activity).
+# Runs every 3 days and on demand. Uses only the public publishable key, which already ships in config.js.
+name: Supabase keep-alive
+on:
+  schedule:
+    - cron: '17 9 */3 * *'   # 09:17 UTC on every 3rd day of the month
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping Supabase (auth health + a real database query)
+        env:
+          URL: https://ftnhmeqpzqpfdwhjfvnk.supabase.co
+          KEY: sb_publishable_hspLZBFgnh5VhAeMXnBaSA_2agWNO41
+        run: |
+          set -u
+          auth=$(curl -s -o /dev/null -w '%{http_code}' "$URL/auth/v1/health" -H "apikey: $KEY")
+          echo "auth health: $auth"
+          # keepalive() is a tiny read-only RPC (supabase/migrations/002_keepalive.sql) that runs "select now()" in Postgres.
+          rpc=$(curl -s -o /tmp/rpc.txt -w '%{http_code}' -X POST "$URL/rest/v1/rpc/keepalive" -H "apikey: $KEY" -H "Content-Type: application/json" -d '{}')
+          echo "keepalive rpc: $rpc $(cat /tmp/rpc.txt)"
+          if [ "$rpc" != "200" ]; then
+            # migration not run yet: a table read that Postgres itself rejects (RLS/grants, error 42501) still
+            # reaches the database, which counts as activity. No data is returned to the anonymous key.
+            curl -s "$URL/rest/v1/profiles?select=id&limit=1" -H "apikey: $KEY" > /tmp/db.txt
+            echo "db probe: $(cut -c1-80 /tmp/db.txt)"
+            grep -q '"code":"42501"\|^\[' /tmp/db.txt || { echo "::error::Postgres did not answer"; exit 1; }
+          fi
+          if [ "$auth" != "200" ]; then echo "::error::Supabase did not answer (paused?). Restore it in the dashboard."; exit 1; fi

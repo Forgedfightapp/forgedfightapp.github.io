@@ -21,6 +21,12 @@ Weigh-ins and workout body weight merge into one history (latest entry per day).
 progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
 projected goal date.
 
+## 3.8.0: Friends on + Supabase keep-alive
+- `config.js` `social:true`. Friends, head-to-head and leaderboards are live. Sign-in uses a 6-digit email code (`{{ .Token }}` in the Supabase "Confirm signup" and "Magic link or OTP" templates; source `supabase/email-template.html`). Mail goes out through Brevo custom SMTP, limited to 30 emails an hour.
+- End-to-end test (Oct 20, 2026): code requested via the Auth API → email arrived within ~20 s → code verified → session; RLS checks passed; test account deleted. **The email landed in Gmail Spam.** The sender is a gmail.com address sent through Brevo, so it fails DMARC alignment. Fix: send from a domain we own with SPF/DKIM/DMARC set in Brevo (see `docs/launch-checklist.md`).
+- **Keep-alive:** `.github/workflows/supabase-keepalive.yml` runs every 3 days, plus a manual "Run workflow" button. It pings Auth health and runs a tiny database query with the public publishable key only. Run `supabase/migrations/002_keepalive.sql` once in the SQL editor to add the read-only `keepalive()` RPC. Until then the workflow uses a database probe that Postgres rejects (error 42501), which still counts as activity.
+- New check: `tests/friends-live.test.mjs` (Challenges → Friends → email-code sign-in screen; sends nothing). Screenshots `77-friends.png`, `78-friends-signin.png`.
+
 ## 3.7.0: launch prep (policies, flagged Pro paywall, store, native)
 - **Privacy Policy** (`privacy.html`) and **Terms of Use** (`terms.html`): plain-English drafts, styled like the app, with a "Draft for review, not legal advice" banner and `[LEGAL NAME / LLC]` / `[CONTACT EMAIL]` / `[DATE]` placeholders. They cover:
   - on-device storage
@@ -221,7 +227,7 @@ On every release, bump `APP_VERSION` in `app.js` **and** the `CACHE` name in `sw
     ./restart-preview.sh                            # optional: server + Cloudflare quick tunnel (temporary preview URL, changes on restart)
 
 ## Tests (Playwright, iPhone 13 emulation)
-`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/social.test.mjs` (Supabase mocked by `tests/mock-supabase.js`, no network), `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/game.test.mjs`, `tests/macro-calc.test.mjs`, `tests/food-calc.test.mjs`, `tests/tip.test.mjs`, `tests/multisport.test.mjs`, `tests/weight.test.mjs`, `tests/marks.test.mjs`, `tests/launch.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
+`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/social.test.mjs` (Supabase mocked by `tests/mock-supabase.js`, no network), `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/game.test.mjs`, `tests/macro-calc.test.mjs`, `tests/food-calc.test.mjs`, `tests/tip.test.mjs`, `tests/multisport.test.mjs`, `tests/weight.test.mjs`, `tests/marks.test.mjs`, `tests/launch.test.mjs`, `tests/friends-live.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 

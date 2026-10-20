@@ -58,7 +58,13 @@ Owner: Steve. Updated Oct 20, 2026 (release 3.7.0). Items marked ✅ are done in
 - [ ] **Google Play Console:** **$25** one-time. Organisation account (D-U-N-S here too).
 - [ ] **New Play personal accounts only:** 12 testers for 14 days before production. Organisation accounts avoid this.
 - [ ] **Stripe:** see section 2.
-- [ ] **Brevo for Friends:** a free plan (300 emails/day) as Supabase Auth's custom SMTP, so sign-in codes don't hit Supabase's built-in email rate limit. Verify the sender domain (SPF/DKIM), then follow `docs/social-setup.md` → turn on `social:true`.
+- [x] **Brevo for Friends:** custom SMTP saved in Supabase (sender stephen.caldwell85@gmail.com, name Forged, 30 emails/h). The OTP templates include `{{ .Token }}`. The end-to-end test passed on Oct 20, and `social:true` shipped in 3.8.0.
+- [ ] **Deliverability:** the test email landed in **Gmail Spam**. A @gmail.com From address sent through Brevo fails DMARC alignment. Fix:
+  1. Use a domain we own (for example `noreply@forgedfight.app`).
+  2. Add it in Brevo → Senders & domains, and set the SPF, DKIM and DMARC (`p=none` to start) DNS records.
+  3. Update the sender in Supabase → Auth → SMTP.
+  4. Then raise the rate limit as needed. 30 emails an hour is fine for launch, and Brevo's free plan allows 300 a day.
+- [x] **Supabase keep-alive:** a GitHub Actions cron every 3 days (`.github/workflows/supabase-keepalive.yml`). Run `supabase/migrations/002_keepalive.sql` once for the `keepalive()` RPC. Check Actions → "Supabase keep-alive" occasionally; it fails loudly if the project is paused.
 - [ ] **Marketing via the Media agent:**
   - a launch post and short clips built from the store screenshots and share cards
   - BJJ/MMA subreddits, gym partnerships and creator outreach

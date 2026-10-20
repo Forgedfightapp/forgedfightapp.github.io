@@ -1,0 +1,27 @@
+// 3.8.0: Friends is on. Checks (live or local) that Challenges → Friends → Sign in shows the email-code screen. Sends nothing.
+import { chromium, devices } from 'playwright';
+const BASE = process.env.BASE || 'http://localhost:8787/';
+const SHOTS = process.env.SHOTS || '/workspace/bjj-tracker/screenshots';
+const errors = [], results = [];
+process.on('uncaughtException', e => { console.log(results.join('\n')); console.log('ERROR', e.message.split('\n')[0]); process.exit(1); });
+const ok = (n, c, x='') => { results.push(`${c?'PASS':'FAIL'} ${n} ${c ? '' : x}`); if (!c) process.exitCode = 1; };
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport:{width:390,height:844}, deviceScaleFactor:3, isMobile:true, hasTouch:true, userAgent:devices['iPhone 13'].userAgent });
+await ctx.addInitScript(() => { window.__FORGED_QUIET_MEDALS = true; });
+const page = await ctx.newPage(); page.on('pageerror', e => errors.push('pageerror: '+e.message)); page.on('console', m => { if (m.type()==='error') errors.push(m.text()); });
+const d = { schema:7, sessions:[{ id:'a', date:new Date().toLocaleDateString('en-CA'), category:'grappling', discipline:'bjj', type:'class', duration:60, createdAt:1 }], profile:{ unit:'lb', setupDone:true, enabled:{ grappling:true } }, nutrition:{ entries:[], foods:[], water:[] }, weights:[], belts:[], comps:[], injuries:[], strength:[], reps:[] };
+await page.goto(BASE + 'sw.js'); await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }, d);
+await page.goto(BASE + '#/challenges'); await page.waitForSelector('#friendsTop', { timeout:15000 });
+ok('Friends is on: config social:true and a Friends button on Challenges', await page.evaluate(() => window.FORGED_CONFIG.social === true) && await page.locator('#friendsTop').count() === 1);
+ok('version', await page.evaluate(() => fetch('app.js?x=' + Date.now()).then(r => r.text()).then(t => (t.match(/APP_VERSION = '([\d.]+)'/) || [])[1])) === (process.env.VER || '3.8.0'));
+await page.locator('#friendsTop').tap(); await page.waitForSelector('#friendsIntro', { timeout:15000 }); await page.waitForTimeout(400);
+ok('Friends screen (signed out) offers "Sign in with email"', /Sign in with email/.test(await page.locator('#goSignin').textContent()));
+await page.screenshot({ path:`${SHOTS}/77-friends.png` });
+await page.locator('#goSignin').tap(); await page.waitForSelector('#signinCard'); await page.waitForTimeout(400);
+ok('sign-in screen: email field + "Email me a code" (6-digit code, no password)', await page.locator('#siEmail[type="email"]').count() === 1 && /Email me a code/.test(await page.locator('#siSend').textContent()) && /6-digit code/.test(await page.locator('#signinCard').textContent()));
+ok('code field is ready for the one-time code', await page.locator('#siCode[autocomplete="one-time-code"]').count() === 1);
+ok('cloud module present (Supabase client loads on demand)', await page.evaluate(() => !!window.ForgedCloud));
+await page.screenshot({ path:`${SHOTS}/78-friends-signin.png` });
+ok('no console errors', errors.length === 0, JSON.stringify(errors));
+await browser.close();
+console.log(results.join('\n'));

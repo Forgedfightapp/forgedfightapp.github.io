@@ -13,7 +13,7 @@ const browser = await chromium.launch();
 let sbHits = 0;
 async function mkPage({ flag, mock }){
   const ctx = await browser.newContext({ viewport:{ width:390, height:844 }, deviceScaleFactor:3, isMobile:true, hasTouch:true, userAgent:devices['iPhone 13'].userAgent });
-  if (flag) await ctx.addInitScript(() => { window.FORGED_CONFIG = { social:true }; });
+  await ctx.addInitScript(f => { window.FORGED_CONFIG = { social:f }; }, !!flag);   // 3.8.0 ships social:true; flag-off runs force the kill switch
   if (mock) await ctx.addInitScript(MOCK);
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
@@ -32,7 +32,7 @@ const toastText = p => p.locator('#toast').innerText();
 const hideToast = async p => { await p.evaluate(() => document.querySelector('#toast').classList.remove('show', 'act')); await p.waitForTimeout(400); };
 async function seed(page, hash = '#/'){ await page.goto(BASE); await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }, seedDb()); await page.reload(); await page.goto(BASE + hash); await settle(page, 500); }
 
-/* ---------- A. flag off (the live default) ---------- */
+/* ---------- A. flag off (kill switch: config social:false; live default since 3.8.0 is on) ---------- */
 {
   const { ctx, page } = await mkPage({ flag:false, mock:false });
   const reqs = []; page.on('request', r => reqs.push(r.url()));
@@ -42,7 +42,7 @@ async function seed(page, hash = '#/'){ await page.goto(BASE); await page.evalua
   ok('flag off: no Friends card in Profile', await page.locator('#friendsCard').count() === 0);
   for (const r of ['#/friends', '#/signin', '#/invite/ABCD2345', '#/h2h/x']) { await page.goto(BASE + r); await settle(page, 300); }
   ok('flag off: social routes fall back to Home', (await page.evaluate(() => location.hash)) === '#/' || (await page.evaluate(() => location.hash)) === '');
-  ok('flag off: config default is social:false', await page.evaluate(() => window.FORGED_CONFIG.social === false && !window.DM_TEST.socialOn()));
+  ok('flag off: social:false turns Friends off', await page.evaluate(() => window.FORGED_CONFIG.social === false && !window.DM_TEST.socialOn()));
   ok('flag off: supabase-js not loaded, no Supabase requests', !reqs.some(u => u.includes('supabase')) && await page.evaluate(() => !window.supabase && !window.ForgedCloud.loaded), reqs.filter(u => u.includes('supabase')).join(','));
   ok('service worker precaches the vendored supabase-js (offline)', /vendor\/supabase-js-2\.117\.2\.js/.test(fs.readFileSync('/workspace/bjj-tracker/sw.js', 'utf8')));
   await ctx.close();

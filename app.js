@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.9.2';
+const APP_VERSION = '3.10.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -3512,7 +3512,8 @@ function sanitizeGame(g){
     ...(g.medalDates && typeof g.medalDates === 'object' ? { medalDates:Object.fromEntries(Object.entries(g.medalDates).filter(([k, v]) => isoOk(v))) } : {}),
     ...(g.medalGoals && typeof g.medalGoals === 'object' ? { medalGoals:Object.fromEntries(Object.entries(g.medalGoals).filter(([k, v]) => v && Number(v.g) > 0)) } : {}),
     ...(g.pw && typeof g.pw === 'object' ? { pw:Object.fromEntries(Object.entries(g.pw).filter(([k, v]) => isoOk(k) && Array.isArray(v) && v.length === 2)) } : {}),
-    ...(isoOk(g.recapSeen) ? { recapSeen:g.recapSeen } : {}) };
+    ...(isoOk(g.recapSeen) ? { recapSeen:g.recapSeen } : {}),
+    h2h:Object.fromEntries(Object.entries(g.h2h && typeof g.h2h === 'object' ? g.h2h : {}).filter(([k, v]) => v && isoOk(v.end) && ['won','tied','lost'].includes(v.r)).slice(-200)) };
 }
 const game = () => (db.game = db.game && db.game.look ? db.game : sanitizeGame(db.game));
 
@@ -3700,7 +3701,7 @@ function timeLeft(to){
 }
 
 /* ---------- XP (recomputed from history) ---------- */
-const XP_LOG = 10, XP_LOG_CAP = 30, XP_STREAK = 20, XP_PR = 25, XP_GOAL = 50, XP_RING = 100;
+const XP_LOG = 10, XP_LOG_CAP = 30, XP_STREAK = 20, XP_PR = 25, XP_GOAL = 50, XP_RING = 100, XP_H2H_WIN = 50, XP_H2H_TIE = 25;
 const RANKS = [['Apprentice',1],['Striker',5],['Journeyman',10],['Smith',15],['Blacksmith',20],['Master Smith',25],['Forgemaster',30],['Forged',35]];
 const PRO_RANK = 5; // reaching Master Smith grants 7 days of Pro
 const xpForLevel = L => 100 * L * (L - 1);
@@ -3708,9 +3709,10 @@ const levelOf = xp => { let L = 1; while (xpForLevel(L + 1) <= xp) L++; return L
 const rankIdx = L => RANKS.reduce((a, r, i) => L >= r[1] ? i : a, 0);
 let gCache = null, gCacheKey = '';
 function gameState(){
-  const key = JSON.stringify([db.sessions.length, db.sessions.reduce((a, s) => a + (s.updatedAt || s.createdAt || 0) % 1e7 + (s.duration||0), 0), db.strength.length, db.strength.filter(g => g.achieved).length, db.benchmarks.length, (db.nutrition.water||[]).length, db.nutrition.entries.length, db.weights.length, db.profile.challengeTarget, JSON.stringify(db.profile.enabled), db.profile.waterGoal, JSON.stringify(db.profile.targets||{}), db.comps.length, (db.belts||[]).length, repKey(), today()]);
+  const key = JSON.stringify([db.sessions.length, db.sessions.reduce((a, s) => a + (s.updatedAt || s.createdAt || 0) % 1e7 + (s.duration||0), 0), db.strength.length, db.strength.filter(g => g.achieved).length, db.benchmarks.length, (db.nutrition.water||[]).length, db.nutrition.entries.length, db.weights.length, db.profile.challengeTarget, JSON.stringify(db.profile.enabled), db.profile.waterGoal, JSON.stringify(db.profile.targets||{}), db.comps.length, (db.belts||[]).length, repKey(), today(), JSON.stringify(db.game?.h2h || {})]);
   if (gCache && gCacheKey === key) return gCache;
-  const parts = { log:0, challenges:0, streak:0, pr:0, goals:0, ring:0 }, done = [];
+  const parts = { log:0, challenges:0, streak:0, pr:0, goals:0, ring:0, h2h:0 }, done = [];
+  Object.values(db.game?.h2h || {}).forEach(r => parts.h2h += r.r === 'won' ? XP_H2H_WIN : r.r === 'tied' ? XP_H2H_TIE : 0);
   // logging: 10 XP per workout, max 30 XP per day
   const perDay = countBy(db.sessions.map(s => s.date));
   perDay.forEach(([, n]) => parts.log += Math.min(XP_LOG_CAP, n * XP_LOG));
@@ -3748,6 +3750,7 @@ function dayStreakMax(){
   return best;
 }
 const BADGES = [
+  { id:'h2hwin', icon:'🥊', name:'Head-to-head winner', how:'Win a head-to-head challenge', test:s => s.h2hw >= 1 },
   { id:'first', icon:'🔨', name:'First strike', how:'Log your first workout', test:s => s.n >= 1 },
   { id:'s10', icon:'🔥', name:'10 sessions', how:'Log 10 workouts', test:s => s.n >= 10 },
   { id:'s50', icon:'⚒️', name:'50 sessions', how:'Log 50 workouts', test:s => s.n >= 50 },
@@ -3770,7 +3773,7 @@ const BADGES = [
   { id:'lv10', icon:'⚙️', name:'Journeyman', how:'Reach level 10', test:s => s.level >= 10 }
 ];
 function badgeState(){
-  const gs = gameState(), st = { n:db.sessions.length, ds:dayStreakMax(), comp:db.comps.some(c => c.date < today()) || db.sessions.some(s => s.type === 'comp'), prs:gs.prs.length, ch:gs.done.length, ring:gs.parts.ring > 0, min:sumBy(db.sessions, sessMin), level:gs.level };
+  const gs = gameState(), st = { n:db.sessions.length, ds:dayStreakMax(), h2hw:Object.values(db.game?.h2h || {}).filter(r => r.r === 'won').length, comp:db.comps.some(c => c.date < today()) || db.sessions.some(s => s.type === 'comp'), prs:gs.prs.length, ch:gs.done.length, ring:gs.parts.ring > 0, min:sumBy(db.sessions, sessMin), level:gs.level };
   return BADGES.map(b => ({ ...b, earned:!!b.test(st) }));
 }
 
@@ -4302,7 +4305,7 @@ function viewPro(){
 }
 const sUser = () => socialOn() ? Cloud().user : null;
 const S_ROUTES = ['friends','signin','invite','h2h'];
-const S_METRIC = { sessions:{ label:'Sessions', unit:'sessions' }, pushups:{ label:'Push-ups', unit:'push-ups' }, mat_minutes:{ label:'Mat hours', unit:'h' }, daily_streak:{ label:'Daily challenge streak', unit:'days in a row' } };
+const S_METRIC = { sessions:{ label:'Sessions', unit:'sessions' }, pushups:{ label:'Push-ups', unit:'push-ups' }, mat_minutes:{ label:'Mat hours', unit:'h' }, daily_streak:{ label:'Daily challenge streak', unit:'days in a row' }, xp:{ label:'Workout XP', unit:'XP' } };
 const S_SYNC = ['sessions','xp','pushups','mat_minutes','daily_done'];
 const AV_COLORS = { flame:'#F2711C', ember:'#E5484D', gold:'#F5C542', steel:'#8FB0D9', jade:'#6FD3A8', violet:'#B48CF2', sky:'#38BDF8', rose:'#F472B6' };
 const INVITE_RE = /^[A-HJ-NP-Z2-9]{8}$/;
@@ -4384,7 +4387,26 @@ async function socialRefresh(){
   const boards = {};
   await Promise.all(chs.filter(c => c.ends_on >= iso(addDays(new Date(), -30))).slice(0, 12).map(c => Cloud().board(c.id).then(b => { boards[c.id] = b; }).catch(() => {})));
   const cache = { invite, board, challenges:chs, boards, at:Date.now(), uid:sUser() && sUser().id };
-  sLS.set('cache', cache); return cache;
+  sLS.set('cache', cache); try { h2hResults(chs, boards); } catch(e) {} return cache;
+}
+/* Head-to-head results: final one day after the end (late syncs count), then XP + badge once. */
+const h2hFinal = ch => !!ch && ch.ends_on < iso(addDays(new Date(), -1));
+function h2hOutcome(ch, board){
+  const joined = (board || []).filter(b => b.status === 'joined'), me = joined.find(b => b.is_me);
+  if (!h2hFinal(ch) || !me || joined.length < 2 || ch.my_status !== 'joined') return null;
+  const top = Math.max(...joined.map(b => b.score || 0)); if (top <= 0) return null;
+  const leaders = joined.filter(b => (b.score || 0) === top);
+  return { r: me.score === top ? (leaders.length > 1 ? 'tied' : 'won') : 'lost', winners:leaders.map(b => b.display_name) };
+}
+function h2hResults(chs, boards){
+  const g = game(); g.h2h = g.h2h || {}; const fresh = [];
+  (chs || []).forEach(ch => { if (g.h2h[ch.id]) return; const o = h2hOutcome(ch, (boards || {})[ch.id]); if (!o) return;
+    const them = ((boards || {})[ch.id] || []).filter(b => !b.is_me && b.status === 'joined').map(b => b.display_name);
+    g.h2h[ch.id] = { end:ch.ends_on, metric:ch.metric, r:o.r, vs:them.slice(0, 3).join(', ').slice(0, 60) }; fresh.push(g.h2h[ch.id]); });
+  if (!fresh.length) return [];
+  saveDb(); const best = fresh.find(x => x.r === 'won') || fresh.find(x => x.r === 'tied') || fresh[0];
+  if (!window.__FORGED_QUIET_H2H) toast(best.r === 'won' ? `You won vs ${best.vs}! +${XP_H2H_WIN} XP` : best.r === 'tied' ? `Tied with ${best.vs}. +${XP_H2H_TIE} XP` : `${best.vs} won this one. Run it back?`);
+  return fresh;
 }
 const sCache = () => { const c = sLS.get('cache', {}); return c.uid && sUser() && c.uid === sUser().id ? c : {}; };
 function socialPoll(fn){ clearInterval(sPoll); sPoll = setInterval(() => { if (!document.hidden && $('#sheet').hidden && S_ROUTES.includes(curRoute)) fn(); }, 20000); }
@@ -4497,9 +4519,9 @@ function friendMenu(f, c){
   el.querySelector('#fmRemove').onclick = async () => { closeSheet(); try { await Cloud().removeFriend(f.user_id); toast(`Removed ${f.display_name}`); route(); } catch(e) { toast(e.message); } };
   openSheet(el, null, { closeLabel:'Close' });
 }
-function h2hSheet(c, pre){
+function h2hSheet(c, pre, metric0){
   const friends = (c.board || []).filter(x => !x.is_me); if (!friends.length) return;
-  const pick = new Set([pre && friends.some(f => f.user_id === pre) ? pre : friends[0].user_id]); let metric = 'sessions', days = 7;
+  const pick = new Set([pre && friends.some(f => f.user_id === pre) ? pre : friends[0].user_id]); let metric = S_METRIC[metric0] ? metric0 : 'sessions', days = 7;
   const el = h(`<div><h3>Challenge a friend</h3><div class="hint" style="margin:-6px 0 12px">Starts today. Progress syncs from what each of you logs; you'll see live standings.</div></div>`);
   const fl = h(`<div class="focuschips" id="h2hFriends">${friends.map(f => `<button type="button" data-f="${esc(f.user_id)}" class="${pick.has(f.user_id) ? 'on' : ''}">${esc(f.display_name)}</button>`).join('')}</div>`);
   fl.querySelectorAll('button').forEach(b => b.onclick = () => { if (pick.has(b.dataset.f)) { if (pick.size > 1) pick.delete(b.dataset.f); } else pick.add(b.dataset.f); fl.querySelectorAll('button').forEach(x => x.classList.toggle('on', pick.has(x.dataset.f))); });
@@ -4511,7 +4533,7 @@ function h2hSheet(c, pre){
     btn.disabled = true;
     try { const id = await Cloud().createChallenge({ kind:pick.size > 1 ? 'group' : 'h2h', metric, start:today(), end:iso(addDays(new Date(), days - 1)), friends:[...pick] });
       closeSheet(); toast('Challenge sent'); whenSettled(() => go('#/h2h/' + id)); }
-    catch(e) { btn.disabled = false; toast(e.message); }
+    catch(e) { btn.disabled = false; toast(metric === 'xp' && /invalid metric/i.test(e.message) ? 'XP challenges aren\'t switched on yet. Pick another metric.' : e.message); }
   };
   openSheet(el, null, { closeLabel:'Cancel' });
 }
@@ -4530,12 +4552,17 @@ async function viewH2h(id){
     v.innerHTML = `${navigator.onLine === false ? '<div class="card offline" id="offlineNote">You\'re offline. Standings are from the last sync.</div>' : ''}
       <div class="card" id="h2hHead"><div class="eyebrow">${ch.kind === 'group' ? `Group challenge · ${board.length} people` : `You vs ${esc((board.find(x => !x.is_me) || {}).display_name || 'friend')}`}</div><h2 class="h2ht">${esc(ch.title || m.label)}</h2>
         <div class="dim">${fmtShort(ch.starts_on)} – ${fmtShort(ch.ends_on)} · ${ended ? 'Ended' : timeLeft(ch.ends_on)}</div></div>
+      ${(() => { const o = h2hOutcome(ch, board), r = (game().h2h || {})[ch.id]; if (!o && !(h2hFinal(ch) && board[0])) return ''; const res = r ? r.r : o ? o.r : '';
+        const txt = res === 'won' ? `You won! +${XP_H2H_WIN} XP` : res === 'tied' ? `Tied for first. +${XP_H2H_TIE} XP` : o ? `${esc(o.winners.join(' & '))} won` : 'No winner this time';
+        return `<div class="card h2hres ${res || 'done'}" id="h2hResult"><div class="eyebrow">Final</div><h2>${res === 'won' ? '🥊 ' : ''}${txt}</h2>${res === 'won' ? '<div class="hint">Badge earned: Head-to-head winner</div>' : ''}<button type="button" class="btn block" id="h2hRematch" style="margin-top:10px">Rematch</button></div>`; })()}
       <div class="card" id="h2hBoard"><h2>Standings <small>${esc(m.unit)}</small></h2>${board.map(b => `<div class="brow${b.is_me ? ' me' : ''}"><span class="place">${b.place}</span>${sAvatar(b)}<div class="grow"><b>${esc(b.display_name)}${b.is_me ? ' <span class="pill">You</span>' : ''}${b.status === 'invited' ? ' <span class="dim">(invited)</span>' : ''}</b><span class="sgbar"><i style="width:${Math.round((b.score || 0) / max * 100)}%"></i></span></div><b class="bscore" data-score>${sScore(ch.metric, b.score)}</b></div>`).join('')}
-        <div class="hint">Synced from your log automatically. ${ended && board[0] ? `${esc(board[0].display_name)} won.` : 'Updates every 20 seconds while this screen is open.'}</div>
+        <div class="hint">Synced from your log automatically. ${ended ? (h2hFinal(ch) ? '' : 'Final results tomorrow, once late logs sync.') : 'Updates every 20 seconds while this screen is open.'}</div>
         <div class="hint" id="sSync"></div></div>
       ${ch.my_status === 'invited' ? `<div class="btnrow"><button type="button" class="btn primary" id="h2hAccept">Accept</button><button type="button" class="btn" id="h2hDecline">Decline</button></div>` : `<button type="button" class="btn block ghost" id="h2hLeave">Leave challenge</button>`}`;
     socialStatus();
-    const ac = $('#h2hAccept'), dc = $('#h2hDecline'), lv = $('#h2hLeave');
+    const ac = $('#h2hAccept'), dc = $('#h2hDecline'), lv = $('#h2hLeave'), rm = $('#h2hRematch');
+    if (rm) rm.onclick = () => { const opp = board.filter(b => !b.is_me && b.status === 'joined').map(b => b.user_id); h2hSheet({ board:board.filter(b => !b.is_me).map(b => ({ ...b })) }, opp[0], ch.metric); };
+    if (lv && h2hFinal(ch)) lv.remove();
     if (ac) ac.onclick = () => Cloud().respond(id, true).then(() => { toast('Challenge accepted'); refresh(); }).catch(e => toast(e.message));
     if (dc) dc.onclick = () => Cloud().respond(id, false).then(() => { toast('Challenge declined'); go('#/friends'); }).catch(e => toast(e.message));
     if (lv) lv.onclick = async () => { if (!(await confirmSheet('Leave this challenge?', 'Your progress stops counting here. You can still see your own log.', 'Leave'))) return; Cloud().leave(id).then(() => { toast('Left the challenge'); go('#/friends'); }).catch(e => toast(e.message)); };
@@ -4543,7 +4570,7 @@ async function viewH2h(id){
   const fromCache = () => { const c = sCache(); return [(c.challenges || []).find(x => x.id === id), (c.boards || {})[id] || []]; };
   const refresh = async () => { try { await socialSync(); const [chs, board] = await Promise.all([Cloud().challenges(), Cloud().board(id)]);
       const c = sCache(); if (c.uid) { c.challenges = chs; c.boards = { ...(c.boards || {}), [id]:board }; sLS.set('cache', c); }
-      const ch = chs.find(x => x.id === id); if (!ch) { toast('That challenge is no longer available'); go('#/friends'); return; } render(ch, board); }
+      const ch = chs.find(x => x.id === id); if (!ch) { toast('That challenge is no longer available'); go('#/friends'); return; } h2hResults([ch], { [id]:board }); render(ch, board); }
     catch(e) { if (curRoute === 'h2h') { if (!e.offline) toast(e.message); const [ch, b] = fromCache(); render(ch, b); } } };
   render(...fromCache()); refresh(); socialPoll(refresh);
 }
@@ -4613,7 +4640,7 @@ function viewRank(){
       ${gs.nextRank ? `<div class="hint" id="nextRank">${esc(gs.nextRank.name)} at level ${gs.nextRank.level} (${(gs.nextRank.xp - gs.xp).toLocaleString()} XP to go)</div>` : '<div class="hint">Top rank. Forged.</div>'}</div></div>
     ${proActive() ? `<div class="card pronote" id="proNote">🎁 <b>Pro week earned</b> for reaching ${RANKS[PRO_RANK][0]}. Pro until ${fmtShort(g.proUntil)}.</div>` : g.proUntil ? `<div class="hint" style="padding:0 6px 10px">Pro week earned ${fmtShort(g.proGranted)} (ended ${fmtShort(g.proUntil)}).</div>` : `<div class="hint" style="padding:0 6px 10px">Reach ${RANKS[PRO_RANK][0]} (level ${RANKS[PRO_RANK][1]}) to earn 7 days of Pro.</div>`}
     <div class="card" id="xpBreak"><h2>Where your XP comes from</h2>${[['Challenges', p.challenges],['Logging workouts', p.log],['Week streaks', p.streak],['PRs', p.pr],['Strength goals hit', p.goals],['Monthly goal', p.ring]].map(([l, x]) => `<div class="list-row"><div class="grow">${l}</div><b>${x.toLocaleString()}</b></div>`).join('')}
-      <div class="hint" style="margin-top:8px">Logging: ${XP_LOG} XP per workout (max ${XP_LOG_CAP} a day). Challenges: Easy/Medium/Hard daily ${CH_XP.d.slice(1).join('/')}, weekly ${CH_XP.w.slice(1).join('/')}, monthly ${CH_XP.m.slice(1).join('/')}. Week streak +${XP_STREAK}, PR +${XP_PR}, strength goal +${XP_GOAL}, monthly goal +${XP_RING}.</div></div>
+      <div class="hint" style="margin-top:8px">Logging: ${XP_LOG} XP per workout (max ${XP_LOG_CAP} a day). Challenges: Easy/Medium/Hard daily ${CH_XP.d.slice(1).join('/')}, weekly ${CH_XP.w.slice(1).join('/')}, monthly ${CH_XP.m.slice(1).join('/')}. Week streak +${XP_STREAK}, PR +${XP_PR}, strength goal +${XP_GOAL}, monthly goal +${XP_RING}, head-to-head win +${XP_H2H_WIN} (tie +${XP_H2H_TIE}).</div></div>
     <div class="card" id="ladder"><h2>Ranks</h2>${RANKS.map(([n, L], i) => `<div class="list-row ladder${i === gs.rankIdx ? ' cur' : ''}${i > gs.rankIdx ? ' locked' : ''}"><span class="lvl">Lv ${L}+</span><div class="grow"><b>${n}</b>${i === PRO_RANK ? '<small>🎁 7 days of Pro</small>' : ''}</div>${i <= gs.rankIdx ? '✓' : ''}</div>`).join('')}</div>
     <div class="btnrow" style="display:flex;gap:10px;padding:0 0 20px"><button type="button" class="btn primary" id="shareRank" style="flex:1">Share rank</button><a class="btn" href="#/badges" style="flex:1">Badges</a></div>${weekStreak() >= 2 ? `<button type="button" class="btn block" data-sharestreak id="shareStreak" style="margin-bottom:20px">Share your ${weekStreak()}-week streak</button>` : ''}`;
   $('#shareRank').onclick = () => shareSheet('rank', gs);
@@ -4819,7 +4846,7 @@ function route(){
   if (a === 'settings' && b === 'schedule') { const g = $('#scheduleCard'); if (g) g.scrollIntoView({ block:'start' }); }
   if (window.FORGED_TUT) FORGED_TUT.check(curRoute);
 }
-window.DM_TEST = { inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
+window.DM_TEST = { h2hOutcome, h2hResults, h2hFinal, inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
 window.addEventListener('hashchange', route);
 // Bottom nav: always closes whatever is open (sheet or form) and goes to that screen.
 document.querySelector('.tabbar').addEventListener('click', e => {

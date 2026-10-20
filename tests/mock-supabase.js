@@ -5,7 +5,7 @@
 (() => {
   const K = 'mock.sb', ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const MAX = { sessions:4, pushups:3000, mat_minutes:480, daily_done:3, xp:30 };
-  const METRICS = ['sessions','pushups','mat_minutes','daily_streak'];
+  const METRICS = ['sessions','pushups','mat_minutes','daily_streak','xp'];
   const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const addD = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return iso(d); };
   const today = () => iso(new Date());

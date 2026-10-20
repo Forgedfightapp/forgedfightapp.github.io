@@ -102,7 +102,7 @@ ok('accepting stores the friend challenge on this phone', (await db()).game.frie
 // badges
 await page.goto(BASE + '#/badges'); await page.waitForSelector('#badgeCase'); await settle();
 const nOn = await page.locator('#mcBadges .medalcell.on').count(), nLock = await page.locator('#mcBadges .medalcell.locked').count();
-ok('badge case: some earned, the rest locked', nOn >= 2 && nLock >= 5 && nOn + nLock === 20, `${nOn}/${nLock}`);
+ok('badge case: some earned, the rest locked', nOn >= 2 && nLock >= 5 && nOn + nLock === 21, `${nOn}/${nLock}`);
 ok('locked badges show only a lock (3.6.0: no how-to hints)', (await page.locator('#mcBadges .medalcell.locked[data-medalid="b-s50"]').textContent()).trim() === '🔒');
 ok('First strike earned', await page.locator('#mcBadges .medalcell.on[data-medalid="b-first"]').count() === 1);
 await hideToast(); await page.evaluate(() => window.scrollTo(0, 0)); await settle(200);

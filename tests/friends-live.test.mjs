@@ -13,7 +13,7 @@ const d = { schema:7, sessions:[{ id:'a', date:new Date().toLocaleDateString('en
 await page.goto(BASE + 'sw.js'); await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }, d);
 await page.goto(BASE + '#/challenges'); await page.waitForSelector('#friendsTop', { timeout:15000 });
 ok('Friends is on: config social:true and a Friends button on Challenges', await page.evaluate(() => window.FORGED_CONFIG.social === true) && await page.locator('#friendsTop').count() === 1);
-ok('version', await page.evaluate(() => fetch('app.js?x=' + Date.now()).then(r => r.text()).then(t => (t.match(/APP_VERSION = '([\d.]+)'/) || [])[1])) === (process.env.VER || '3.9.0'));
+ok('version', await page.evaluate(() => fetch('app.js?x=' + Date.now()).then(r => r.text()).then(t => (t.match(/APP_VERSION = '([\d.]+)'/) || [])[1])) === (process.env.VER || '3.9.1'));
 await page.locator('#friendsTop').tap(); await page.waitForSelector('#friendsIntro', { timeout:15000 }); await page.waitForTimeout(400);
 ok('Friends screen (signed out) offers "Sign in with email"', /Sign in with email/.test(await page.locator('#goSignin').textContent()));
 await page.screenshot({ path:`${SHOTS}/77-friends.png` });

@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.9.0';
+const APP_VERSION = '3.9.1';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -882,6 +882,7 @@ function setHeader(title, action='', back=null){
   $('#topAction').innerHTML = action;
 }
 function updateNav(){
+  { const fr = $('.tabbar a[data-tab="friends"]'), on = socialOn(); if (fr) fr.hidden = !on; $('.tabbar').classList.toggle('six', on); }
   const fuel = $('.tabbar a[data-tab="food"]'); if (!fuel) return;
   if (!enabled('food')) { fuel.href = '#/stats'; fuel.dataset.tab = 'food'; fuel.querySelector('span').textContent = 'Stats'; fuel.dataset.mode = 'stats'; }
   else { fuel.href = '#/food'; fuel.querySelector('span').textContent = 'Food'; fuel.dataset.mode = 'fuel'; }
@@ -4409,7 +4410,7 @@ const privacyCard = () => `<div class="card privacy" id="privacyCard"><h2>What f
 /* ----- Friends screen ----- */
 async function viewFriends(){
   if (!socialOn()) { replacing = true; location.replace('#/'); return; }
-  setHeader('Friends', '', { parent:'#/challenges' });
+  setHeader('Friends');
   const v = $('#view');
   if (!Cloud().loaded && Cloud().hasStoredSession()) { v.innerHTML = '<div class="card"><div class="hint">Loading…</div></div>'; try { await Cloud().init(); } catch(e) {} if (curRoute !== 'friends') return; }
   const u = sUser();
@@ -4782,7 +4783,7 @@ function route(){
   const [, a, b] = hash.split('/');
   curRoute = a || ''; curHash = hash;
   if (a !== 'log' && a !== 'edit') delete document.body.dataset.theme;
-  const tab = { '':'home', challenges:'home', rank:'home', join:'home', friends:'home', h2h:'home', signin:'home', invite:'home', badges:'settings', pro:'settings', history:'history', belts:'history', comps:'history', session:'history', benchmarks:'home', programs:'settings', program:'settings', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
+  const tab = { '':'home', challenges:'home', rank:'home', join:'home', friends:'friends', h2h:'friends', signin:'friends', invite:'friends', badges:'settings', pro:'settings', history:'history', belts:'history', comps:'history', session:'history', benchmarks:'home', programs:'settings', program:'settings', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
   document.querySelectorAll('.tabbar a').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   if (a !== 'log' && a !== 'edit') form = (a === 'session' ? null : form && !form.id ? form : null);
   switch (a || '') {

@@ -6,7 +6,7 @@ const T = {
     ['.tabbar a[data-tab="log"]', 'Log a workout', 'Tap + any time to log a session. It takes a few taps.'],
     ['#marks', 'Daily marks', 'Hit your train, fuel and recover marks each day to build a streak.'],
     ['#weightCard', 'Your weight', 'Log weigh-ins here and see progress toward your goal.'],
-    ['.tabbar', 'Get around', 'Use the bar at the bottom to move between Home, History, Food and Profile.'] ] },
+    ['.tabbar', 'Get around', () => document.querySelector('.tabbar a[data-tab="friends"]:not([hidden])') ? 'Use the bar at the bottom to move between Home, History, Friends, Food and Profile.' : 'Use the bar at the bottom to move between Home, History, Food and Profile.'] ] },
   weight:{ title:'Weight', steps:[
     ['#weightCard .wmodes, .wmodes', 'Pick your goal', 'Choose Lose, Maintain or Gain. Your targets follow your choice.'],
     ['#weightCard', 'Track it', 'Log your weight a few times a week. We show your 7-day trend so daily swings don\'t throw you off.'] ] },
@@ -73,7 +73,7 @@ function show(key, force){
   const draw = () => {
     const [sel, h, p] = steps[i], el = sel && find(sel);
     root.querySelector('.tut-n').textContent = `${t.title} · ${i + 1} of ${steps.length}`;
-    root.querySelector('h3').textContent = h; root.querySelector('p').textContent = p;
+    root.querySelector('h3').textContent = h; root.querySelector('p').textContent = typeof p === 'function' ? p() : p;
     const last = i === steps.length - 1; root.querySelector('#tutNext').textContent = last ? 'Done' : 'Next';
     if (el) {
       el.scrollIntoView({ block:'center' });

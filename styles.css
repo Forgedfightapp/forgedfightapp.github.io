@@ -1021,3 +1021,10 @@ body.legal{padding-bottom:40px}
 .tut-card p{margin:0 0 14px;color:#cfcfcf;line-height:1.4}
 .tut-btns{display:flex;gap:10px;justify-content:flex-end}
 .tut-btns .btn{min-width:84px}
+
+/* 3.9.1 six-slot bar: Friends tab, + stays centered */
+.tabbar a[hidden]{display:none}
+.tabbar.six{grid-template-columns:2fr 2fr 2fr 66px 3fr 3fr}
+.tabbar.six a{font-size:10px}
+.tabbar.six a svg{width:23px;height:23px}
+@media (max-width:380px){.tabbar.six a{font-size:9.5px;letter-spacing:-.01em}.tabbar.six a.fab{width:56px;height:56px}}

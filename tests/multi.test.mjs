@@ -77,7 +77,7 @@ ok('Back returns to Food, unsaved food discarded', (await page.evaluate(() => lo
 await page.goto(BASE); await page.waitForSelector('.statrow');
 ok('hidden section stays hidden (no supplements card)', await page.locator('#suppCard').count() === 0 && await page.locator('#nutriCard').count() === 1);
 ok('nav label plain', (await page.locator('.tabbar a[data-tab="food"] span').innerText()) === 'Food');
-ok('bottom nav has 5 items', await page.locator('.tabbar a').count() === 5);
+ok('bottom nav has 6 items (Friends on)', await page.locator('.tabbar a:visible').count() === (await page.evaluate(() => document.querySelector('.tabbar').classList.contains('six')) ? 6 : 5));
 
 /* 2. quick log in <=3 taps from Home */
 taps = 0;

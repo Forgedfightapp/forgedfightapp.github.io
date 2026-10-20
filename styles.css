@@ -969,3 +969,46 @@ h3 .artname{font-size:13px;color:var(--muted);font-weight:650;margin-left:6px}
 .recap .recapstats span{display:flex;flex-direction:column}.recap .recapstats b{font-size:22px;font-weight:800}.recap .recapstats small{color:var(--muted);font-size:12px}
 .recapsug{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--surface2);font-size:14px}
 .recapsug span{flex:1}
+
+/* ---------- 3.7.0: legal pages ---------- */
+body.legal{padding-bottom:40px}
+.legalbar{position:sticky;top:0}
+.legalbar .backbtn{display:inline-flex;align-items:center;gap:4px;text-decoration:none;color:var(--accent);font-weight:650}
+.legaldoc{max-width:680px;margin:0 auto;padding:8px 20px 40px;line-height:1.55;font-size:15.5px}
+.legaldoc h1{font-family:"Barlow Condensed",Impact,sans-serif;font-size:36px;text-transform:uppercase;margin:12px 0 4px}
+.legaldoc h2{font-size:17px;margin:26px 0 6px;color:#fff}
+.legaldoc p,.legaldoc li{color:#D3D7DD}
+.legaldoc ul{padding-left:20px}
+.legaldoc li{margin:4px 0}
+.legaldoc a{color:var(--accent)}
+.legaldoc .meta{color:var(--muted);font-size:13.5px}
+.legaldoc .draftnote{margin:10px 0 6px;padding:12px 14px;border-radius:12px;border:1px dashed #F5C542;background:rgba(245,197,66,.08);color:#F5E3A8;font-size:14px}
+.legaldoc .legalnav{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);font-size:14px;color:var(--muted)}
+
+/* ---------- 3.7.0: Forged Pro paywall (flagged) ---------- */
+.protag{display:inline-block;vertical-align:middle;margin:0 6px;padding:1px 6px;border-radius:6px;font:800 10.5px/1.5 "Barlow",system-ui,sans-serif;letter-spacing:.08em;color:#0B0B0C;background:linear-gradient(135deg,#F5C542,#F58A45);text-decoration:none;text-transform:uppercase}
+.prorow{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;border-color:rgba(245,197,66,.45)}
+.prorow .grow{flex:1;min-width:0}.prorow b{display:block}.prorow small{color:var(--muted);font-size:13px}
+.prorow .protag{margin:0}
+.paywall{padding-bottom:24px}
+.pw-hero{text-align:center;padding:14px 8px 6px;border-radius:20px;background:radial-gradient(ellipse at 50% 120%,rgba(242,113,28,.35),transparent 65%)}
+.pw-hero h2{font-family:"Barlow Condensed",Impact,sans-serif;font-size:42px;text-transform:uppercase;margin:6px 0 2px;letter-spacing:.01em}
+.pw-hero h2 span{background:linear-gradient(135deg,#F5C542,#F58A45);-webkit-background-clip:text;background-clip:text;color:transparent}
+.pw-hero p{color:#C7CDD4;margin:0 0 10px}
+.pw-trial{display:inline-block;padding:5px 12px;border-radius:999px;background:rgba(111,211,168,.15);color:#6FD3A8;font-weight:700;font-size:13px;border:1px solid rgba(111,211,168,.4)}
+.pw-feats{list-style:none;padding:0;margin:18px 0}
+.pw-feats li{display:flex;gap:12px;align-items:flex-start;padding:10px 2px;border-bottom:1px solid var(--line)}
+.pw-feats .pw-i{font-size:22px;width:30px;text-align:center}
+.pw-feats b{display:block}.pw-feats small{color:var(--muted);font-size:13.5px}
+.pw-plans{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:6px 0 14px}
+.pw-plan{position:relative;display:flex;flex-direction:column;gap:4px;align-items:flex-start;padding:16px 14px 14px;border-radius:16px;background:var(--surface);border:2px solid var(--line);color:inherit;font:inherit;text-align:left;cursor:pointer;min-height:44px}
+.pw-plan.on{border-color:var(--accent);background:rgba(245,138,69,.08)}
+.pw-plan em{position:absolute;top:-10px;right:10px;font-style:normal;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:999px;background:var(--accent);color:#0B0B0C}
+.pw-plan b{font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.pw-price{font-size:26px;font-weight:800}.pw-price small{font-size:13px;font-weight:600;color:var(--muted);margin-left:3px}
+.pw-plan > small{color:var(--muted);font-size:12.5px}
+.pw-fine{margin:10px 2px;font-size:12.5px}
+.pw-links{text-align:center;margin:8px 0 14px}.pw-links a{color:var(--muted)}
+.legallinks{display:flex;justify-content:center;gap:18px;margin-top:14px;font-size:14px}
+.legallinks a,.legalnote a{color:var(--muted);text-decoration:underline}
+.legalnote{text-align:center;margin-top:14px;font-size:12.5px}

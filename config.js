@@ -5,6 +5,7 @@
    The publishable key is meant for the browser: every table is protected by Row Level Security. */
 window.FORGED_CONFIG = Object.assign({
   social: false,
+  pro: false,     // Forged Pro paywall (3.7.0). Preview on one phone with ?pro=1; payments are still a stub.
   supabaseUrl: 'https://ftnhmeqpzqpfdwhjfvnk.supabase.co',
   supabaseKey: 'sb_publishable_hspLZBFgnh5VhAeMXnBaSA_2agWNO41',
   redirectTo: 'https://forgedfightapp.github.io/',

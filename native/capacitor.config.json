@@ -1,0 +1,11 @@
+{
+  "appId": "com.forgedfightapp.forged",
+  "appName": "Forged",
+  "webDir": "www",
+  "backgroundColor": "#0B0B0C",
+  "ios": { "contentInset": "never", "backgroundColor": "#0B0B0C" },
+  "android": { "backgroundColor": "#0B0B0C" },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 800, "backgroundColor": "#0B0B0C", "showSpinner": false }
+  }
+}

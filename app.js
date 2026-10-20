@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.6.0';
+const APP_VERSION = '3.7.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -902,7 +902,8 @@ function viewSetup(step = 1){
     <h3>Also track</h3>
     <div class="tiles two" id="extraTiles"><button type="button" class="tile" data-k="food"><b>Food</b><small>Calories &amp; protein</small></button><button type="button" class="tile" data-k="weight"><b>Weight goal</b><small>Lose or gain</small></button></div>
     <button class="btn primary block" id="go" style="margin-top:18px">Next: about you</button>
-    <button class="btn block ghost" id="loadSample" style="margin-top:10px">Load sample data (demo)</button></div>`;
+    <button class="btn block ghost" id="loadSample" style="margin-top:10px">Load sample data (demo)</button>
+    <p class="hint legalnote" id="setupLegal">Your log stays on this phone. By continuing you agree to the <a href="terms.html">Terms of Use</a> and <a href="privacy.html">Privacy Policy</a>.</p></div>`;
   const sync = () => v.querySelectorAll('.tile').forEach(b => { b.classList.toggle('on', !!pick[b.dataset.k]); b.setAttribute('aria-pressed', !!pick[b.dataset.k]); });
   v.querySelectorAll('.tile').forEach(b => b.onclick = () => { pick[b.dataset.k] = !pick[b.dataset.k]; if (!CAT_KEYS.some(k => pick[k])) pick.grappling = true; sync(); });
   sync();
@@ -2428,6 +2429,7 @@ function viewSettings(){
   const p = db.profile, v = $('#view'); v.innerHTML = '';
   if (ret) { const bb = h(`<div class="card goalsback" id="goalsBackCard"><span>Goals save as you type. When you're done:</span><button type="button" class="btn primary" id="goalsBack">← Back to ${esc(retName)}</button></div>`);
     bb.querySelector('#goalsBack').onclick = () => { goalsReturn = null; go('#' + ret); }; v.appendChild(bb); }
+  if (paywallOn()) v.appendChild(h(`<a class="card prorow" id="proRow" href="#/pro"><span class="protag">PRO</span><div class="grow"><b>Forged Pro</b><small>Programs, weight plans, advanced stats, extra looks · ${PRO_TRIAL_DAYS}-day free trial</small></div>›</a>`));
   const sec = h(`<div class="card" id="sectionsCard"><h2>What I track</h2><div class="toggles"></div><div class="hint">Hidden sections disappear from the app. Your data is kept.</div></div>`);
   [...CAT_KEYS.map(k => [k, CATS[k].label, CATS[k].disc.map(d => d[1]).join(', ')]), ['weight','Weight goal','Weigh-ins & progress'], ['food','Food','Calories, protein, meals']].forEach(([k,l,sub]) => {
     const row = h(`<label class="toggle"><span><b>${l}</b><small>${esc(sub)}</small></span><input type="checkbox" role="switch" data-sec="${k}" ${enabled(k)?'checked':''}><i></i></label>`);
@@ -2516,7 +2518,7 @@ function viewSettings(){
       <button class="btn block" id="ldS">Load sample data (demo)</button>
       ${hasSample ? '<button class="btn block" id="rmS">Remove sample data</button>' : ''}
       <button class="btn block danger" id="clr">Clear all data</button>
-    </div>${db.archive?.supps ? `<div class="hint" id="suppArchiveNote" style="margin-top:12px">Supplement tracking was removed in 3.1. Your ${(db.archive.supps.items||[]).length} supplement${(db.archive.supps.items||[]).length === 1 ? '' : 's'} and ${(db.archive.supps.log||[]).length} check-off${(db.archive.supps.log||[]).length === 1 ? '' : 's'} are kept, hidden, on this device and in your backups.</div>` : ''}</div>`);
+    </div><div class="legallinks" id="legalLinks"><a href="privacy.html">Privacy Policy</a><a href="terms.html">Terms of Use</a></div>${db.archive?.supps ? `<div class="hint" id="suppArchiveNote" style="margin-top:12px">Supplement tracking was removed in 3.1. Your ${(db.archive.supps.items||[]).length} supplement${(db.archive.supps.items||[]).length === 1 ? '' : 's'} and ${(db.archive.supps.log||[]).length} check-off${(db.archive.supps.log||[]).length === 1 ? '' : 's'} are kept, hidden, on this device and in your backups.</div>` : ''}</div>`);
   v.appendChild(data);
   v.appendChild(h(`<div class="card"><h2>Install on iPhone</h2><div style="color:var(--muted);font-size:14px">In Safari, tap <b style="color:var(--text)">Share</b> → <b style="color:var(--text)">Add to Home Screen</b>. It opens full-screen and works offline.</div></div>`));
   if (socialOn()) v.appendChild(h(`<div class="card" id="friendsCard"><h2>Friends</h2><a class="list-row" href="#/friends" id="friendsProfileLink" style="text-decoration:none;color:inherit"><div class="grow"><b>Friends &amp; head-to-head</b><small>${sUser() ? `Signed in as ${esc(sUser().email)}` : 'Optional account. Only summaries are shared.'}</small></div>›</a></div>`));
@@ -2734,7 +2736,7 @@ function loadChart(weeks){
 }
 function loadCard(){
   const st = loadStatus(), weeks = weeklyLoad(12);
-  return `<div class="card" id="loadCard"><h2>Training load <small>minutes × effort</small></h2>
+  return `<div class="card" id="loadCard"><h2>Training load ${proTag()}<small>minutes × effort</small></h2>
     <div class="acwr"><div><b id="acwrRatio">${st.ratio != null ? st.ratio.toFixed(2) : '—'}</b><span>This week vs 4-wk avg</span></div>${st.label ? `<span class="loadpill ${st.label === 'High load' ? 'high' : st.label === 'Fresh' ? 'fresh' : 'ok'}" id="acwrLabel">${st.label}</span>` : ''}</div>
     <div class="hint" id="acwrText" style="margin:-2px 0 10px">${esc(st.text)}</div>
     ${loadChart(weeks)}
@@ -3286,7 +3288,7 @@ function startWeightPlan(pl, weeks){
 }
 function wplanListCard(){
   const a = activeWPlan();
-  return `<div class="card" id="wplanList"><h2>Weight plans <small>eat for your goal</small></h2>${WPLANS().map(x => `<a class="list-row tmpl" href="#/program/wp-${x.id}" data-wplan="${x.id}"><div class="grow"><b>${esc(x.name)}</b><small>${esc(x.short)} · pairs with ${esc(tmplOf(x.pair)?.name || '')}</small></div>${a && a.wp.id === x.id && !a.done ? '<span class="pill">Active</span>' : ''}<span class="chev">›</span></a>`).join('')}</div>`;
+  return `<div class="card" id="wplanList"><h2>Weight plans ${proTag()}<small>eat for your goal</small></h2>${WPLANS().map(x => `<a class="list-row tmpl" href="#/program/wp-${x.id}" data-wplan="${x.id}"><div class="grow"><b>${esc(x.name)}</b><small>${esc(x.short)} · pairs with ${esc(tmplOf(x.pair)?.name || '')}</small></div>${a && a.wp.id === x.id && !a.done ? '<span class="pill">Active</span>' : ''}<span class="chev">›</span></a>`).join('')}</div>`;
 }
 function viewWeightPlan(pl){
   setHeader(pl.name, '', { parent:'#/programs' });
@@ -3317,7 +3319,7 @@ function viewWeightPlan(pl){
 }
 function programProfileCard(){
   const p = activeProgram(), t = p && tmplOf(p.tid), nx = p && progNext(p);
-  return h(`<div class="card" id="programsCard"><h2>Programs <a class="lnk" href="#/programs">Browse ›</a></h2>${p ? `<div class="list-row"><div class="grow"><b>${esc(t.name)}</b><small>${nx.done ? 'Complete' : `${nx.doneN}/${nx.sch.length} sessions · next ${fmtShort(nx.item.date)}`}</small></div></div>` : '<div class="hint" style="margin:-4px 0 10px">Lifting templates built around your mat training (2-day, 3-day, home, comp prep, finishers) plus weight plans: Lean Gain, Maintain & Perform, Cut.</div>'}<a class="btn block" href="#/programs" style="margin-top:8px">${p ? 'Manage program' : 'See programs'}</a></div>`);
+  return h(`<div class="card" id="programsCard"><h2>Programs ${proTag()}<a class="lnk" href="#/programs">Browse ›</a></h2>${p ? `<div class="list-row"><div class="grow"><b>${esc(t.name)}</b><small>${nx.done ? 'Complete' : `${nx.doneN}/${nx.sch.length} sessions · next ${fmtShort(nx.item.date)}`}</small></div></div>` : '<div class="hint" style="margin:-4px 0 10px">Lifting templates built around your mat training (2-day, 3-day, home, comp prep, finishers) plus weight plans: Lean Gain, Maintain & Perform, Cut.</div>'}<a class="btn block" href="#/programs" style="margin-top:8px">${p ? 'Manage program' : 'See programs'}</a></div>`);
 }
 
 /* ---- storage helpers for the new collections ---- */
@@ -4244,6 +4246,56 @@ const CFG = window.FORGED_CONFIG || {};
   if (q === '1') localStorage.setItem('forged.social.preview', '1'); if (q === '0') localStorage.removeItem('forged.social.preview'); } catch(e) {} })();
 const socialOn = () => { try { return !!(window.ForgedCloud && (CFG.social || localStorage.getItem('forged.social.preview') === '1')); } catch(e) { return false; } };
 const Cloud = () => window.ForgedCloud;
+
+/* ---------------- 3.7.0: Forged Pro paywall (flagged) ----------------
+   Off unless FORGED_CONFIG.pro is true or this phone opted into the preview with ?pro=1 (?pro=0 turns it off).
+   Payments is a stub: nothing is charged and isPro() still returns true for everyone. Replace purchase/restore with
+   StoreKit / Play Billing (e.g. RevenueCat via Capacitor) or Stripe on the web when Pro goes live. */
+(() => { try { const q = new URLSearchParams(location.search).get('pro');
+  if (q === '1') localStorage.setItem('forged.pro.preview', '1'); if (q === '0') localStorage.removeItem('forged.pro.preview'); } catch(e) {} })();
+const paywallOn = () => { try { return !!(CFG.pro || localStorage.getItem('forged.pro.preview') === '1'); } catch(e) { return false; } };
+const proTag = () => paywallOn() ? '<a class="protag" href="#/pro" aria-label="Forged Pro feature">PRO</a>' : '';
+const PRO_PLANS = [
+  { id:'forged_pro_yearly', label:'Yearly', price:'$35.99', per:'/ year', note:'$3.00 / month · save 40%', best:true },
+  { id:'forged_pro_monthly', label:'Monthly', price:'$4.99', per:'/ month', note:'Cancel anytime' }
+];
+const PRO_TRIAL_DAYS = 7;
+const PRO_FEATURES = [
+  ['🏋️', 'Programs & weight plans', 'Lifting programs built for fighters, plus eat-for-your-goal weight plans that adjust as you go.'],
+  ['📋', 'Lifting templates', 'Ready-made strength, power and conditioning sessions with suggested weights.'],
+  ['📈', 'Advanced stats', 'Training load, PR history, estimated 1RM trends and benchmark retests.'],
+  ['🎨', 'Extra looks', 'More accent colours, share-card frames and rank flair.'],
+  ['👥', 'Social feed (coming soon)', 'See your training partners\' sessions and medals.']
+];
+const Payments = {
+  stub:true,
+  products:() => PRO_PLANS.map(p => ({ id:p.id, price:p.price, trialDays:PRO_TRIAL_DAYS })),
+  async purchase(id){ await new Promise(r => setTimeout(r, 250)); ForgedSync.emit('pro.purchase.stub', { id }); return { ok:false, stub:true, id }; },
+  async restore(){ await new Promise(r => setTimeout(r, 250)); return { ok:false, stub:true, restored:0 }; }
+};
+function viewPro(){
+  if (!paywallOn()) { go('#/settings'); return; }
+  setHeader('Forged Pro', '', { parent:'#/settings' });
+  let plan = PRO_PLANS[0].id;
+  const v = $('#view');
+  v.innerHTML = `<div class="paywall" id="paywall">
+    <div class="pw-hero"><img src="brand/forged/forged-mark.svg" alt="" width="84" height="84"><h2>Forged <span>Pro</span></h2><p>Train with a plan. Every tool in Forged, unlocked.</p>
+      <span class="pw-trial" id="pwTrial">${PRO_TRIAL_DAYS}-day free trial</span></div>
+    <ul class="pw-feats" id="pwFeats">${PRO_FEATURES.map(([i, t, d]) => `<li><span class="pw-i" aria-hidden="true">${i}</span><div><b>${t}</b><small>${d}</small></div></li>`).join('')}</ul>
+    <div class="pw-plans" id="pwPlans" role="radiogroup" aria-label="Choose a plan">${PRO_PLANS.map(p => `<button type="button" class="pw-plan" role="radio" data-plan="${p.id}">${p.best ? '<em>Best value</em>' : ''}<b>${p.label}</b><span class="pw-price">${p.price}<small>${p.per}</small></span><small>${p.note}</small></button>`).join('')}</div>
+    <button type="button" class="btn primary block" id="pwBuy">Start ${PRO_TRIAL_DAYS}-day free trial</button>
+    <div class="hint pw-fine" id="pwFine"></div>
+    <button type="button" class="btn block ghost" id="pwRestore">Restore purchases</button>
+    <div class="hint pw-links"><a href="terms.html">Terms of Use</a> · <a href="privacy.html">Privacy Policy</a></div>
+    <div class="pronote" id="pwPreview">Preview only. Payments aren't connected yet: nothing is charged, and every Pro feature is free for now.</div></div>`;
+  const sync = () => { const p = PRO_PLANS.find(x => x.id === plan);
+    v.querySelectorAll('.pw-plan').forEach(b => { const on = b.dataset.plan === plan; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+    $('#pwFine').textContent = `Free for ${PRO_TRIAL_DAYS} days, then ${p.price} ${p.per.replace('/ ', 'per ')}. Renews automatically until you cancel. Cancel anytime in your App Store or Google Play settings at least 24 hours before the trial ends and you won't be charged.`; };
+  v.querySelectorAll('.pw-plan').forEach(b => b.onclick = () => { plan = b.dataset.plan; sync(); }); sync();
+  $('#pwBuy').onclick = async () => { const b = $('#pwBuy'); b.disabled = true; const r = await Payments.purchase(plan); b.disabled = false;
+    toast(r.stub ? 'Preview only: nothing was charged. Pro is free for now.' : r.ok ? 'Welcome to Forged Pro' : 'Purchase didn\u2019t go through'); };
+  $('#pwRestore').onclick = async () => { const r = await Payments.restore(); toast(r.stub ? 'Preview only: no purchases to restore' : `Restored ${r.restored}`); };
+}
 const sUser = () => socialOn() ? Cloud().user : null;
 const S_ROUTES = ['friends','signin','invite','h2h'];
 const S_METRIC = { sessions:{ label:'Sessions', unit:'sessions' }, pushups:{ label:'Push-ups', unit:'push-ups' }, mat_minutes:{ label:'Mat hours', unit:'h' }, daily_streak:{ label:'Daily challenge streak', unit:'days in a row' } };
@@ -4591,6 +4643,7 @@ function gameProfileCard(){
     L.appendChild(wrap);
   };
   picker('accent', 'Accent colour'); picker('frame', 'Share card frame'); picker('flair', 'Rank flair');
+  if (paywallOn()) L.querySelectorAll('.field > label').forEach(l => l.insertAdjacentHTML('beforeend', ' ' + proTag()));
   L.appendChild(h('<div class="hint">The log form still uses each workout type\'s colour.</div>'));
   wireMedalGrid(card);
   return card;
@@ -4726,7 +4779,7 @@ function route(){
   const [, a, b] = hash.split('/');
   curRoute = a || ''; curHash = hash;
   if (a !== 'log' && a !== 'edit') delete document.body.dataset.theme;
-  const tab = { '':'home', challenges:'home', rank:'home', join:'home', friends:'home', h2h:'home', signin:'home', invite:'home', badges:'settings', history:'history', belts:'history', comps:'history', session:'history', benchmarks:'home', programs:'settings', program:'settings', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
+  const tab = { '':'home', challenges:'home', rank:'home', join:'home', friends:'home', h2h:'home', signin:'home', invite:'home', badges:'settings', pro:'settings', history:'history', belts:'history', comps:'history', session:'history', benchmarks:'home', programs:'settings', program:'settings', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
   document.querySelectorAll('.tabbar a').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   if (a !== 'log' && a !== 'edit') form = (a === 'session' ? null : form && !form.id ? form : null);
   switch (a || '') {
@@ -4751,6 +4804,7 @@ function route(){
     case 'food': viewFood(b); break;
     case 'supps': go('#/food'); return;
     case 'settings': viewSettings(); break;
+    case 'pro': viewPro(); break;
     default: viewHome();
   }
   if (a !== 'settings') goalsReturn = null;
@@ -4760,7 +4814,7 @@ function route(){
   if (a === 'settings' && b === 'goals') { const g = $('#targetsCard'); if (g) g.scrollIntoView({ block:'start' }); }
   if (a === 'settings' && b === 'schedule') { const g = $('#scheduleCard'); if (g) g.scrollIntoView({ block:'start' }); }
 }
-window.DM_TEST = { inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, get db(){ return db; } };
+window.DM_TEST = { inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
 window.addEventListener('hashchange', route);
 // Bottom nav: always closes whatever is open (sheet or form) and goes to that screen.
 document.querySelector('.tabbar').addEventListener('click', e => {

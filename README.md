@@ -21,6 +21,27 @@ Weigh-ins and workout body weight merge into one history (latest entry per day).
 progress %, sparkline (lose or gain inferred from start vs goal). Stats: chart with goal line, weekly average rate (least squares, last 28 days),
 projected goal date.
 
+## 3.7.0: launch prep (policies, flagged Pro paywall, store, native)
+- **Privacy Policy** (`privacy.html`) and **Terms of Use** (`terms.html`): plain-English drafts, styled like the app, with a "Draft for review, not legal advice" banner and `[LEGAL NAME / LLC]` / `[CONTACT EMAIL]` / `[DATE]` placeholders. They cover:
+  - on-device storage
+  - what Friends syncs to Supabase (and never: notes, weight, food, injuries)
+  - Open Food Facts lookups
+  - no selling of data, and no health data for ads
+  - account deletion
+  - 13+
+  - not medical advice
+  - subscriptions
+  Linked from Profile → Your data (`#legalLinks`), onboarding (`#setupLegal`) and the paywall. Both are cached by the service worker.
+- **Forged Pro paywall** (`#/pro`):
+  - Yearly $35.99 (preselected) / monthly $4.99, a 7-day free trial, the feature list, auto-renew terms and Restore.
+  - Off unless `config.js` `pro:true`. Preview with `?pro=1` (`?pro=0` turns it off).
+  - With the flag on, Profile shows a Pro row and PRO tags appear on programs, weight plans, training load and looks.
+  - `Payments.purchase/restore` are stubs: nothing is charged and `isPro()` still returns true.
+- **Store:** `store/listing.md` and `store/screenshots/` (App Store 6.7"/6.5", Play phone), regenerated with `store/make-screenshots.mjs`.
+- **Native:** `native/` Capacitor 8 project (iOS + Android, `com.forgedfightapp.forged`). See `native/README.md`.
+- **Docs:** `docs/analytics.md` (proposal, nothing enabled) and `docs/launch-checklist.md`.
+- New tests: `tests/launch.test.mjs` (33 checks). Screenshots `75-privacy.png`, `76-paywall.png`.
+
 ## 3.6.0: daily marks, Perfect Week, medals, Monday recap
 - **Daily marks** (`#marks`, one strip under the rank chip, no extra cards): **Train** = minutes logged today (all non-mobility sessions) vs that weekday's goal (`profile.marks.train`, Sun..Sat minutes, 0 = rest; defaults to 45 min on your scheduled days, or Mon/Wed/Fri with no schedule). **Recover** = mobility sessions + rep-log mobility minutes vs 10 min. **Fuel** = protein + water vs your goals (only when Food is on and a goal is set). Tap the strip for details, weekday goals, Perfect Week dots and Pause / Resume.
 - **Pause:** 1 or 2 weeks from the marks sheet, auto-offered after logging an injury (2 weeks at severity 4–5). Pauses are stored as ranges in `profile.marks.pauses`; paused days don't count toward Perfect Week.
@@ -200,7 +221,7 @@ On every release, bump `APP_VERSION` in `app.js` **and** the `CACHE` name in `sw
     ./restart-preview.sh                            # optional: server + Cloudflare quick tunnel (temporary preview URL, changes on restart)
 
 ## Tests (Playwright, iPhone 13 emulation)
-`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/social.test.mjs` (Supabase mocked by `tests/mock-supabase.js`, no network), `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/game.test.mjs`, `tests/macro-calc.test.mjs`, `tests/food-calc.test.mjs`, `tests/tip.test.mjs`, `tests/multisport.test.mjs`, `tests/weight.test.mjs`, `tests/marks.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
+`tests/core.test.mjs`, `tests/nutrition.test.mjs`, `tests/nav-weight.test.mjs`, `tests/belts.test.mjs`, `tests/water.test.mjs`, `tests/layout.test.mjs`, `tests/align.test.mjs`, `tests/belt-graphic.test.mjs`, `tests/log-form.test.mjs`, `tests/categories.test.mjs`, `tests/social.test.mjs` (Supabase mocked by `tests/mock-supabase.js`, no network), `tests/features.test.mjs`, `tests/strength-goals.test.mjs`, `tests/category-theme.test.mjs`, `tests/game.test.mjs`, `tests/macro-calc.test.mjs`, `tests/food-calc.test.mjs`, `tests/tip.test.mjs`, `tests/multisport.test.mjs`, `tests/weight.test.mjs`, `tests/marks.test.mjs`, `tests/launch.test.mjs`, `tests/multi.test.mjs`, `tests/deploy-check.mjs` (live-site SW/manifest check) (run with `node`, needs
 `playwright` installed and the server on :8787; `BASE`/`SHOTS` env vars override URL/screenshot dir). `multi.test.mjs` asserts the
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 

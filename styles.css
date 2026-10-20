@@ -1022,9 +1022,15 @@ body.legal{padding-bottom:40px}
 .tut-btns{display:flex;gap:10px;justify-content:flex-end}
 .tut-btns .btn{min-width:84px}
 
-/* 3.9.1 six-slot bar: Friends tab, + stays centered */
+/* 3.9.2 nav: tabs in one even row (never wraps), + floats centered above the bar */
 .tabbar a[hidden]{display:none}
-.tabbar.six{grid-template-columns:2fr 2fr 2fr 66px 3fr 3fr}
-.tabbar.six a{font-size:10px}
-.tabbar.six a svg{width:23px;height:23px}
-@media (max-width:380px){.tabbar.six a{font-size:9.5px;letter-spacing:-.01em}.tabbar.six a.fab{width:56px;height:56px}}
+.tabbar{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);flex-wrap:nowrap}
+.tabbar a:not(.fab){min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tabbar a.fab{position:absolute;left:50%;top:0;margin:0;transform:translate(-50%,calc(-100% + 8px));width:58px;height:58px}
+.tabbar.six a{font-size:10.5px}
+@media (max-width:340px){.tabbar a{font-size:10px}.tabbar a svg{width:22px;height:22px}}
+/* 3.9.2 toasts never overflow narrow screens: wrap, side margins, safe-area aware */
+.toast{bottom:calc(124px + var(--safe-b));white-space:normal;text-align:center;line-height:1.3;width:max-content;max-width:min(calc(100vw - 32px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)),480px);box-sizing:border-box;overflow-wrap:anywhere;border-radius:20px}
+.toast.act{text-align:left}
+.toast .undo,.toast .tbtn{flex:none}
+.actions.stick{bottom:calc(var(--navh) + 44px)}

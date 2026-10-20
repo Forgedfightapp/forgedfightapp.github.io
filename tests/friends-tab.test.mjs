@@ -14,10 +14,10 @@ for (const [w, h, name] of [[375, 667, 'SE'], [390, 844, '13']]) {
   await page.goto(BASE + 'sw.js'); await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }, data);
   await page.goto(BASE + '#/'); await page.waitForTimeout(600);
   const order = await page.locator('.tabbar a:visible').evaluateAll(a => a.map(x => x.dataset.tab));
-  ok(`${name}: tab order Home, History, Friends, +, Food, Profile`, order.join() === 'home,history,friends,log,food,settings', order.join());
+  ok(`${name}: tab order Home, History, Friends, +, Food, Profile (DOM)`, order.join() === 'home,history,friends,log,food,settings', order.join());
   const g = await page.evaluate(() => { const bar = document.querySelector('.tabbar').getBoundingClientRect(), f = document.querySelector('.tabbar a.fab').getBoundingClientRect();
     const labels = [...document.querySelectorAll('.tabbar a:not([hidden]) span')].map(s => { const r = s.getBoundingClientRect(), p = s.parentElement.getBoundingClientRect(); return r.width <= p.width + 0.5 && s.scrollWidth <= s.clientWidth + 1; });
-    const rects = [...document.querySelectorAll('.tabbar a:not([hidden])')].map(a => a.getBoundingClientRect()); const overlap = rects.some((r, i) => i && r.left < rects[i-1].right - 0.5);
+    const rects = [...document.querySelectorAll('.tabbar a:not([hidden]):not(.fab)')].map(a => a.getBoundingClientRect()); const overlap = rects.some((r, i) => i && r.left < rects[i-1].right - 0.5);
     return { center: Math.abs((f.left + f.right) / 2 - (bar.left + bar.right) / 2), labels, overlap, fits: rects.every(r => r.right <= bar.right + 0.5) }; });
   ok(`${name}: + stays centered`, g.center < 2, String(g.center));
   ok(`${name}: labels fit, no overlap, nothing off-screen`, g.labels.every(Boolean) && !g.overlap && g.fits, JSON.stringify(g));

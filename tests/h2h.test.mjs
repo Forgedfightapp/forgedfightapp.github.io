@@ -35,23 +35,28 @@ ok('Friends: Challenge a friend enabled once you have a friend', true);
 /* 1. create a 7-day Workout XP challenge */
 await page.locator('#newH2h').tap(); await page.waitForSelector('#h2hGo');
 const metrics = await page.locator('#sheet .seg button').allInnerTexts();
-ok('metric options: sessions, push-ups, mat hours, streak, Workout XP', ['Sessions','Push-ups','Mat hours','Daily challenge streak','Workout XP'].every(x => metrics.includes(x)), metrics.join());
+ok('metric options: sessions, push-ups, mat hours, streak (3.11: no Workout XP for new challenges)', ['Sessions','Push-ups','Mat hours','Daily challenge streak'].every(x => metrics.includes(x)) && !metrics.includes('Workout XP'), metrics.join());
 ok('default length is 1 week', await page.locator('#sheet .seg button.on', { hasText:'1 week' }).count() === 1);
-await page.locator('#sheet .seg button', { hasText:'Workout XP' }).tap();
 await page.locator('#h2hGo').tap(); await page.waitForFunction(() => location.hash.startsWith('#/h2h/'), null, { timeout:8000 });
 const cid = await ev(() => location.hash.split('/')[2]);
 const c = await ev(id => window.__mockSb.state.challenges[id], cid);
-ok('XP challenge created: h2h, 7 days, Alex invited', c.metric === 'xp' && c.kind === 'h2h' && c.ends_on === D(6) && await ev(([id, a]) => window.__mockSb.state.parts.some(p => p.c === id && p.u === a && p.status === 'invited'), [cid, alex]), JSON.stringify(c));
+ok('Sessions challenge created: h2h, 7 days, Alex invited', c.metric === 'sessions' && c.kind === 'h2h' && c.ends_on === D(6) && await ev(([id, a]) => window.__mockSb.state.parts.some(p => p.c === id && p.u === a && p.status === 'invited'), [cid, alex]), JSON.stringify(c));
 await page.waitForSelector('#h2hBoard .brow');
 ok('standings show both, Alex marked invited', await page.locator('#h2hBoard .brow').count() === 2 && /invited/.test(await page.locator('#h2hBoard').innerText()));
 
 /* 2. live standings update */
-await ev(([a, d]) => { window.__mockSb.progress(a, 'xp', d, 30); }, [alex, D(0)]);
+await ev(([a, d]) => { window.__mockSb.progress(a, 'sessions', d, 30); }, [alex, D(0)]);
 await ev(([id, a]) => { const p = window.__mockSb.state.parts.find(p => p.c === id && p.u === a); p.status = 'joined'; localStorage.setItem('mock.sb', JSON.stringify(window.__mockSb.state)); }, [cid, alex]);
 await page.reload(); await page.waitForSelector('#h2hBoard .brow'); await settle(800);
 const rows = await page.locator('#h2hBoard .brow').allInnerTexts();
-ok('live standings: scores from synced XP, leader first', /Alex/.test(rows[0]) && /30/.test(rows[0]) && rows.length === 2, rows.join(' | '));
+ok('live standings: scores from synced sessions, leader first', /Alex/.test(rows[0]) && /30/.test(rows[0]) && rows.length === 2, rows.join(' | '));
 ok('in-progress: Leave available, no result yet', await page.locator('#h2hLeave').isVisible() && await page.locator('#h2hResult').count() === 0);
+
+/* 2b. an existing Workout XP challenge still works */
+const invX = await ev(a => window.__mockSb.challengeFrom(a, 'xp', [window.__mockSb.me()], 7), alex);
+await page.goto(BASE + '#/h2h/' + invX); await page.waitForSelector('#h2hAccept'); await settle(300);
+ok('existing Workout XP challenge still opens and is labelled', /Workout XP|XP/.test(await page.locator('#view').innerText()));
+await page.locator('#h2hDecline').tap(); await settle(800);
 
 /* 3. accept / decline invites from a friend */
 const inv1 = await ev(a => window.__mockSb.challengeFrom(a, 'sessions', [window.__mockSb.me()], 7), alex);
@@ -90,7 +95,7 @@ await page.goto(BASE + '#/h2h/' + lost); await page.waitForSelector('#h2hResult'
 ok('loss shows who won', /Alex won/i.test(await page.locator('#h2hResult').innerText()));
 
 await page.goto(BASE + '#/h2h/' + none); await page.waitForSelector('#h2hResult');
-ok('0-0: no winner declared', /No winner/i.test(await page.locator('#h2hResult').innerText()));
+ok('0-0: no winner declared', /No winner/i.test(await page.locator('#h2hResult').innerText()), await page.locator('#h2hResult').innerText());
 await page.goto(BASE + '#/h2h/' + lost); await page.waitForSelector('#h2hResult');
 /* 5. rematch */
 await page.locator('#h2hRematch').tap(); await page.waitForSelector('#h2hGo');

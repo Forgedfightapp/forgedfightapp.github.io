@@ -22,20 +22,21 @@ const stat = async label => (await page.locator('.stat', { hasText: label }).loc
 
 // sample data
 await page.getByRole('button', { name: /Load sample data/ }).tap();
-await page.waitForSelector('.statrow');
+await page.waitForSelector('#weekCard');
 const n0 = (await db()).sessions.length;
 ok('sample data loads', n0 > 20, `(${n0} sessions)`);
-ok('home shows essentials only', await page.locator('#nutriCard').count() === 1 && await page.locator('#suppCard').count() === 0 && await page.locator('.tabbar a[data-tab="food"] span').innerText() === 'Food' && await page.locator('svg.chart:not(.sev)').count() === 0);
+ok('home shows essentials only', await page.locator('#nutriCard').count() === 0 && await page.locator('#rankChip').count() === 0 && await page.locator('#beltCard').count() === 0 && await page.locator('#suppCard').count() === 0 && await page.locator('.tabbar a[data-tab="food"] span').innerText() === 'Food' && await page.locator('svg.chart:not(.sev)').count() === 0);
 await page.locator('#seeStats').tap(); await page.waitForSelector('#catCard');
 ok('weekly chart renders (stats)', await page.locator('svg.chart g.wk').count() === 12);
 ok('weight chart renders (stats)', await page.locator('svg.chart path.line').count() === 1);
 const month0 = Number(await stat('Sessions in'));
-await page.goto(BASE); await page.waitForSelector('.statrow');
-ok('belt card', /blue belt/i.test(await page.locator('.card', { hasText: /belt/i }).first().innerText()));
+await page.goto(BASE + '#/settings'); await page.waitForSelector('#beltCard');
+ok('belt card (Profile)', /blue belt/i.test(await page.locator('#beltCard').innerText()));
+await page.goto(BASE); await page.waitForSelector('#weekCard');
 await page.waitForTimeout(2700);
 await page.screenshot({ path: `${SHOTS}/01-dashboard.png` });
 await page.screenshot({ path: `${SHOTS}/01b-dashboard-full.png`, fullPage:true });
-const week0 = Number(await stat('Sessions this week'));
+const week0 = Number(await page.locator('#weekSum b').first().innerText());
 
 // log session
 await page.locator('.tabbar a.fab').tap();
@@ -82,15 +83,15 @@ await page.locator('#rollList .roll').nth(1).tap(); await page.locator('.sheet [
 ok('roll deleted', await page.locator('#rollList .roll').count() === 1);
 await page.screenshot({ path: `${SHOTS}/03b-form-with-roll.png`, fullPage:true });
 await page.locator('.actions [data-save]').tap();
-await page.waitForSelector('.statrow');
+await page.waitForSelector('#weekCard');
 let d = await db(); const mine = d.sessions.find(s => s.notes === 'Playwright test session');
 ok('session saved', !!mine && mine.gi === 'nogi' && mine.type === 'private' && mine.rpe === 8 && mine.intensity === 4 && mine.feel === 4 && mine.weight === 201.4 && mine.techniques.includes('Test Technique Zeta'), JSON.stringify(mine && {gi:mine.gi,type:mine.type,dur:mine.duration,w:mine.weight}));
 ok('roll saved', mine?.rolls.length === 1 && mine.rolls[0].partner === 'Edited Partner' && mine.rolls[0].subsLanded[0] === 'Omoplata' && mine.rolls[0].subsTapped[0] === 'Heel hook' && mine.rolls[0].stuck[0] === 'Turtle');
-ok('dashboard week count +1', Number(await stat('Sessions this week')) === week0 + 1, `${week0} -> ${await stat('Sessions this week')}`);
+ok('dashboard week count +1', Number(await page.locator('#weekSum b').first().innerText()) === week0 + 1, `${week0} -> ${await page.locator('#weekSum b').first().innerText()}`);
 await page.goto(BASE + '#/stats'); await page.waitForSelector('#catCard');
 ok('stats month count +1', Number(await stat('Sessions in')) === month0 + 1);
 ok('weight trend shows latest weight', (await page.locator('#weightStats').innerText()).includes('201.4'));
-await page.goto(BASE); await page.waitForSelector('.statrow');
+await page.goto(BASE); await page.waitForSelector('#weekCard');
 
 // autocomplete includes custom tag from history
 await page.locator('.tabbar a.fab').tap();
@@ -149,8 +150,8 @@ ok('import round-trips profile', JSON.stringify(after.profile) === JSON.stringif
 // offline reload via SW
 await page.evaluate(() => { location.hash = '#/'; });
 await ctx.setOffline(true);
-await page.reload(); await page.waitForSelector('.statrow, .welcome', { timeout: 5000 }).catch(()=>{});
-ok('app loads offline from SW cache', await page.locator('.statrow').count() === 1);
+await page.reload(); await page.waitForSelector('#weekCard, .welcome', { timeout: 5000 }).catch(()=>{});
+ok('app loads offline from SW cache', await page.locator('#weekCard').count() === 1);
 await ctx.setOffline(false);
 const offlineErrs = errors.filter(e => !/ERR_INTERNET_DISCONNECTED/.test(e));
 ok('no console errors', offlineErrs.length === 0, JSON.stringify(offlineErrs));

@@ -19,7 +19,7 @@ await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)); await
 const lastSetup = await page.evaluate(() => { const b = [...document.querySelectorAll('#view button')].pop().getBoundingClientRect(); return b.bottom; });
 ok('first-run: last button clears the 34px home-indicator inset', lastSetup <= 844 - 34, `bottom=${Math.round(lastSetup)}`);
 await page.screenshot({ path:`${SHOTS}/00b-first-run-bottom.png` });
-await page.locator('#loadSample').tap(); await page.waitForSelector('#beltCard');
+await page.locator('#loadSample').tap(); await page.waitForSelector('#weekCard');
 ok('nav returns after setup', await page.locator('.tabbar').isVisible());
 
 /* every screen: the last control scrolls fully clear of the nav (incl. the raised + button) */

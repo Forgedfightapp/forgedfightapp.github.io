@@ -15,7 +15,7 @@ const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - 
 const COL = { grappling:'rgb(242, 113, 28)', striking:'rgb(245, 197, 66)', mma:'rgb(229, 72, 77)', weights:'rgb(143, 176, 217)', cardio:'rgb(111, 211, 168)', mobility:'rgb(180, 140, 242)' };
 
 await page.goto(BASE); await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ schema:7, sessions:[], profile:{ setupDone:true, unit:'lb', enabled:{ grappling:true, striking:true, mma:true, weights:true, cardio:true, mobility:true, food:true } }, nutrition:{ entries:[], foods:[], water:[] }, weights:[], belts:[] })); });
-await page.reload(); await page.waitForSelector('.statrow');
+await page.reload(); await page.waitForSelector('#weekCard');
 const fab0 = await css('.tabbar a.fab', 'backgroundColor');
 ok('Home uses the default flame orange', fab0 === COL.grappling, fab0);
 await page.locator('.tabbar a.fab').tap(); await page.waitForSelector('.cats');

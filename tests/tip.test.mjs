@@ -12,7 +12,7 @@ const db = () => page.evaluate(() => JSON.parse(localStorage.getItem('dm.bjj.v1'
 const T = (fn, arg) => page.evaluate(fn, arg);
 const hideToast = () => page.evaluate(() => { const t = document.querySelector('#toast'); if (t) t.classList.remove('show','act'); });
 const D = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
-const seed = async (data, extra = {}) => { await page.goto(BASE); await page.evaluate(([d, x]) => { localStorage.clear(); const t = new Date(); t.setDate(t.getDate() - (t.getDay() + 6) % 7 - 7); const wk = t.toLocaleDateString('en-CA'); /* 3.6.0: the Monday recap replaces the tip Mon–Wed; mark it seen */ d = { ...d, game:{ ...(d.game || { seenDone:[], seenBadges:[], look:{ accent:'flame', frame:'classic', flair:'none' }, friend:[] }), recapSeen:wk } }; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); Object.entries(x).forEach(([k, v]) => localStorage.setItem(k, v)); }, [data, extra]); await page.reload(); await page.waitForSelector('.statrow'); await settle(300); };
+const seed = async (data, extra = {}) => { await page.goto(BASE); await page.evaluate(([d, x]) => { localStorage.clear(); const t = new Date(); t.setDate(t.getDate() - (t.getDay() + 6) % 7 - 7); const wk = t.toLocaleDateString('en-CA'); /* 3.6.0: the Monday recap replaces the tip Mon–Wed; mark it seen */ d = { ...d, game:{ ...(d.game || { seenDone:[], seenBadges:[], look:{ accent:'flame', frame:'classic', flair:'none' }, friend:[] }), recapSeen:wk } }; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); Object.entries(x).forEach(([k, v]) => localStorage.setItem(k, v)); }, [data, extra]); await page.reload(); await page.waitForSelector('#weekCard'); await settle(300); };
 const EN = (o) => ({ grappling:false, striking:false, mma:false, weights:false, cardio:false, mobility:false, food:false, weight:false, ...o });
 const prof = (x={}) => ({ name:'', unit:'lb', distUnit:'mi', setupDone:true, enabled:EN({ grappling:true }), ...x });
 const S = (id, date, o={}) => ({ id, date, category:'grappling', discipline:'bjj', gi:'gi', type:'class', duration:60, rounds:5, intensity:3, rpe:5, techniques:[], notes:'', weight:'', rolls:[], sample:false, createdAt:1, ...o });
@@ -32,7 +32,7 @@ ok('weight-cutting tips steer away from dehydration', lib.filter(t => t.t === 'c
 ok('sport tags are valid', lib.every(t => t.s.every(k => ['grappling','striking','mma','weights','cardio','mobility'].includes(k))));
 
 /* 2. Home card: small, below the main stats, collapsed */
-ok('tip card shows on Home right below the main stats', await page.locator('#tipCard').count() === 1 && await T(() => document.querySelector('.statrow').nextElementSibling?.id === 'tipCard'));
+ok('tip card shows on Home right below the main stats', await page.locator('#tipCard').count() === 1 && await T(() => document.querySelector('#weekCard').nextElementSibling?.id === 'tipCard'));
 const hgt = await page.locator('#tipCard').evaluate(e => e.getBoundingClientRect().height);
 ok('collapsed card is small and unobtrusive (one line, < 80px), full text hidden', hgt < 80 && await page.locator('#tipBody').isHidden() && await page.locator('#tipToggle').getAttribute('aria-expanded') === 'false', `h=${hgt}`);
 ok('label reads "Tip of the day · <topic>"', /Tip of the day · /i.test(await page.locator('#tipCard .tiptxt small').innerText()));
@@ -92,7 +92,7 @@ ok('Hide tips removes the card, saves the choice, offers Undo', await page.locat
 await page.locator('#toast .tbtn').tap(); await page.waitForSelector('#tipCard');
 ok('Undo brings it back', (await db()).profile.tips === true);
 await page.locator('#tipToggle').tap(); await settle(150); await page.locator('#tipHide').tap(); await settle(300); await hideToast();
-await page.reload(); await page.waitForSelector('.statrow');
+await page.reload(); await page.waitForSelector('#weekCard');
 ok('stays hidden after reload', await page.locator('#tipCard').count() === 0);
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#tipsToggle', { state:'attached' });
 ok('Profile → What I track has a Tip of the day switch (off)', !(await page.locator('#tipsToggle').isChecked()));

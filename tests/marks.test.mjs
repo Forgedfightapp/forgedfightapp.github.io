@@ -31,12 +31,12 @@ const clean = async () => { for (let i = 0; i < 3 && !(await page.locator('#shee
 await newPage('2026-10-14');
 await seed(base({ sessions:[S('a', D(-30)), S('t', D(0), { duration:30 })], reps:[{ id:'r1', date:D(0), ex:'mobility', n:10, createdAt:1 }],
   profile:prof({ waterGoal:2000 }), nutrition:{ entries:[], foods:[], water:[{ id:'h1', date:D(0), ml:1000, createdAt:1 }] } }));
-ok('marks strip sits in the top area (after rank chip, before the stats row)', await T(() => { const m = document.querySelector('#marks'); return m && m.previousElementSibling?.id === 'rankChip' && m.nextElementSibling?.classList.contains('statrow'); }));
+ok('marks strip sits at the top, then one week card', await T(() => { const m = document.querySelector('#marks'); return m && !document.querySelector('#rankChip') && m.nextElementSibling?.id === 'weekCard'; }));
 ok('Home adds no new cards for marks (one strip)', await page.locator('#view > .card#marks, #view .card .marks').count() === 0 && await page.locator('#marks').count() === 1);
 ok('Train: 30 of 45 min from the logged session (scheduled day default 45)', /30\/45 min/.test(await txt('#marks [data-mk="train"]')) && /width:\s*67%/.test(await page.locator('#marks [data-mk="train"] i').getAttribute('style')));
 ok('Recover: rep-log mobility minutes count (10/10, met)', /10\/10 min/.test(await txt('#marks [data-mk="recover"]')) && await page.locator('#marks [data-mk="recover"].met').count() === 1);
 ok('Fuel: water 1000/2000 = 50%', /50%/.test(await txt('#marks [data-mk="fuel"]')));
-ok('week progress in the strip: 1/3 days so far', /Week 1\/3 days/i.test(await txt('#marks .mk-head')), await txt('#marks .mk-head'));
+ok('3.11: no week count in the strip (week card has it)', !/Week \d/i.test(await txt('#marks .mk-head')) && /1\/3 planned/.test(await txt('#weekSum')), await txt('#weekSum'));
 await page.locator('#marks').scrollIntoViewIfNeeded();
 await page.screenshot({ path:`${SHOTS}/70-marks.png`, clip:{ x:0, y:0, width:390, height:420 } });
 ok('rest day shows "Rest day" and counts as met', await T(() => { const m = window.DM_TEST.marksDay('2026-10-13'); return m.train.rest && m.train.met; }));
@@ -116,11 +116,9 @@ await page.reload(); await page.waitForSelector('#marks'); await settle(1800);
 ok('no repeat celebration after reload', await page.locator('#celebrate').count() === 0);
 // rank-up first, then medals (full queue)
 await seed(base({ sessions:pwSess, game:SEEN({ rankSeen:-1, levelSeen:0, seenMedals:['b-first'], seenBadges:['first'] }) }), '', '#marks');
-await page.waitForSelector('#rankUp', { timeout:8000 }).catch(() => {});
-ok('rank-up sheet comes first', await page.locator('#rankUp').count() === 1);
-await page.locator('#rankUp [data-cancel]').tap();
+await settle(1500); ok('3.11: no rank-up sheet', await page.locator('#rankUp').count() === 0);
 await page.waitForSelector('#celebrate', { timeout:8000 }).catch(() => {});
-ok('medal celebrations follow the rank-up instead of being dropped', await page.locator('#celebrate').count() === 1);
+ok('medal celebrations still show', await page.locator('#celebrate').count() === 1);
 await page.keyboard.press('Escape'); await settle(700);
 ok('closing early keeps the rest one tap away ("n more medals earned")', /\d+ more medals? earned/.test(await txt('#toast')), await txt('#toast'));
 await page.locator('#toast .tbtn').evaluate(b => b.click()); await settle(400);
@@ -176,7 +174,7 @@ const ws = [{ id:'w1', date:'2026-10-06', w:181, u:'lb', createdAt:1 }, { id:'w2
 await seed(base({ sessions:rs, weights:ws, reps:[{ id:'r', date:'2026-10-13', ex:'mobility', n:15, createdAt:1 }] }), '', '#recapCard');
 await clean();
 ok('Monday: recap replaces the tip card at the top', await page.locator('#recapCard').count() === 1 && await page.locator('#tipCard').count() === 0);
-ok('recap: last week sessions, hours, train days, weight change', /3\s*sessions/.test(await txt('#recapCard .recapstats')) && /3\.8\s*hours/.test(await txt('#recapCard .recapstats')) && /3\/3\s*train days/.test(await txt('#recapCard .recapstats')) && /−0\.8\s*lb avg/.test(await txt('#recapCard .recapstats')), await txt('#recapCard .recapstats'));
+ok('3.11: recap has no repeated stat row', await page.locator('#recapCard .recapstats').count() === 0);
 ok('recap: perfect week + recover days', /Perfect week/.test(await txt('#recapPw')) && /Recover met 1 of 7/.test(await txt('#recapPw')));
 ok('one goal suggestion: perfect + long sessions → raise Train to 55 min', /Raise your Train goal to 55 min/.test(await txt('#recapSug')) && await page.locator('#recapApply').count() === 1);
 await page.screenshot({ path:`${SHOTS}/74-monday-recap.png`, clip:{ x:0, y:0, width:390, height:640 } });

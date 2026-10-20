@@ -12,7 +12,7 @@ const db = () => page.evaluate(() => JSON.parse(localStorage.getItem('dm.bjj.v1'
 const T = (fn, arg) => page.evaluate(fn, arg);
 const hideToast = () => page.evaluate(() => { const t = document.querySelector('#toast'); if (t) t.classList.remove('show','act'); });
 const D = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
-const seed = async (data) => { await page.goto(BASE); await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }, data); await page.reload(); await page.waitForSelector('.statrow'); await settle(300); };
+const seed = async (data) => { await page.goto(BASE); await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }, data); await page.reload(); await page.waitForSelector('#weekCard'); await settle(300); };
 const EN = o => ({ grappling:false, striking:false, mma:false, weights:false, cardio:false, mobility:false, food:false, weight:false, ...o });
 const prof = (x={}) => ({ name:'', unit:'lb', distUnit:'mi', setupDone:true, tips:false, enabled:EN({ grappling:true }), ...x });
 const S = (id, date, o={}) => ({ id, date, category:'grappling', discipline:'bjj', gi:'gi', type:'class', duration:60, rounds:5, intensity:3, rpe:5, techniques:[], notes:'', weight:'', rolls:[], sample:false, createdAt:1, ...o });
@@ -92,7 +92,8 @@ const judoSess = [S('j1', D(-3), { discipline:'judo' }), S('j2', D(-2), { discip
 await seed(base({ profile:prof({ enabled:EN({ grappling:true, striking:true }) }), belts:bjj, sessions:judoSess }));
 d = await db();
 ok('existing BJJ belt data unchanged (no art field added)', JSON.stringify(d.belts) === JSON.stringify(bjj), JSON.stringify(d.belts));
-ok('Home: just the BJJ belt card (as before)', await page.locator('.beltcard').count() === 1 && await page.locator('#beltCard').count() === 1 && /^Blue belt/i.test(await page.locator('#beltCard h2').innerText()));
+await page.goto(BASE + '#/settings'); await page.waitForSelector('#beltCard');
+ok('Profile: just the BJJ belt card (as before)', await page.locator('.beltcard').count() === 1 && await page.locator('#beltCard').count() === 1 && /^Blue belt/i.test(await page.locator('#beltCard h2').innerText()));
 ok('BJJ sessions since last promotion count only BJJ sessions (1 BJJ, 3 judo ignored)', (await page.locator('#beltCard [data-b="sessions"]').innerText()).startsWith('1 '), await page.locator('#beltCard [data-b="sessions"]').innerText());
 await page.goto(BASE + '#/belts'); await page.waitForSelector('#timeline');
 ok('one art: no art switcher; offers "Track another art"', await page.locator('#artSwitch').count() === 0 && await page.locator('#addArt').count() === 1);
@@ -120,7 +121,7 @@ ok('add dan: options 2–10, preset to 3rd', JSON.stringify(await page.locator('
 await page.locator('.sheet [data-close], .sheet [data-cancel]').first().tap(); await settle(300);
 /* remove the black belt rows again for the screenshot */
 await T(() => { const x = JSON.parse(localStorage.getItem('dm.bjj.v1')); x.belts = x.belts.filter(e => !['jb','jd2'].includes(e.id)); localStorage.setItem('dm.bjj.v1', JSON.stringify(x)); }); await page.reload(); await page.waitForSelector('#timeline');
-await page.goto(BASE + '#/'); await page.waitForSelector('#beltCard-judo');
+await page.goto(BASE + '#/settings'); await page.reload(); await page.waitForSelector('#beltCard-judo');
 ok('Home: a belt card per art (BJJ + Judo), each labelled', await page.locator('.beltcard').count() === 2 && /^BJJ · Blue belt/i.test(await page.locator('#beltCard h2').innerText()) && /^Judo · Orange belt/i.test(await page.locator('#beltCard-judo h2').innerText()));
 await page.locator('#beltCard-judo').tap(); await page.waitForURL(/#\/belts\/judo/);
 ok('tapping the Judo card opens the Judo timeline', await page.locator('#timeline').getAttribute('data-art') === 'judo');

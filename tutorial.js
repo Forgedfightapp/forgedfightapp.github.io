@@ -4,8 +4,8 @@ const KEY = 'forged.tut.seen';
 const T = {
   home:{ title:'Home', steps:[
     ['.tabbar a[data-tab="log"]', 'Log a workout', 'Tap + any time to log a session. It takes a few taps.'],
-    ['#marks', 'Daily marks', 'Hit your train, fuel and recover marks each day to build a streak.'],
-    ['#weightCard', 'Your weight', 'Log weigh-ins here and see progress toward your goal.'],
+    ['#marks', 'Daily marks', 'Today\'s progress: train, recover and fuel.'],
+    ['#weekCard', 'This week', 'Your week at a glance.'],
     ['.tabbar', 'Get around', () => document.querySelector('.tabbar a[data-tab="friends"]:not([hidden])') ? 'Use the bar at the bottom to move between Home, History, Friends, Food and Profile.' : 'Use the bar at the bottom to move between Home, History, Food and Profile.'] ] },
   weight:{ title:'Weight', steps:[
     ['#weightCard .wmodes, .wmodes', 'Pick your goal', 'Choose Lose, Maintain or Gain. Your targets follow your choice.'],
@@ -18,15 +18,16 @@ const T = {
     ['#q', 'Search', 'Find any past workout by type, technique or note.'],
     ['#list', 'Your workouts', 'Tap one to see details, edit it or log it again.'] ] },
   food:{ title:'Food', steps:[
+    ['#dailyNutri', 'Daily nutrition', 'Calories, protein, carbs and fat for today.'],
     ['#calcFood', 'Add food', 'Search or scan a barcode. We fill in calories and macros for you.'],
     ['#waterCard', 'Water', 'Tap a button each time you drink. Set a daily goal in Profile.'],
     ['#savedFoods', 'Your foods', 'Foods you use a lot are saved here for one-tap logging.'] ] },
   stats:{ title:'Stats', steps:[
     ['#view .card', 'Your numbers', 'See time on the mat, training load and trends by week.'] ] },
   challenges:{ title:'Challenges', steps:[
-    ['#view .card', 'Weekly challenges', 'New challenges each week. Finish them to earn XP and rank up.'],
+    ['#view .card', 'Weekly challenges', 'Quick daily, weekly and monthly challenges.'],
     ['#logRepsTop', 'Reps', 'Log push-ups, pull-ups and more toward rep challenges.'],
-    ['#friendsTop, #friendCard', 'Friends', 'Add friends to compare ranks and challenge them head to head.'] ] },
+    ['#friendsTop, #friendCard', 'Friends', 'Add friends and challenge them head to head.'] ] },
   friends:{ title:'Friends', steps:[
     ['#friendsIntro, #goSignin, #youCard', 'Sign in', 'Sign in with your email to use Friends. Everything else works without an account.'],
     ['#inviteCard, #shareInvite', 'Invite', 'Share your invite link or code so friends can add you.'],
@@ -43,9 +44,8 @@ const T = {
     ['#view .card', 'Programs', 'Pick a plan and we lay out each session for you, week by week.'] ] },
   badges:{ title:'Badges', steps:[
     ['#view .card', 'Badges', 'Earn badges and medals as you train. Tap one to see how.'] ] },
-  rank:{ title:'Rank', steps:[
-    ['#view .card', 'Your rank', 'XP from workouts and challenges moves you up the ranks.'] ] },
   settings:{ title:'Profile', steps:[
+    ['#beltsProfile .card, #injuryCard', 'Belt & injuries', 'Your belt rank and any injuries live here.'],
     ['#sectionsCard', 'Pick what you track', 'Turn sections like Food or Weight on and off.'],
     ['#targetsCard', 'Goals', 'Set calorie, protein and water goals, or use the calculator.'],
     ['#tutReplay', 'Need a refresher?', 'Tap Replay tutorials to see these tips again.'] ] },

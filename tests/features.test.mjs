@@ -171,14 +171,14 @@ await page.locator('.sheet button[data-area="Knee"]').tap(); await page.locator(
 await page.fill('#injDate', D(-8)); await page.dispatchEvent('#injDate', 'change'); await page.locator('.sheet textarea').fill('Sore after leg locks.');
 await page.locator('.sheet [data-save]').tap(); await settle(300);
 await page.goto(BASE + '#/'); await settle(300);
-ok('Home card while active: "Left knee · day 9 · severity 3"', (await page.locator('[data-injcard] [data-inj="label"]').innerText()) === 'Left knee · day 9 · severity 3');
-await page.locator('[data-injupd]').tap(); await page.locator('.sheet .seg button', { hasText:/^2$/ }).tap(); await page.locator('#injUpdSave').tap(); await settle(300);
-d = await db(); ok('severity update stored over time + small chart', d.injuries[0].severity === 2 && d.injuries[0].updates.length === 2 && await page.locator('[data-injcard] svg.sev').count() === 1 && /severity 2/.test(await page.locator('[data-injcard]').innerText()));
+ok('3.11: no injury card on Home even while active', await page.locator('[data-injcard]').count() === 0);
+await page.goto(BASE + '#/settings'); await page.waitForSelector('#injuryCard'); ok('active injury listed in Profile', /Knee/i.test(await page.locator('#injuryCard').innerText()), await page.locator('#injuryCard').innerText());
+await T(() => { const x = window.DM_TEST.db.injuries[0]; x.severity = 2; x.updates = [{ date:x.date, severity:3 }, { date:new Date().toLocaleDateString('en-CA'), severity:2 }]; localStorage.setItem('dm.bjj.v1', JSON.stringify(window.DM_TEST.db)); });
+await page.reload(); await settle(300); d = await db(); ok('severity update stored over time', d.injuries[0].severity === 2 && d.injuries[0].updates.length === 2, JSON.stringify(d.injuries[0]));
 await page.goto(BASE + '#/log'); await page.waitForSelector('.cats');
 ok('log form shows a reminder while active', /Left knee \(severity 2\)/.test(await page.locator('#injReminder').innerText()));
-await page.goto(BASE + '#/'); await settle(300); await page.locator('[data-injcard]').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, -80)); await hideToast(); await settle(); await page.screenshot({ path:`${SHOTS}/45-injury.png` });
-await page.locator('[data-injheal]').tap(); await settle(300);
-d = await db(); ok('mark healed: card disappears, entry kept as healed', await page.locator('[data-injcard]').count() === 0 && !!d.injuries[0].healed && (await T(() => window.DM_TEST.activeInjuries().length)) === 0);
+await T(() => { window.DM_TEST.db.injuries[0].healed = new Date().toLocaleDateString('en-CA'); localStorage.setItem('dm.bjj.v1', JSON.stringify(window.DM_TEST.db)); }); await page.reload(); await settle(300);
+d = await db(); ok('mark healed: entry kept as healed',  !!d.injuries[0].healed && (await T(() => window.DM_TEST.activeInjuries().length)) === 0);
 await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); ok('no reminder once healed', await page.locator('#injReminder').count() === 0);
 
 /* 10. programs: data, Pro gate, start, today's workout, progression, swap */

@@ -42,7 +42,7 @@ await page.goto(BASE + '#/stats'); await page.waitForSelector('#strengthCard');
 ok('Stats: Strength goals card with a row + bar + % per goal', await page.locator('#strengthCard .sgrow').count() === 4 && await page.locator('#strengthCard .sgrow .sgbar i').count() === 4 && (await page.locator('#strengthCard [data-sg="g1"] [data-pct]').getAttribute('data-pct')) === '95');
 ok('bar width matches %', (await page.locator('#strengthCard [data-sg="g1"] .sgbar i').getAttribute('style')).includes('width:95%'));
 ok('closest-to-done goal listed first', (await page.locator('#strengthCard .sgrow').first().getAttribute('data-sg')) === 'g1');
-await page.goto(BASE + '#/'); await page.waitForSelector('.statrow');
+await page.goto(BASE + '#/'); await page.waitForSelector('#weekCard');
 ok('Home: compact line with the closest-to-done goal', /Bench press/.test(await page.locator('#strengthLine').innerText()) && /95%/.test(await page.locator('#strengthLine').innerText()) && await page.locator('.strline').count() === 1);
 await page.goto(BASE + '#/benchmarks'); await page.waitForSelector('#benchAll');
 ok('benchmarks tie-in: rows show the goal + %', (await page.locator('.benchrow[data-bench="pullups"] [data-v="goal"]').innerText()) === '15' && /73%/.test(await page.locator('.benchrow[data-bench="pullups"]').innerText()));
@@ -109,7 +109,7 @@ await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await p
 ok('onboarding without Weights: no strength goals', await page.locator('#setupSG-bench').count() === 0);
 await page.locator('#setupBack').tap(); await page.waitForSelector('#aboutNext'); await page.locator('#setupBack').tap(); await page.waitForSelector('#catTiles'); await page.locator('.tile[data-k="weights"]').tap(); await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.waitForSelector('#setupDone');
 ok('onboarding with Weights: bench/squat/deadlift/OHP + pull-ups/push-ups/dead hang + date', await page.locator('[id^="setupSG-"]').count() === 7 && await page.locator('#setupSGDate').count() === 1);
-await page.locator('#setupSG-squat').fill('315'); await page.locator('#setupSG-pushups').fill('50'); await page.locator('#setupSGDate').fill(D(90)); await page.locator('#setupDone').tap(); await page.waitForSelector('.statrow');
+await page.locator('#setupSG-squat').fill('315'); await page.locator('#setupSG-pushups').fill('50'); await page.locator('#setupSGDate').fill(D(90)); await page.locator('#setupDone').tap(); await page.waitForSelector('#weekCard');
 d = await db(); ok('onboarding saves only the filled strength goals', d.strength.length === 2 && d.strength.some(g => g.key === 'squat' && g.target === 315 && g.date === D(90)) && d.strength.some(g => g.key === 'pushups' && g.target === 50));
 
 /* 8. sample data */

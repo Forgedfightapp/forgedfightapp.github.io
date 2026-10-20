@@ -11,8 +11,8 @@ const settle = (ms=300) => page.waitForTimeout(ms);
 const hideToast = async () => { await page.evaluate(() => document.querySelector('#toast').classList.remove('show','act')); await page.waitForTimeout(450); };
 const total = async () => Number(await page.locator('#waterTotal').innerText());
 
-await page.goto(BASE); await page.waitForSelector('#catTiles'); await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('.statrow');
-ok('Home nutrition card has a water line', (await page.locator('#homeWater').innerText()).includes('Water') && (await page.locator('#homeWater').innerText()).includes('oz'));
+await page.goto(BASE); await page.waitForSelector('#catTiles'); await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('#weekCard');
+ok('3.11: no water line on Home (it lives on Food)', await page.locator('#homeWater').count() === 0);
 await page.goto(BASE + '#/food'); await page.waitForSelector('#waterCard');
 ok('no water goal: shows Set goal link, no bar', await page.locator('#waterCard #setWaterGoal').count() === 1 && await page.locator('#waterCard .mbar').count() === 0);
 await page.locator('[data-wk="glass"]').tap(); await settle();
@@ -31,8 +31,7 @@ await page.locator('#waterGoal').fill('80'); await page.locator('#waterGoal').di
 ok('water goal saved (ml) from Profile', Math.round((await db()).profile.waterGoal) === Math.round(80 * 29.5735));
 await page.goto(BASE + '#/food'); await page.waitForSelector('#waterCard');
 ok('progress vs goal: 20 / 80 oz = 25%', (await page.locator('#waterCard').innerText()).includes('/ 80 oz') && (await page.locator('#waterCard').innerText()).includes('25%') && Math.abs(parseFloat((await page.locator('#waterCard .mbar i').getAttribute('style')).split(':')[1]) - 25) < 0.2);
-await page.goto(BASE); await page.waitForSelector('#homeWater');
-ok('Home water line shows total / goal', (await page.locator('#homeWater').innerText()).replace(/\s+/g,' ').includes('Water 20 / 80 oz'));
+
 // metric
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#goalW');
 await page.locator('.seg button', { hasText:/^kg$/ }).first().tap(); await settle();
@@ -43,7 +42,7 @@ ok('metric glass adds 250 ml', await total() === 842);
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#goalW'); await page.locator('.seg button', { hasText:/^lb$/ }).first().tap(); await settle();
 // water toggles with Food
 await page.locator('[data-sec="food"]').uncheck({ force:true }); await settle();
-await page.goto(BASE); await page.waitForSelector('.statrow');
+await page.goto(BASE); await page.waitForSelector('#weekCard');
 ok('hiding Food hides water too', await page.locator('#homeWater').count() === 0 && await page.locator('#waterCard').count() === 0);
 await page.goto(BASE + '#/settings'); await page.waitForSelector('[data-sec="food"]'); await page.locator('[data-sec="food"]').check({ force:true }); await settle();
 // export -> clear -> import
@@ -74,8 +73,7 @@ await page.goto(BASE + '#/food'); await page.reload(); await page.waitForSelecto
 ok('buttons labelled with their size (Glass 8 oz, Bottle 16.9 oz)', /Glass 8 oz/.test(await page.locator('[data-wk="glass"]').innerText()) && /Bottle 16\.9 oz/.test(await page.locator('[data-wk="bottle"]').innerText()));
 ok('daily total in gallons: 48 / 128 oz = 0.4 of 1 gal, ¾ gal to go', (await page.locator('#waterCard').innerText()).includes('/ 128 oz') && (await page.locator('#waterConv').innerText()) === '0.4 of 1 gal · ¾ gal to go (80 oz)', await page.locator('#waterConv').innerText());
 ok('helper: 1 gallon = 128 oz · 1 bottle ≈ 16.9 oz', /1 gallon = 128 oz · 1 bottle ≈ 16\.9 oz/.test(await page.locator('#waterCard .wtip').innerText()));
-await page.goto(BASE); await page.reload(); await page.waitForSelector('#homeWater');
-ok('Home water line says how much is left in gallons', /¾ gal to go/.test(await page.locator('#homeWater').innerText()));
+
 await page.goto(BASE + '#/settings/goals'); await page.waitForSelector('#waterGoal');
 const chips = await page.locator('#targetsCard .wchips [data-wpreset]').allInnerTexts();
 ok('Profile water goal has presets ½ / ¾ / 1 gallon + Custom', JSON.stringify(chips) === JSON.stringify(['½ gal (64 oz)', '¾ gal (96 oz)', '1 gal (128 oz)']) && await page.locator('#targetsCard [data-wcustom]').count() === 1, JSON.stringify(chips));

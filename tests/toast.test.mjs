@@ -13,10 +13,9 @@ for (const w of [320, 375, 390]) {
   const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
   await page.goto(BASE + 'sw.js'); await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }, data);
   await page.goto(BASE + '#/'); await page.waitForTimeout(300); await page.goto(BASE + '#/friends'); await page.waitForTimeout(300);
-  // the first-run toast fires during boot; keep its real text on screen to measure it
-  await page.evaluate(() => { const t = document.getElementById('toast'); if (/You start at/.test(t.textContent)) t.classList.add('show'); }); await page.waitForTimeout(350);
+  await page.evaluate(() => { const t = document.getElementById('toast'); t.className = 'toast show'; t.textContent = 'Tutorials will show again on each page. This is a long toast message to check wrapping'; }); await page.waitForTimeout(350);
   const r = await page.evaluate(() => { const t = document.getElementById('toast'), b = t.getBoundingClientRect(); return t.classList.contains('show') ? { l:b.left, r:b.right, txt:t.textContent, show:true } : {}; });
-  ok(`${w}px: first-run rank toast shown`, r.show && /You start at/.test(r.txt), r.txt);
+  ok(`${w}px: long toast shown (3.11: no first-run rank toast)`, r.show && /Tutorials/.test(r.txt), r.txt);
   ok(`${w}px: toast within viewport with side margin`, r.l >= 8 && r.r <= w - 8, JSON.stringify(r));
   if (w === 375) await page.screenshot({ path:`${SHOTS}/82-toast-fix.png` });
   // action toast (Undo button) too

@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.10.0';
+const APP_VERSION = '3.11.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -1082,25 +1082,16 @@ function viewHome(){
   const hasSample = hasSampleData();
   v.innerHTML = `
     ${hasSample ? `<div class="banner"><span>📋 <b>Sample data</b> is loaded for the demo.</span><button class="btn sm" id="rmSample">Remove</button></div>` : ''}
-    ${rankChip()}
-    ${marksStrip()}
-    <div class="statrow three">
-      <div class="stat hero"><div class="v">${st.week}</div><div class="l">Sessions this week</div></div>
-      <div class="stat"><div class="v">${hrs(st.weekMin)}<small>h</small></div><div class="l">Hours this week</div></div>
-      <div class="stat"><div class="v">${streak}<small>wk</small></div><div class="l">Week streak 🔥</div></div>
-    </div>
+    ${marksStrip(true)}
+    ${weekCard(st, streak)}
     ${recapCard() || tipCard()}
     ${compCard()}
-    ${injuryCards()}
-    ${weekCard()}
     ${challengeHome()}
     ${progCard()}
     ${strengthHomeLine()}
     <div class="card quick"><h2>Quick log</h2>${repeatButtons() || '<div class="empty" style="padding:2px 0 10px">Your recent workouts will show here for one-tap logging.</div>'}
       <a class="btn primary block" href="#/log" id="homeLog"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Log a workout</a></div>
     ${enabled('weight') ? weightCard() : ''}
-    ${enabled('food') ? nutritionCard() : ''}
-    ${beltCards()}
     <a class="btn block" href="#/stats" id="seeStats">See all stats ›</a>`;
   wireRepeat(v); wireWeight(v); wireBelt(v); wireComps(v); wireInjuries(v); wireProg(v); wireTip(v); wireMarks(v); wireRecap(v);
   v.querySelectorAll('.tappable[data-comp]').forEach(c => c.onclick = e => { if (!e.target.closest('a,button')) compSheet(c.dataset.comp); });
@@ -1972,9 +1963,10 @@ function viewFood(d){
       ${isToday ? '<span class="iconbtn big" style="opacity:.25"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>' : `<a class="iconbtn big" href="#/food/${iso(addDays(parse(day),1))}" aria-label="Next day"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></a>`}</div>
     ${quickFoods().length ? `<div class="card quickfood"><h2>Quick add <small>tap = 1 serving</small></h2><div class="qf">${quickFoods().map((f,i) => `<button type="button" class="qfb" data-qf="${i}"><b>${esc(f.name)}</b><small>${Math.round(num(f.cal))} kcal · ${r1(num(f.p))} g P</small></button>`).join('')}</div></div>` : ''}
     ${isToday ? recalcCard() : ''}
-    <div class="card nutri-top">
+    <div class="card nutri-top" id="dailyNutri"><h2>Daily nutrition</h2>
       <div class="ringwrap">${ring(t.cal, tg.cal, 'Calories', `of ${tg.cal} kcal`)}<div class="left">${!tg.cal ? `${setGoalsLink()}<button type="button" class="btn sm primary calcfood" data-calc id="calcFood">Calculate for me</button>` : t.cal <= tg.cal ? `<b>${Math.round(tg.cal - t.cal)}</b> kcal left` : `<b class="over">${Math.round(t.cal - tg.cal)}</b> kcal over`}</div></div>
       <div class="mbars">${macroBar('Protein', t.p, tg.p, 'g', 'pro')}${macroBar('Carbs', t.c, tg.c, 'g', 'carb')}${macroBar('Fat', t.f, tg.f, 'g', 'fat')}</div>
+      <div class="hint" id="food7">${wk.n ? `7-day avg ${Math.round(wk.cal)} kcal · ${Math.round(wk.p)} g protein` : 'No food logged this week yet.'}</div>
     </div>
     ${waterCard(day)}
     <div class="card"><h2>Macro split</h2>${macroSplit(t)}
@@ -2446,8 +2438,7 @@ function viewSettings(){
     rb.onclick = () => { if (window.FORGED_TUT) { FORGED_TUT.reset(); toast('Tutorials will show again on each page'); FORGED_TUT.check('settings'); } };
     sec.appendChild(rb); }
   v.appendChild(sec);
-  const card = h(`<div class="card" id="rankCard"><h2>Belt <a class="lnk" href="#/belts">Timeline ›</a></h2>${currentRank() ? `<div class="belt">${beltBar(currentRank().belt, currentRank().stripes)}</div><div class="belt-meta"><span><b>${esc(beltOf(currentRank().belt)[1])} belt</b>${currentRank().stripes ? ` · ${rankLabel(currentRank())}` : ''}</span><span>since ${fmtShort(beltGroups().slice(-1)[0].start)}</span></div>` : beltEmpty()}
-    <button type="button" class="btn primary block" data-promo style="margin-top:12px">Log promotion</button><div class="hint" style="margin-top:8px">${(db.belts||[]).length} promotion${(db.belts||[]).length === 1 ? '' : 's'} in your history. Edit or delete them on the timeline.</div></div>`);
+  const card = h(`<div id="beltsProfile">${beltCards()}</div>`);
   v.appendChild(scheduleCard());
   wireBelt(card);
   if (enabled('grappling')) v.appendChild(card);
@@ -2763,12 +2754,13 @@ function weekWarnings(){
   if (st.jump) out.push(`This week's load is ${Math.round((st.ratio - 1) * 100)}% above your 4-week average. Ease off or add a rest day.`);
   return out;
 }
-function weekCard(){
+function weekCard(st = periodStats(), streak = weekStreak()){
   const days = weekDays(), t = today(), hasPlan = Object.values(schedule()).some(a => (a||[]).length) || !!activeProgram();
   const plannedN = days.reduce((a,x) => a + x.planned.length, 0), doneN = days.reduce((a,x) => a + x.planned.filter(c => x.done.includes(c)).length, 0);
   const warn = weekWarnings(), ch = challengeStatus(), bm = benchDue();
   const dot = (c, on) => `<i class="wd ${on ? 'on' : ''}" style="--c:${CATS[c].color}" title="${CATS[c].label}${on ? ' done' : ' planned'}"></i>`;
-  return `<div class="card" id="weekCard"><h2>This week ${hasPlan ? `<small>${doneN} of ${plannedN} planned done</small>` : ''}<a class="lnk" href="#/settings/schedule">Schedule ›</a></h2>
+  return `<div class="card" id="weekCard"><h2>This week<a class="lnk" href="#/settings/schedule">Schedule ›</a></h2>
+    <div class="wksum" id="weekSum"><b>${st.week}</b> session${st.week === 1 ? '' : 's'} · <b>${hrs(st.weekMin)}</b> h${hasPlan ? ` · <b>${doneN}/${plannedN}</b> planned` : ''}${streak ? ` · 🔥 ${streak} wk` : ''}</div>
     <div class="weekstrip" id="weekStrip">${days.map(x => { const extra = x.done.filter(c => !x.planned.includes(c));
       return `<div class="wday ${x.k === t ? 'today' : ''} ${x.k > t ? 'future' : ''}" data-day="${x.k}"><span>${DOW1[x.d.getDay()]}</span><b>${x.d.getDate()}</b><div class="wdots">${x.planned.map(c => dot(c, x.done.includes(c))).join('')}${extra.map(c => dot(c, true)).join('')}</div></div>`; }).join('')}</div>
     ${!hasPlan ? `<div class="hint" style="margin-top:8px"><a class="lnk setgoals" href="#/settings/schedule">Set your usual training days</a> to see planned vs done.</div>` : '<div class="hint wlegend"><span><i class="wd" style="--c:var(--muted)"></i>Planned</span><span><i class="wd on" style="--c:var(--muted)"></i>Done</span></div>'}
@@ -3823,7 +3815,7 @@ function gameCheck(silent){
     const first = g.rankSeen == null && !silent && db.sessions.some(s => !s.sample);
     g.rankSeen = gs.rankIdx; g.levelSeen = gs.level; g.looksSeen = unlockedLooks(); g.seenDone = [...new Set([...g.seenDone, ...allDone, ...doneNow])].slice(-400); g.seenBadges = bs;
     if (gs.rankIdx >= PRO_RANK && !g.proUntil && !silent && db.sessions.some(s => !s.sample)) grantPro();
-    save(); if (first) toast(`You start at ${gs.rank} · level ${gs.level} (${gs.xp.toLocaleString()} XP from your history)`); return;
+    save(); return;
   }
   const fresh = doneNow.filter(k => !g.seenDone.includes(k)), newBadges = bs.filter(b => !g.seenBadges.includes(b));
   // medals (3.6.0): an upgrade records what's already earned silently; afterwards each new one gets its own celebration
@@ -3850,11 +3842,11 @@ function gameCheck(silent){
   // a real queue: rank-up sheet, then every medal (n of m), then the toasts; each waits for the one before it
   const run = () => {
     const p = gPending; if (!p) return;
-    if (p.rankUp) { const r = p.rankUp; p.rankUp = null; p.lvl = null; rankUpSheet(r); }
+    if (p.rankUp) { p.rankUp = null; p.lvl = null; }
     else if (p.medals && p.medals.length) { const l = p.medals; p.medals = []; celebrateSheet(l); }
     else if (p.looks && p.looks.length) { p.looks = []; actionToast('🔓 New look unlocked!', 'See', () => go('#/settings/looks')); }
-    else if (p.fresh.length) { const c = p.fresh.shift(); actionToast(`Challenge complete: ${c.title} · +${c.xp} XP`, 'Share', () => shareSheet('challenge', c)); }
-    else if (p.lvl) { const l = p.lvl; p.lvl = null; toast(`Level ${l.level} · ${l.rank}`); }
+    else if (p.fresh.length) { const c = p.fresh.shift(); actionToast(`Challenge complete: ${c.title}`, 'Share', () => shareSheet('challenge', c)); }
+    else if (p.lvl) { p.lvl = null; }
     if ((p.medals && p.medals.length) || (p.looks && p.looks.length) || p.fresh.length || p.lvl) setTimeout(() => whenSettled(() => tryRun()), 900); else gPending = null;
   };
   // wait for open sheets and undo toasts so a celebration never replaces them
@@ -3920,13 +3912,13 @@ function marksDay(d = today(), c = marksCfg()){
     const r = parts.map(p => Math.min(1, p.v / p.goal)); fuel = { parts, pct:Math.round(r.reduce((a, x) => a + x, 0) / r.length * 100), met:r.every(x => x >= 1) }; }
   return { date:d, paused:pausedOn(d, c), train, recover, fuel, all:train.met && recover.met && (!fuel || fuel.met) };
 }
-function marksStrip(){
+function marksStrip(home){
   const m = marksDay(), p = curPause(), wp = weekPlan(gWeekKey(today()));
   const seg = (k, label, pct, txt, cls) => `<span class="mk-seg mk-${k}${cls}" data-mk="${k}"><span class="mk-bar"><i style="width:${pct}%"></i></span><b>${label}</b><small>${txt}</small></span>`;
   const segs = seg('train', 'Train', m.train.rest ? 100 : m.train.pct, m.train.rest ? 'Rest day' : `${m.train.v}/${m.train.goal} min`, (m.train.rest ? ' rest' : '') + (m.train.met && !m.train.rest ? ' met' : ''))
     + seg('recover', 'Recover', m.recover.pct, `${m.recover.v}/${m.recover.goal} min`, m.recover.met ? ' met' : '')
     + (m.fuel ? seg('fuel', 'Fuel', m.fuel.pct, `${m.fuel.pct}%`, m.fuel.met ? ' met' : '') : '');
-  const wk = wp.neutral ? '' : wp.perfect ? '<em class="mk-pw on">Perfect week ✓</em>' : `<em class="mk-pw">Week ${Math.min(wp.trained, wp.planned)}/${wp.planned} days</em>`;
+  const wk = home || wp.neutral ? '' : wp.perfect ? '<em class="mk-pw on">Perfect week ✓</em>' : `<em class="mk-pw">Week ${Math.min(wp.trained, wp.planned)}/${wp.planned} days</em>`;
   return `<button type="button" class="marks${p ? ' paused' : ''}${m.fuel ? '' : ' two'}" id="marks" aria-label="Today's marks${p ? ', paused' : ''}. Open details">
     <span class="mk-head"><span>${p ? `Marks paused until ${fmtDay(p.to)}` : 'Today'}</span>${p ? '' : wk}</span><span class="mk-segs">${segs}</span></button>`;
 }
@@ -4147,7 +4139,6 @@ function recapCard(){
   if (!recapDue()) return '';
   const r = recapData(), sg = r.sug, u = unit();
   return `<div class="card recap" id="recapCard"><h2>Your week <small>${fmtShort(r.wk).replace(/, \d{4}$/, '')} – ${fmtShort(r.to).replace(/, \d{4}$/, '')}</small></h2>
-    <div class="recapstats"><span><b>${r.sessions}</b><small>sessions</small></span><span><b>${hrs(r.min)}</b><small>hours</small></span><span><b>${r.tMet}/${r.planned}</b><small>train days</small></span>${r.w != null ? `<span><b>${signed(r.w)}</b><small>${u} avg</small></span>` : ''}</div>
     <div class="hint" id="recapPw">${r.plan.neutral ? 'No planned days last week.' : r.plan.perfect ? '✓ Perfect week.' : `${Math.min(r.plan.trained, r.plan.planned)} of ${r.plan.planned} planned days.`} Recover met ${r.rMet} of 7 days${r.fuel ? ` · Fuel met ${r.fMet} of 7` : ''}.</div>
     <div class="recapsug" id="recapSug" data-kind="${sg.kind}"><span>${esc(sg.text)}</span>${sg.kind !== 'keep' ? '<button type="button" class="btn sm primary" id="recapApply">Apply</button>' : ''}</div>
     <div style="display:flex;gap:10px;margin-top:10px"><button type="button" class="btn sm" id="recapShare" style="flex:1">Share</button><button type="button" class="btn sm" id="recapDone" style="flex:1">Done</button></div></div>`;
@@ -4155,7 +4146,7 @@ function recapCard(){
 function wireRecap(v){
   const c = v.querySelector('#recapCard'); if (!c) return; const r = recapData();
   const ap = c.querySelector('#recapApply'); if (ap) ap.onclick = () => { const before = marksCfg().train; recapApply(r.sug); c.querySelector('#recapSug').innerHTML = `<span>✓ Train goal set to ${r.sug.to} min on your training days.</span>`;
-    actionToast(`Train goal: ${r.sug.to} min`, 'Undo', () => { setMarks({ train:before }); route(); }); const m = v.querySelector('#marks'); if (m) { m.outerHTML = marksStrip(); wireMarks(v); } };
+    actionToast(`Train goal: ${r.sug.to} min`, 'Undo', () => { setMarks({ train:before }); route(); }); const m = v.querySelector('#marks'); if (m) { m.outerHTML = marksStrip(true); wireMarks(v); } };
   c.querySelector('#recapShare').onclick = () => shareSheet('recap', r);
   c.querySelector('#recapDone').onclick = () => { game().recapSeen = r.wk; saveDb(); c.remove(); };
 }
@@ -4176,7 +4167,7 @@ function challengeHome(){
   const c = open[0]; const doneN = cur.filter(x => x.done).length;
   if (!c) return `<div class="card chcard" id="challengeHome"><h2>Challenges <a class="lnk" href="#/challenges">See all ›</a></h2><div class="hint">All ${cur.length} current challenges done. New ones tomorrow.</div><div class="chact"><button type="button" class="btn sm" data-logreps="pushups" id="homeLogReps">Log reps</button></div></div>`;
   return `<div class="card chcard" id="challengeHome"><h2>Challenges <small>${doneN}/${cur.length} done</small><a class="lnk" href="#/challenges">See all ›</a></h2>
-    <div class="list-row chrow"><div class="grow"><b>${esc(c.title)} <span class="pill tier t${c.tier}">${TIER[c.tier]}</span></b>${c.how ? `<div class="chhow">${esc(c.how)}</div>` : ''}<small>${esc(c.progress)} · <span data-left>${timeLeft(c.to)}</span></small><span class="sgbar"><i style="width:${c.pct}%"></i></span>${chActions(c, true)}</div><span class="pill xp">+${c.xp} XP</span></div></div>`;
+    <div class="list-row chrow"><div class="grow"><b>${esc(c.title)} <span class="pill tier t${c.tier}">${TIER[c.tier]}</span></b>${c.how ? `<div class="chhow">${esc(c.how)}</div>` : ''}<small>${esc(c.progress)} · <span data-left>${timeLeft(c.to)}</span></small><span class="sgbar"><i style="width:${c.pct}%"></i></span>${chActions(c, true)}</div></div></div>`;
 }
 
 /* ---------- Challenges screen ---------- */
@@ -4184,14 +4175,14 @@ function chRow(c){
   return `<div class="list-row chrow${c.done ? ' done' : ''}" data-ch="${esc(c.key)}"><div class="grow"><b>${esc(c.title)} <span class="pill tier t${c.tier}">${TIER[c.tier]}</span></b>
     ${c.how && !c.done ? `<div class="chhow">${esc(c.how)}${c.scale ? ` <span class="chscale">${esc(c.scale)}</span>` : ''}</div>` : ''}
     <small data-prog>${esc(c.progress)}${c.done ? ' · ✓ done' : ''}</small><span class="sgbar"><i style="width:${c.pct}%"></i></span>${chActions(c)}</div>
-    ${c.done ? '' : `<span class="pill xp">+${c.xp} XP</span>`}</div>`;
+    </div>`;
 }
 function viewChallenges(){
   setHeader('Challenges', `${socialOn() ? '<a class="btn sm" href="#/friends" id="friendsTop">Friends</a> ' : ''}<button type="button" class="btn sm" data-logreps="pushups" id="logRepsTop">Log reps</button>`, { parent:'#/' });
   const cur = currentChallenges(), gs = gameState(), v = $('#view');
   const sec = (p, title) => { const l = cur.filter(c => c.p === p); return l.length ? `<div class="card" id="ch-${p}"><h2>${title} <small data-left>${timeLeft(l[0].to)}</small></h2>${p === 'd' ? '<div class="hint chintro">Quick no-equipment workouts, 5–15 minutes, anywhere. Pick your level.</div>' : ''}${l.map(chRow).join('')}</div>` : ''; };
   const fr = game().friend.filter(x => x.to >= iso(addDays(new Date(), -7)));
-  v.innerHTML = `${rankChip()}${sec('d','Daily')}${sec('w','Weekly')}${sec('m','Monthly')}${medalsCard()}
+  v.innerHTML = `${sec('d','Daily')}${sec('w','Weekly')}${sec('m','Monthly')}${medalsCard()}
     <div class="card" id="friendCard"><h2>Friend challenges</h2>${fr.length ? fr.map(friendRow).join('') : '<div class="hint" style="margin:-4px 0 8px">Send a challenge link. Your friend joins on their own phone and tracks it with their own workouts (self-reported, no accounts).</div>'}
       <button type="button" class="btn block" id="challengeFriend" style="margin-top:8px">Challenge a friend</button>${socialOn() ? '<a class="list-row" href="#/friends" id="friendsLink" style="text-decoration:none;color:inherit;margin-top:6px"><div class="grow"><b>Friends &amp; head-to-head</b><small>Live standings with friends (optional account)</small></div>›</a>' : ''}</div>
     <div class="hint" style="padding:0 6px 20px">New daily challenges at midnight, weekly on Monday, monthly on the 1st. Progress comes from what you log. Workouts added more than 7 days late don't count toward challenges. ${gs.done.length} completed so far.</div>`;
@@ -4449,7 +4440,7 @@ async function viewFriends(){
     const meRow = me || { display_name:prof.name, avatar_initial:prof.name[0].toUpperCase(), avatar_color:prof.color, rank_idx:prof.rank, level:prof.level };
     const chs = c.challenges || [], link = c.invite ? `${location.origin}${location.pathname}#/invite/${c.invite}` : '';
     v.innerHTML = `${navigator.onLine === false ? `<div class="card offline" id="offlineNote">You're offline. Showing what was last synced${c.at ? ` (${sAgo(c.at)})` : ''}. Your progress syncs when you're back online.</div>` : ''}
-      <div class="card" id="youCard"><div class="frow me">${sAvatar(meRow, 'lg')}<div class="grow"><b>${esc(meRow.display_name)}</b><small>${esc(sRank(meRow.rank_idx))} · level ${meRow.level} · ${esc(u.email)}</small></div><button type="button" class="btn sm" id="editMe">Edit</button></div></div>
+      <div class="card" id="youCard"><div class="frow me">${sAvatar(meRow, 'lg')}<div class="grow"><b>${esc(meRow.display_name)}</b><small>${esc(u.email)}</small></div><button type="button" class="btn sm" id="editMe">Edit</button></div></div>
       <div class="card" id="inviteCard"><h2>Add friends</h2>
         <div class="invrow"><div><small class="dim">Your invite code</small><div class="invcode" id="myCode">${esc(c.invite || '········')}</div></div><button type="button" class="btn primary" id="shareInvite" ${link ? '' : 'disabled'}>Share link</button></div>
         <div class="addrow"><input class="input" id="addCode" placeholder="Friend's code" autocapitalize="characters" autocomplete="off" maxlength="8"><button type="button" class="btn" id="addFriend">Add</button></div></div>
@@ -4483,8 +4474,8 @@ async function viewFriends(){
   socialPoll(refresh);
 }
 function friendBoardRow(x){
-  return `<div class="frow${x.is_me ? ' me' : ''}" data-uid="${esc(x.user_id || '')}"><span class="place">${x.place || ''}</span>${sAvatar(x)}<div class="grow"><b>${esc(x.display_name)}${x.is_me ? ' <span class="pill">You</span>' : ''}</b><small>${esc(sRank(x.rank_idx))} · level ${x.level || 1}</small></div>
-    <div class="fstat"><b>${x.week_sessions || 0}</b><small>${(x.week_sessions || 0) === 1 ? 'session' : 'sessions'} · ${x.week_xp || 0} XP</small></div>${x.is_me ? '' : `<button type="button" class="btn sm ghost fmenu" data-fmenu="${esc(x.user_id)}" aria-label="More for ${esc(x.display_name)}">⋯</button>`}</div>`;
+  return `<div class="frow${x.is_me ? ' me' : ''}" data-uid="${esc(x.user_id || '')}"><span class="place">${x.place || ''}</span>${sAvatar(x)}<div class="grow"><b>${esc(x.display_name)}${x.is_me ? ' <span class="pill">You</span>' : ''}</b></div>
+    <div class="fstat"><b>${x.week_sessions || 0}</b><small>${(x.week_sessions || 0) === 1 ? 'session' : 'sessions'}</small></div>${x.is_me ? '' : `<button type="button" class="btn sm ghost fmenu" data-fmenu="${esc(x.user_id)}" aria-label="More for ${esc(x.display_name)}">⋯</button>`}</div>`;
 }
 function h2hRow(ch, board){
   const m = S_METRIC[ch.metric] || S_METRIC.sessions, me = board.find(b => b.is_me), them = board.filter(b => !b.is_me), lead = board[0];
@@ -4513,7 +4504,7 @@ function profileSheet(){
 }
 function friendMenu(f, c){
   if (!f) return;
-  const el = h(`<div><h3>${esc(f.display_name)}</h3><p class="dim" style="margin:-6px 0 16px">${esc(sRank(f.rank_idx))} · level ${f.level} · ${f.week_sessions || 0} sessions this week</p>
+  const el = h(`<div><h3>${esc(f.display_name)}</h3><p class="dim" style="margin:-6px 0 16px">${f.week_sessions || 0} sessions this week</p>
     <div style="display:flex;flex-direction:column;gap:10px"><button type="button" class="btn primary block" id="fmH2h">Challenge ${esc(f.display_name)}</button><button type="button" class="btn block danger ghost" id="fmRemove">Remove friend</button></div></div>`);
   el.querySelector('#fmH2h').onclick = () => { closeSheet(); whenSettled(() => h2hSheet(c, f.user_id)); };
   el.querySelector('#fmRemove').onclick = async () => { closeSheet(); try { await Cloud().removeFriend(f.user_id); toast(`Removed ${f.display_name}`); route(); } catch(e) { toast(e.message); } };
@@ -4521,12 +4512,12 @@ function friendMenu(f, c){
 }
 function h2hSheet(c, pre, metric0){
   const friends = (c.board || []).filter(x => !x.is_me); if (!friends.length) return;
-  const pick = new Set([pre && friends.some(f => f.user_id === pre) ? pre : friends[0].user_id]); let metric = S_METRIC[metric0] ? metric0 : 'sessions', days = 7;
+  const pick = new Set([pre && friends.some(f => f.user_id === pre) ? pre : friends[0].user_id]); let metric = S_METRIC[metric0] && metric0 !== 'xp' ? metric0 : 'sessions', days = 7;
   const el = h(`<div><h3>Challenge a friend</h3><div class="hint" style="margin:-6px 0 12px">Starts today. Progress syncs from what each of you logs; you'll see live standings.</div></div>`);
   const fl = h(`<div class="focuschips" id="h2hFriends">${friends.map(f => `<button type="button" data-f="${esc(f.user_id)}" class="${pick.has(f.user_id) ? 'on' : ''}">${esc(f.display_name)}</button>`).join('')}</div>`);
   fl.querySelectorAll('button').forEach(b => b.onclick = () => { if (pick.has(b.dataset.f)) { if (pick.size > 1) pick.delete(b.dataset.f); } else pick.add(b.dataset.f); fl.querySelectorAll('button').forEach(x => x.classList.toggle('on', pick.has(x.dataset.f))); });
   el.appendChild(field('Who (pick 2 or more for a group)', fl));
-  el.appendChild(field('Metric', seg(Object.entries(S_METRIC).map(([k, m]) => [k, m.label]), metric, x => metric = x, true)));
+  el.appendChild(field('Metric', seg(Object.entries(S_METRIC).filter(([k]) => k !== 'xp').map(([k, m]) => [k, m.label]), metric, x => metric = x, true)));
   el.appendChild(field('How long', seg([[7,'1 week'],[14,'2 weeks'],[30,'30 days']], days, x => days = x)));
   const btn = h('<button type="button" class="btn primary block" id="h2hGo" style="margin-top:12px">Start challenge</button>'); el.appendChild(btn);
   btn.onclick = async () => {
@@ -4623,7 +4614,7 @@ async function viewInvite(code){
   try { p = await Cloud().invitePreview(code); } catch(e) { err = e.message; }
   if (curRoute !== 'invite') return;
   const name = p ? p.display_name : 'A friend';
-  v.innerHTML = `<div class="card" id="inviteView">${p ? `<div class="frow">${sAvatar(p, 'lg')}<div class="grow"><b>${esc(name)}</b><small>${esc(sRank(p.rank_idx))}</small></div></div>` : ''}
+  v.innerHTML = `<div class="card" id="inviteView">${p ? `<div class="frow">${sAvatar(p, 'lg')}<div class="grow"><b>${esc(name)}</b></div></div>` : ''}
     <h2 style="margin-top:12px">${esc(name)} invited you to train together</h2>
     ${err ? `<div class="hint">${esc(err)}</div>` : p && !p.valid ? '<div class="hint">This invite has expired. Ask for a new link.</div>' : !p ? '<div class="hint">We couldn\'t find this invite. Check the code.</div>' : ''}
     <button type="button" class="btn primary block" id="invGo" style="margin-top:12px">${sUser() ? `Add ${esc(name)}` : `Sign in to add ${esc(name)}`}</button>
@@ -4660,8 +4651,7 @@ function viewBadges(){
 function gameProfileCard(){
   const gs = gameState(), bs = badgeState(), n = bs.filter(b => b.earned).length, lk = currentLook();
   const ml = medalList(), mOn = ml.filter(m => m.earned), peek = mOn.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 7).concat(ml.filter(m => !m.earned).slice(0, Math.max(1, 8 - Math.min(7, mOn.length)))).slice(0, 8);
-  const card = h(`<div class="card" id="gameProfile"><h2>Rank, medals &amp; looks</h2>
-    <a class="list-row" href="#/rank" style="text-decoration:none;color:inherit"><div class="grow"><b>${flairSym() ? flairSym() + ' ' : ''}${esc(gs.rank)} · level ${gs.level}</b><small>${gs.xp.toLocaleString()} XP${proActive() ? ` · 🎁 Pro week earned (until ${fmtShort(game().proUntil)})` : ''}</small></div>›</a>
+  const card = h(`<div class="card" id="gameProfile"><h2>Medals &amp; looks</h2>
     <div id="medalCase"><div class="mc-head"><b>Medal case</b><small>${mOn.length} earned</small></div>${medalGrid(peek, { mini:true })}</div>
     <a class="list-row" href="#/badges" id="badgesLink" style="text-decoration:none;color:inherit"><div class="grow"><b>All medals &amp; badges</b><small>${n} of ${bs.length} badges · ${mOn.length - n} medals</small></div>›</a>
     <div id="looks"></div></div>`);
@@ -4818,7 +4808,7 @@ function route(){
     case 'belts': viewBelts(b); break;
     case 'comps': viewComps(); break;
     case 'challenges': viewChallenges(); break;
-    case 'rank': viewRank(); break;
+    case 'rank': location.replace('#/settings'); break;
     case 'badges': viewBadges(); break;
     case 'join': viewJoin(b); break;
     case 'friends': viewFriends(); break;

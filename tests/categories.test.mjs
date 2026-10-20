@@ -19,7 +19,7 @@ ok('accent is flame orange with dark ink', await page.evaluate(() => { const cs 
 /* first-run: six sports, unused stay hidden */
 const tiles = await page.locator('#catTiles .tile').evaluateAll(ts => ts.map(t => t.querySelector('b').textContent));
 ok('first-run offers Grappling, Striking, MMA, Weights, Cardio, Mobility', JSON.stringify(tiles) === '["Grappling","Striking","MMA","Weights","Cardio","Mobility"]', JSON.stringify(tiles));
-await page.locator('.tile[data-k="mobility"]').tap(); await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('.statrow');
+await page.locator('.tile[data-k="mobility"]').tap(); await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('#weekCard');
 await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); await settle();
 ok('log form shows only picked sports (Grappling + Mobility)', JSON.stringify(await page.locator('.cats button').evaluateAll(bs => bs.map(b => b.dataset.c))) === '["grappling","mobility"]');
 await page.locator('.cats button[data-c="grappling"]').tap(); await settle(150);
@@ -35,7 +35,7 @@ const strikeMma = { ...strike1, id:'s2', date:'2026-09-17', discipline:'mma', st
 const bjj = { id:'g1', date:'2026-09-12', category:'grappling', discipline:'bjj', gi:'nogi', type:'class', duration:75, rounds:5, intensity:3, techniques:[], notes:'', weight:'', rolls:[], sample:false, createdAt:2 };
 const v5 = { schema:5, sessions:[bjj], archive:{ striking:[strike1, strikeMma] }, profile:{ name:'', belt:'white', stripes:0, unit:'lb', distUnit:'mi', setupDone:true, enabled:{ grappling:true, weights:false, cardio:false, food:false, supps:false } }, nutrition:{ entries:[], foods:[], water:[] }, supps:{ items:[], log:[] }, weights:[], belts:[] };
 await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }, v5);
-await page.goto(BASE + '#/'); await page.reload(); await page.waitForSelector('.statrow',{timeout:5000}).catch(()=>{console.log('ERR',errors, page.url())}); await settle(400);
+await page.goto(BASE + '#/'); await page.reload(); await page.waitForSelector('#weekCard',{timeout:5000}).catch(()=>{console.log('ERR',errors, page.url())}); await settle(400);
 let d = await db();
 const back1 = d.sessions.find(s => s.id === 's1'), back2 = d.sessions.find(s => s.id === 's2');
 ok('v5 → v7: archived striking sessions are back in the normal list, unchanged', d.schema === 7 && !d.archive && d.sessions.length === 3 && JSON.stringify(back1) === JSON.stringify({ ...strike1, rpe:strike1.intensity * 2 }), JSON.stringify(d.sessions.map(s => [s.id, s.category])));
@@ -70,7 +70,7 @@ ok('Mobility filter shows only mobility sessions', await page.locator('.sess').c
 await page.goto(BASE + '#/stats'); await page.waitForSelector('#catCard'); await settle(300);
 const st = await page.locator('#catCard').innerText();
 ok('stats hours-by-category include MMA and Mobility', /MMA/.test(st) && /Mobility/.test(st) && /Striking/.test(st));
-await page.goto(BASE + '#/'); await settle(300);
+await page.goto(BASE + '#/settings'); await settle(300);
 ok('belt card still shown (BJJ)', await page.locator('#beltCard').count() === 1);
 /* 3.4.0: Cardio "Jump rope" replaced by "Stairs"; old Jump rope sessions keep their label */
 {

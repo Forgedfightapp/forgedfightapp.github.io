@@ -1038,3 +1038,6 @@ body.legal{padding-bottom:40px}
 .h2hres.won{border-color:var(--accent);background:linear-gradient(135deg,rgba(242,113,28,.18),transparent 70%)}
 .h2hres h2{font-size:22px;margin:4px 0 2px;color:var(--text);letter-spacing:.02em}
 .h2hres.won h2{color:var(--accent)}
+
+.wksum{color:var(--muted);font-size:14px;margin:-2px 0 10px}.wksum b{color:var(--text);font-weight:800}
+.nutri-top{flex-wrap:wrap}.nutri-top>h2,.nutri-top>.hint{flex-basis:100%;margin:0}.nutri-top>.mbars{flex:1;min-width:0}

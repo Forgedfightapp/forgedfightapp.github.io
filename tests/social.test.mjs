@@ -119,7 +119,7 @@ await page.locator('#h2hCard [data-acc][data-yes="1"]').tap(); await page.waitFo
 ok('accepting joins the challenge', await page.evaluate(() => window.__mockSb.state.parts.filter(p => p.u === window.__mockSb.me()).every(p => p.status === 'joined')));
 // leaderboard / friend list
 const board = await page.locator('#boardCard .frow').allInnerTexts();
-ok('friend list: rank + this week\'s sessions, ranked by weekly XP', board.length === 2 && /^1[\s\S]*Alex[\s\S]*Journeyman[\s\S]*\n4\nsessions/i.test(board[0]) && /^2[\s\S]*Steve[\s\S]*You[\s\S]*\n[23]\nsessions/i.test(board[1]), JSON.stringify(board));
+ok('friend list: this week\'s sessions, ranked by weekly XP, no rank/level text', board.length === 2 && /^1[\s\S]*Alex[\s\S]*\n4\nsessions/i.test(board[0]) && /^2[\s\S]*Steve[\s\S]*You[\s\S]*\n[23]\nsessions/i.test(board[1]) && !/level|Journeyman/i.test(board.join()), JSON.stringify(board));
 await hideToast(page); await page.evaluate(() => window.scrollTo(0, 0)); await settle(page, 200);
 await page.screenshot({ path:`${SHOTS}/62-friends.png` });
 await page.locator('#h2hCard').evaluate(e => window.scrollTo(0, e.getBoundingClientRect().top + window.scrollY - 70)); await settle(page, 200);

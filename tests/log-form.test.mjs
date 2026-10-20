@@ -8,7 +8,7 @@ for (const w of [390, 375]) {
   const ctx = await browser.newContext({ viewport:{width:w,height:844}, deviceScaleFactor:3, isMobile:true, hasTouch:true, userAgent:devices['iPhone 13'].userAgent });
   const page = await ctx.newPage(); page.on('pageerror', e => errors.push('pageerror: '+e.message)); page.on('console', m => { if (m.type()==='error') errors.push(m.text()); });
   const settle = (ms=300) => page.waitForTimeout(ms);
-  await page.goto(BASE); await page.waitForSelector('#loadSample'); await page.locator('#loadSample').tap(); await page.waitForSelector('#beltCard');
+  await page.goto(BASE); await page.waitForSelector('#loadSample'); await page.locator('#loadSample').tap(); await page.waitForSelector('#weekCard');
   await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); ['grappling','striking','mma','mobility','cardio','weights'].forEach(k => d.profile.enabled[k] = true); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
   for (const c of ['grappling','striking','mma','weights','cardio','mobility']) {
     await page.goto(BASE + '#/'); await settle(200); await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); await settle(200);

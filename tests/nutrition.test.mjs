@@ -13,11 +13,11 @@ page.on('response', r => { if (r.status() >= 400) errors.push(`HTTP ${r.status()
 const db = () => page.evaluate(() => JSON.parse(localStorage.getItem('dm.bjj.v1')));
 await page.goto(BASE); await page.waitForLoadState('networkidle');
 await page.getByRole('button', { name:/Load sample data/ }).tap();
-await page.waitForSelector('#nutriCard');
+await page.waitForSelector('#weekCard'); await page.goto(BASE + '#/food'); await page.waitForSelector('#dailyNutri');
 let d = await db();
 ok('sample nutrition loaded', d.nutrition.entries.length > 40 && d.nutrition.foods.length > 10, `${d.nutrition.entries.length} entries / ${d.nutrition.foods.length} foods`);
-ok('dashboard nutrition card', /calories/i.test(await page.locator('#nutriCard').innerText()));
-await page.locator('#nutriCard').scrollIntoViewIfNeeded(); await page.waitForTimeout(2500);
+ok('Food tab: Daily nutrition card', /daily nutrition/i.test(await page.locator('#dailyNutri').innerText()) && /7-day avg/.test(await page.locator('#food7').innerText()), await page.locator('#dailyNutri').innerText());
+await page.goto(BASE); await page.waitForSelector('#weekCard'); await page.waitForTimeout(1500);
 await page.screenshot({ path:`${SHOTS}/08-dashboard-nutrition-card.png` });
 // food tab via nav
 await page.locator('.tabbar a[data-tab="food"]').tap();

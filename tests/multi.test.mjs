@@ -46,21 +46,11 @@ await page.locator('#setupBack').tap(); await page.waitForSelector('#catTiles');
 ok('Back returns to step 1 with picks kept', await page.locator('.tile[data-k="weights"].on').count() === 1 && await page.locator('.tile[data-k="cardio"].on').count() === 1);
 await page.locator('#go').tap(); await page.waitForSelector('#skipAbout'); await page.locator('#skipAbout').tap(); await page.waitForSelector('#skipGoals');
 ok('Skip for now on About you: step 3 without pre-filled numbers', await page.locator('#setupT-cal').inputValue() === '' && await page.locator('#setupWater').inputValue() === '' && await page.locator('#toAbout').count() === 1);
-await page.locator('#skipGoals').tap(); await page.waitForSelector('.statrow');
+await page.locator('#skipGoals').tap(); await page.waitForSelector('#weekCard');
 let d = await db();
 ok('setup saves choices (Skip for now: no goals)', d.profile.setupDone && d.profile.enabled.weights && d.profile.enabled.cardio && !d.profile.enabled.striking && !d.profile.enabled.supps && !d.profile.targets && !d.strength.length, JSON.stringify(d.profile.enabled));
-ok('no goals set: Home nutrition card links to Profile goals', await page.locator('#nutriCard #setGoalsHome').count() === 1 && !(await page.locator('#nutriCard').innerText()).includes(' / '));
-await page.locator('#setGoalsHome').tap(); await page.waitForSelector('.sheet [data-ok]');
-ok('Set your goals asks first: Leave this page? (Cancel / Go to goals)', /Leave this page\?/i.test(await page.locator('.sheet').innerText()) && /You'll go to Profile to set your goals/.test(await page.locator('.sheet').innerText()) && (await page.locator('.sheet [data-ok]').innerText()) === 'Go to goals' && await page.locator('.sheet [data-cancel]').count() === 1);
-await page.locator('.sheet [data-cancel]').tap(); await page.waitForTimeout(350);
-ok('Cancel stays on the page', (await page.evaluate(() => location.hash)) === '' || (await page.evaluate(() => location.hash)) === '#/');
-await page.locator('#setGoalsHome').tap(); await page.waitForSelector('.sheet [data-ok]'); await page.locator('.sheet [data-ok]').tap(); await page.waitForSelector('#targetsCard'); await page.waitForTimeout(250);
-ok('Go to goals opens the Profile goals section', await page.evaluate(() => location.hash) === '#/settings/goals' && await page.evaluate(() => { const r = document.querySelector('#targetsCard').getBoundingClientRect(); return r.top >= 0 && r.top < 400; }));
-ok('Profile offers a way back (Back to Home)', /Back to Home/.test(await page.locator('#goalsBack').innerText()) && !(await page.locator('#backRow').isHidden()));
-await page.locator('#targetsCard [data-target="cal"]').fill('2500'); await page.locator('#targetsCard [data-target="cal"]').blur(); await page.waitForTimeout(200);
-await page.locator('#goalsBack').tap(); await page.waitForSelector('.statrow');
-ok('after saving, Back returns to the page you came from', (await page.evaluate(() => location.hash)) === '#/' && (await db()).profile.targets.cal === 2500);
-await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); delete d.profile.targets; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }); await page.reload(); await page.waitForSelector('.statrow');
+ok('3.11: Home has no nutrition card (moved to Food)', await page.locator('#nutriCard').count() === 0);
+await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); delete d.profile.targets; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }); await page.reload(); await page.waitForSelector('#weekCard');
 await page.goto(BASE + '#/food'); await page.waitForSelector('.nutri-top');
 ok('no goals set: Food screen shows link instead of progress', await page.locator('.nutri-top #setGoals').count() === 1 && !(await page.locator('.nutri-top').innerText()).includes('left'));
 await page.locator('.nutri-top #setGoals').tap(); await page.waitForSelector('.sheet [data-ok]');
@@ -74,8 +64,8 @@ await page.locator('.sheet [data-ok]').tap(); await page.waitForSelector('#targe
 ok('goes to Profile goals with Back to Food', /Back to Food/.test(await page.locator('#goalsBack').innerText()));
 await page.locator('#goalsBack').tap(); await page.waitForSelector('.nutri-top');
 ok('Back returns to Food, unsaved food discarded', (await page.evaluate(() => location.hash)) === '#/food' && !(await db()).nutrition.entries.some(e => e.name === 'Half-typed food'));
-await page.goto(BASE); await page.waitForSelector('.statrow');
-ok('hidden section stays hidden (no supplements card)', await page.locator('#suppCard').count() === 0 && await page.locator('#nutriCard').count() === 1);
+await page.goto(BASE); await page.waitForSelector('#weekCard');
+ok('hidden section stays hidden (no supplements card)', await page.locator('#suppCard').count() === 0 && await page.locator('#nutriCard').count() === 0);
 ok('nav label plain', (await page.locator('.tabbar a[data-tab="food"] span').innerText()) === 'Food');
 ok('bottom nav has 6 items (Friends on)', await page.locator('.tabbar a:visible').count() === (await page.evaluate(() => document.querySelector('.tabbar').classList.contains('six')) ? 6 : 5));
 
@@ -89,7 +79,7 @@ await tap(page.locator('.cats button[data-c="weights"]'));
 { const r = await page.evaluate(() => { const b = document.querySelector('.actions [data-save]').getBoundingClientRect(), fab = document.querySelector('.tabbar a.fab').getBoundingClientRect(); return { top:b.top, bottom:b.bottom, fabTop:fab.top }; });
   ok('Save is visible without scrolling (sticky above the nav)', r.top >= 0 && r.bottom <= r.fabTop, JSON.stringify(r)); }
 await tap(page.locator('.actions [data-save]'));
-await page.waitForSelector('.statrow');
+await page.waitForSelector('#weekCard');
 d = await db();
 ok('quick log saved in 3 taps from Home', taps === 3 && d.sessions.length === 1 && d.sessions[0].category === 'weights' && d.sessions[0].duration === 60, `taps=${taps}`);
 // repeat last: 1 tap from Home
@@ -119,7 +109,7 @@ await page.locator('[data-z="3"]').fill('12');
 await page.locator('.field', { hasText:'Total rounds' }).scrollIntoViewIfNeeded(); await hideToast();
 await page.evaluate(() => window.scrollTo(0, document.querySelector('#detailsSec').offsetTop - 70));
 await page.screenshot({ path:`${SHOTS}/16-striking-log.png` });
-await page.locator('.actions [data-save]').tap(); await page.waitForSelector('.statrow');
+await page.locator('.actions [data-save]').tap(); await page.waitForSelector('#weekCard');
 d = await db(); const st = d.sessions.find(s => s.category === 'striking');
 ok('striking saved with breakdown + sparring + HR', st && st.discipline === 'muaythai' && st.strike.mix.pads === 4 && st.strike.mix.sparring === 3 && st.rounds >= 10 && st.strike.spar[0].partner === 'Mo' && st.hr.avg === 151 && st.hr.zones[3] === 12, JSON.stringify(st && { mix:st.strike.mix, rounds:st.rounds, hr:st.hr }));
 await page.goto(BASE + '#/session/' + st.id); await page.waitForSelector('.mix');
@@ -139,7 +129,7 @@ for (const [lab, n] of [['Sparring', 3], ['Grappling rounds', 2]]) for (let k = 
 await page.locator('textarea').first().fill('Cage work and level changes');
 await hideToast(); await page.evaluate(() => window.scrollTo(0, document.querySelector('#detailsSec').offsetTop - 70));
 await page.screenshot({ path:`${SHOTS}/33-mma-log.png` });
-await page.locator('.actions [data-save]').tap(); await page.waitForSelector('.statrow');
+await page.locator('.actions [data-save]').tap(); await page.waitForSelector('#weekCard');
 d = await db(); const mm = d.sessions.find(s => s.category === 'mma');
 ok('MMA saved: both technique lists, mix, rounds, notes', mm && mm.techniques[0] === 'Jab' && mm.gtech[0] === 'Double leg' && mm.strike.mix.sparring === 3 && mm.strike.mix.grappling === 2 && mm.rounds >= 5 && mm.strike.roundLen === 5 && mm.notes === 'Cage work and level changes', JSON.stringify(mm));
 await page.goto(BASE + '#/session/' + mm.id); await page.waitForSelector('.mix');
@@ -152,7 +142,7 @@ await page.locator('.focuschips button[data-f="hips"]').tap(); await page.locato
 await page.locator('textarea').first().fill('Hip openers after open mat');
 await hideToast(); await page.evaluate(() => window.scrollTo(0, document.querySelector('.cats').offsetTop - 70));
 await page.screenshot({ path:`${SHOTS}/32-mobility-log.png` });
-await page.locator('.actions [data-save]').tap(); await page.waitForSelector('.statrow');
+await page.locator('.actions [data-save]').tap(); await page.waitForSelector('#weekCard');
 d = await db(); const mo = d.sessions.find(s => s.category === 'mobility');
 ok('Mobility saved: type, focus areas, notes', mo && mo.discipline === 'yoga' && JSON.stringify(mo.focus) === '["hips","hamstrings"]' && mo.duration === 20 && mo.notes === 'Hip openers after open mat', JSON.stringify(mo));
 ok('quick log offers MMA and Mobility again', await page.locator('.quick [data-rep]').filter({ hasText:'MMA' }).count() === 1 && await page.locator('.quick [data-rep]').filter({ hasText:'Yoga' }).count() === 1);
@@ -172,7 +162,7 @@ await page.locator('#addEx').tap(); await page.locator('.exname').nth(1).fill('P
 await page.locator('.excard').nth(1).locator('input[data-f="reps"]').fill('10');
 await hideToast(); await page.evaluate(() => window.scrollTo(0, document.querySelector('#detailsSec').offsetTop - 70));
 await hideToast(); await page.screenshot({ path:`${SHOTS}/17-weights-log.png` });
-await page.locator('.actions [data-save]').tap(); await page.waitForSelector('.statrow');
+await page.locator('.actions [data-save]').tap(); await page.waitForSelector('#weekCard');
 d = await db(); const wk = d.sessions.filter(s => s.category === 'weights').find(s => s.exercises?.length);
 ok('weights saved: sets x reps x weight, RPE', wk && wk.exercises[0].name === 'Bench press' && wk.exercises[0].sets.length === 2 && wk.exercises[0].sets[1].weight === 195 && wk.exercises[0].sets[1].reps === 5 && wk.exercises[0].sets[1].rpe === 8.5 && wk.exercises[1].sets[0].reps === 10, JSON.stringify(wk?.exercises));
 await page.goto(BASE + '#/session/' + wk.id); await page.waitForSelector('.ex-view');
@@ -189,7 +179,7 @@ await page.locator('[aria-label="Minutes"]').fill('25'); await page.locator('[ar
 ok('auto pace', (await page.locator('.pace').innerText()).includes('5:00 /km'), await page.locator('.pace').innerText());
 await hideToast(); await page.evaluate(() => window.scrollTo(0, document.querySelector('.cats').offsetTop - 80));
 await page.screenshot({ path:`${SHOTS}/18-cardio-log.png` });
-await page.locator('.actions [data-save]').tap(); await page.waitForSelector('.statrow');
+await page.locator('.actions [data-save]').tap(); await page.waitForSelector('#weekCard');
 d = await db(); const run = d.sessions.find(s => s.category === 'cardio');
 ok('cardio saved (distance/time/duration)', run && run.cardio.distance === 5 && run.cardio.unit === 'km' && run.cardio.sec === 1500 && run.duration === 25, JSON.stringify(run?.cardio));
 
@@ -204,7 +194,7 @@ await importInto('run.gpx', 'weights');
 ok('GPX: switches to cardio, fills distance/time/HR', await page.locator('.cats button.on').getAttribute('data-c') === 'cardio' && await (async () => { const v = Number(await page.locator('input[data-k="distance"]').inputValue()); return Math.abs(v - 3.0) < 0.15 || Math.abs(v * 1.609344 - 3.0) < 0.15; })() && await page.locator('[aria-label="Minutes"]').inputValue() === '10' && await page.locator('[data-hr="avg"]').inputValue() === '150' && await page.locator('[data-hr="max"]').inputValue() === '160',
   `${await page.locator('input[data-k="distance"]').inputValue()} (default unit), ${await page.locator('[aria-label="Minutes"]').inputValue()} min, hr ${await page.locator('[data-hr="avg"]').inputValue()}/${await page.locator('[data-hr="max"]').inputValue()}`);
 ok('GPX: date + zones prefilled', await page.locator('.field', { hasText:'Date' }).locator('input').inputValue() === '2026-09-28' && (await page.locator('[data-z="2"]').inputValue()) !== '');
-await page.locator('.actions [data-save]').tap(); await page.waitForSelector('.statrow');
+await page.locator('.actions [data-save]').tap(); await page.waitForSelector('#weekCard');
 d = await db(); ok('GPX import saved with source', d.sessions.some(s => s.source === 'run.gpx' && s.date === '2026-09-28' && s.cardio.sec === 600));
 await importInto('ride.tcx', 'cardio');
 ok('TCX: bike, 2 laps summed (16 km, 40 min, 550 kcal, max 168)', (await page.getByRole('radio', { name:'Bike' }).getAttribute('aria-checked')) === 'true' && await page.locator('[aria-label="Minutes"]').inputValue() === '40' && await page.locator('[data-hr="cal"]').inputValue() === '550' && await page.locator('[data-hr="max"]').inputValue() === '168' && Math.abs(Number(await page.locator('input[data-k="distance"]').inputValue()) - 9.94) < 0.05,
@@ -226,8 +216,8 @@ ok('CSV bulk import adds 4 workouts', d.sessions.length === before + 4 && added.
 
 /* 7. stats view (dashboard depth) with sample data */
 await page.goto(BASE + '#/settings'); await page.locator('#ldS').tap(); await page.waitForTimeout(300);
-await page.goto(BASE); await page.waitForSelector('.statrow');
-ok('home essentials: week, hours, streak, quick log, nutrition, belt, week strip, ring', await page.locator('#weekStrip .wday').count() === 7 && await page.locator('#challenge svg.mring').count() === 1 && await page.locator('.statrow .stat').count() === 3 && await page.locator('.quick [data-rep]').count() >= 3 && await page.locator('#nutriCard').count() === 1 && await page.locator('#suppCard').count() === 0 && await page.locator('#beltCard svg.beltsvg.lg').count() === 1);
+await page.goto(BASE); await page.waitForSelector('#weekCard');
+ok('home essentials: one week summary, quick log, week strip, ring (no nutrition, belt, rank)', await page.locator('#weekStrip .wday').count() === 7 && await page.locator('#challenge svg.mring').count() === 1 && await page.locator('#weekSum').count() === 1 && await page.locator('.statrow').count() === 0 && await page.locator('.quick [data-rep]').count() >= 3 && await page.locator('#nutriCard').count() === 0 && await page.locator('#suppCard').count() === 0 && await page.locator('#beltCard').count() === 0 && await page.locator('#rankChip').count() === 0);
 await hideToast(); await page.screenshot({ path:`${SHOTS}/01-dashboard.png` });
 await page.screenshot({ path:`${SHOTS}/01b-dashboard-full.png`, fullPage:true });
 await page.locator('#seeStats').tap(); await page.waitForSelector('#catCard');
@@ -267,11 +257,11 @@ await ctx.close();
 ({ ctx, page } = await mk());
 await page.goto(BASE);
 await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ sessions:[{ id:'old1', date:'2026-09-01', gi:'nogi', type:'open', duration:90, rounds:6, intensity:4, techniques:['Leg drag'], rolls:[{ id:'r1', partner:'Jake', result:'win', subsLanded:['Armbar'], subsTapped:[], stuck:[] }], weight:200, notes:'old', createdAt:1 }], profile:{ belt:'blue', stripes:1, unit:'lb' }, nutrition:{ entries:[], foods:[] } })); });
-await page.reload(); await page.waitForSelector('.statrow, .welcome'); await page.waitForTimeout(200);
+await page.reload(); await page.waitForSelector('#weekCard, .welcome'); await page.waitForTimeout(200);
 const m = await page.evaluate(() => ({ d:JSON.parse(localStorage.getItem('dm.bjj.v1')), b:localStorage.getItem('dm.bjj.v1.backup.v1') }));
 ok('v1 data migrates to schema 7 as Grappling/BJJ', m.d.schema === 7 && Array.isArray(m.d.weights) && m.d.sessions[0].category === 'grappling' && m.d.sessions[0].discipline === 'bjj' && m.d.sessions[0].rolls[0].subsLanded[0] === 'Armbar' && m.d.profile.belt === 'blue');
 ok('pre-migration backup kept', !!m.b && JSON.parse(m.b).sessions[0].id === 'old1' && !JSON.parse(m.b).schema);
-ok('migrated user skips first-run', await page.locator('.welcome.setup').count() === 0 && await page.locator('.statrow').count() === 1);
+ok('migrated user skips first-run', await page.locator('.welcome.setup').count() === 0 && await page.locator('#weekCard').count() === 1);
 await page.goto(BASE + '#/session/old1'); await page.waitForSelector('#del');
 ok('migrated session renders', (await page.locator('#view').innerText()).includes('Jake'));
 ok('no console errors', errors.length === 0, JSON.stringify(errors));

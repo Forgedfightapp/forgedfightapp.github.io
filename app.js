@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.8.0';
+const APP_VERSION = '3.9.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -2441,6 +2441,9 @@ function viewSettings(){
   { const row = h(`<label class="toggle" id="tipsRow"><span><b>Tip of the day</b><small>One short training tip on Home</small></span><input type="checkbox" role="switch" id="tipsToggle" ${tipsOn() ? 'checked' : ''}><i></i></label>`);
     row.querySelector('input').onchange = e => { p.tips = e.target.checked; save(); toast(`Tips ${e.target.checked ? 'shown' : 'hidden'}`); };
     sec.querySelector('.toggles').appendChild(row); }
+  { const rb = h(`<button type="button" class="btn block" id="tutReplay" style="margin-top:10px">Replay tutorials</button>`);
+    rb.onclick = () => { if (window.FORGED_TUT) { FORGED_TUT.reset(); toast('Tutorials will show again on each page'); FORGED_TUT.check('settings'); } };
+    sec.appendChild(rb); }
   v.appendChild(sec);
   const card = h(`<div class="card" id="rankCard"><h2>Belt <a class="lnk" href="#/belts">Timeline ›</a></h2>${currentRank() ? `<div class="belt">${beltBar(currentRank().belt, currentRank().stripes)}</div><div class="belt-meta"><span><b>${esc(beltOf(currentRank().belt)[1])} belt</b>${currentRank().stripes ? ` · ${rankLabel(currentRank())}` : ''}</span><span>since ${fmtShort(beltGroups().slice(-1)[0].start)}</span></div>` : beltEmpty()}
     <button type="button" class="btn primary block" data-promo style="margin-top:12px">Log promotion</button><div class="hint" style="margin-top:8px">${(db.belts||[]).length} promotion${(db.belts||[]).length === 1 ? '' : 's'} in your history. Edit or delete them on the timeline.</div></div>`);
@@ -4813,6 +4816,7 @@ function route(){
   if (a === 'settings' && b === 'looks') { const g = $('#looks'); if (g) g.scrollIntoView({ block:'start' }); }
   if (a === 'settings' && b === 'goals') { const g = $('#targetsCard'); if (g) g.scrollIntoView({ block:'start' }); }
   if (a === 'settings' && b === 'schedule') { const g = $('#scheduleCard'); if (g) g.scrollIntoView({ block:'start' }); }
+  if (window.FORGED_TUT) FORGED_TUT.check(curRoute);
 }
 window.DM_TEST = { inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
 window.addEventListener('hashchange', route);

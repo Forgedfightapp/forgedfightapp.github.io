@@ -1,7 +1,7 @@
 /* Forged service worker: caches the app shell for offline use. */
-const CACHE = 'forged-shell-v3.8.0';
+const CACHE = 'forged-shell-v3.9.0';
 const SHELL = [
-  './', 'index.html', 'styles.css', 'config.js', 'social.js', 'app.js', 'programs.js', 'tips.js', 'foods.js', 'manifest.webmanifest', 'privacy.html', 'terms.html',
+  './', 'index.html', 'styles.css', 'config.js', 'social.js', 'app.js', 'programs.js', 'tips.js', 'foods.js', 'tutorial.js', 'manifest.webmanifest', 'privacy.html', 'terms.html',
   'vendor/supabase-js-2.117.2.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'icons/icon-maskable-192.png', 'icons/icon-maskable-512.png',

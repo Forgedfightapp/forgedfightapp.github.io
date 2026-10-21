@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.12.3';
+const APP_VERSION = '3.12.4';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -4429,7 +4429,7 @@ async function viewFriends(){
   if (!Cloud().loaded && Cloud().hasStoredSession()) { v.innerHTML = '<div class="card"><div class="hint">Loading…</div></div>'; try { await Cloud().init(); } catch(e) {} if (curRoute !== 'friends') return; }
   const u = sUser();
   if (!u) {
-    v.innerHTML = `<div class="card" id="friendsIntro"><h2>Train with friends</h2><p class="dim" style="margin:-4px 0 14px">Add friends, see who trained most this week, and go head-to-head on sessions, push-ups, mat hours or daily challenge streaks.</p>
+    v.innerHTML = `<div class="card" id="friendsIntro"><h2>Train with friends</h2><p class="dim" style="margin:-4px 0 14px">Share clips and photos, add friends, see who trained most this week, and go head-to-head on sessions, push-ups, mat hours or daily challenge streaks.</p>
       <a class="btn primary block" href="#/signin" id="goSignin">Sign in with email</a>${CFG.apple ? '<button type="button" class="btn block" id="appleSignin" style="margin-top:10px"> Sign in with Apple</button>' : ''}
       <div class="hint" style="margin-top:10px">Accounts are optional. Everything else in Forged works offline without one.</div></div>${privacyCard()}`;
     const ap = $('#appleSignin'); if (ap) ap.onclick = () => Cloud().signInWithApple().catch(e => toast(e.message));
@@ -4442,12 +4442,12 @@ async function viewFriends(){
     const chs = c.challenges || [], link = c.invite ? `${location.origin}${location.pathname}#/invite/${c.invite}` : '';
     v.innerHTML = `${navigator.onLine === false ? `<div class="card offline" id="offlineNote">You're offline. Showing what was last synced${c.at ? ` (${sAgo(c.at)})` : ''}. Your progress syncs when you're back online.</div>` : ''}
       <div class="card" id="youCard"><div class="frow me">${sAvatar(meRow, 'lg')}<div class="grow"><b>${esc(meRow.display_name)}</b><small>${esc(u.email)}</small></div><button type="button" class="btn sm" id="editMe">Edit</button></div></div>
+      ${mediaOn() ? `<div class="card" id="mediaCard"><h2>Clips &amp; photos <small>30 days</small></h2><button type="button" class="btn primary block" id="shareMedia">📷 Share clip or photo</button><div id="mediaFeed" style="margin-top:12px">${mediaFeedHtml(mediaCache)}</div></div>` : ''}
       <div class="card" id="inviteCard"><h2>Add friends</h2>
         <div class="invrow"><div><small class="dim">Your invite code</small><div class="invcode" id="myCode">${esc(c.invite || '········')}</div></div><button type="button" class="btn primary" id="shareInvite" ${link ? '' : 'disabled'}>Share link</button></div>
         <div class="addrow"><input class="input" id="addCode" placeholder="Friend's code" autocapitalize="characters" autocomplete="off" maxlength="8"><button type="button" class="btn" id="addFriend">Add</button></div></div>
       <div class="card" id="h2hCard"><h2>Head-to-head</h2>${chs.length ? chs.map(ch => h2hRow(ch, (c.boards || {})[ch.id] || [])).join('') : `<div class="hint" style="margin:-4px 0 10px">${friends.length ? 'Pick a friend and a metric. Progress comes from what you both log.' : 'Add a friend first, then challenge them.'}</div>`}
         <button type="button" class="btn block" id="newH2h" ${friends.length ? '' : 'disabled'}>Challenge a friend</button></div>
-      ${mediaOn() ? `<div class="card" id="mediaCard"><h2>Clips &amp; photos <small>30 days</small></h2><button type="button" class="btn primary block" id="shareMedia">📷 Share clip or photo</button><div id="mediaFeed" style="margin-top:12px">${mediaFeedHtml(mediaCache)}</div></div>` : ''}
       <div class="card" id="boardCard"><h2>This week <small>Mon–Sun</small></h2>${(c.board || [meRow]).map(friendBoardRow).join('')}
         ${friends.length ? '' : '<div class="hint">No friends yet. Share your code or link.</div>'}<div class="hint">Ranked by verified XP from logging (max 30 a day), then sessions.</div></div>
       ${privacyCard()}

@@ -20,7 +20,7 @@ await page.screenshot({ path:`${SHOTS}/91-profile.png`, fullPage:true });
 ok('Profile: Find a gym row links to MatFinder', await page.locator('#findGym[href="https://matfinderhq.vercel.app"]').count() === 1);
 await page.locator('#findGymCard').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, 200)); await page.waitForTimeout(300);
 await page.screenshot({ path:`${SHOTS}/92-profile-findgym.png` });
-ok('Profile: FORGED Shop row above Find a gym', await page.locator('#forgedShop[href="http://forgedfight.com/shop/"]').count() === 1 && await page.evaluate(() => document.querySelector('#shopCard').nextElementSibling?.id === 'findGymCard'));
+ok('Profile: FORGED Shop row above Find a gym', await page.locator('#forgedShop[href="https://forgedfight.com/shop/"]').count() === 1 && await page.evaluate(() => document.querySelector('#shopCard').nextElementSibling?.id === 'findGymCard'));
 await page.screenshot({ path:`${SHOTS}/93-profile-shop.png` });
 await page.goto(BASE + '#/badges'); await page.waitForTimeout(600);
 ok('#/badges redirects to Profile', !/Medal case/.test(await page.locator('#view').innerText()));

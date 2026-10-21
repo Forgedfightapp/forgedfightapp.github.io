@@ -1,0 +1,23 @@
+// 3.13.0: no medals/badges/looks, FORGED red accent
+import { chromium, devices } from 'playwright';
+const BASE = process.env.BASE || 'http://localhost:8787/';
+const SHOTS = '/workspace/bjj-tracker/screenshots';
+const results = [], errors = [];
+const ok = (n, c, x='') => { results.push(`${c?'PASS':'FAIL'} ${n} ${c ? '' : x}`); if (!c) process.exitCode = 1; };
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport:{width:390,height:844}, deviceScaleFactor:3, isMobile:true, hasTouch:true, userAgent:devices['iPhone 13'].userAgent });
+const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+await page.goto(BASE); await page.locator('#loadSample').tap(); await page.waitForSelector('#weekCard'); await page.waitForTimeout(1500);
+ok('no celebration sheet or medal toast', await page.locator('#celebrate, .medal3d, .confetti').count() === 0 && !/medal|badge|unlock/i.test(await page.locator('#toast').innerText().catch(()=>'')));
+const acc = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--brand').trim());
+ok('accent is red', acc.toUpperCase() === '#D7261E', acc);
+await page.evaluate(() => { const t = document.querySelector('#toast'); if (t) t.classList.remove('show','act'); window.scrollTo(0,0); }); await page.waitForTimeout(300);
+await page.screenshot({ path:`${SHOTS}/90-home.png` });
+await page.goto(BASE + '#/settings'); await page.waitForSelector('#beltCard'); await page.waitForTimeout(500);
+const prof = await page.locator('#view').innerText();
+ok('Profile: no medals/badges/looks', await page.locator('#gameProfile, #medalCase, .lookgrid').count() === 0 && !/Medal case|badges|Accent colou?r/i.test(prof));
+await page.screenshot({ path:`${SHOTS}/91-profile.png`, fullPage:true });
+await page.goto(BASE + '#/badges'); await page.waitForTimeout(600);
+ok('#/badges redirects to Profile', !/Medal case/.test(await page.locator('#view').innerText()));
+ok('no page errors', errors.length === 0, errors.join(' | '));
+console.log(results.join('\n')); await browser.close();

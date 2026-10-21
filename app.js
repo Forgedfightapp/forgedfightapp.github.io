@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.12.4';
+const APP_VERSION = '3.13.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -22,7 +22,7 @@ const ADULT_BELTS = ['white','blue','purple','brown','black'], KIDS_BELTS = ['gr
    Colour orders follow common systems; clubs and federations vary, so every colour is pickable. */
 const dan = to => b => b === 'black' ? { word:'dan', from:2, to } : null;
 const BELT_ARTS = {
-  bjj:{ label:'BJJ', cat:'grappling', disc:['bjj', ''], noun:'belt', belts:ADULT_BELTS, kids:KIDS_BELTS, sub:b => b === 'black' ? { word:'degree', from:1, to:6 } : { word:'stripe', from:1, to:4 }, tint:'#F2711C' },
+  bjj:{ label:'BJJ', cat:'grappling', disc:['bjj', ''], noun:'belt', belts:ADULT_BELTS, kids:KIDS_BELTS, sub:b => b === 'black' ? { word:'degree', from:1, to:6 } : { word:'stripe', from:1, to:4 }, tint:'#D7261E' },
   judo:{ label:'Judo', cat:'grappling', disc:['judo'], noun:'belt', belts:['white','yellow','orange','green','blue','brown','black'], kyu:{ white:'6th kyu', yellow:'5th kyu', orange:'4th kyu', green:'3rd kyu', blue:'2nd kyu', brown:'1st kyu', black:'1st dan' }, sub:dan(10), tint:'#3b82f6' },
   sambo:{ label:'Sambo', cat:'grappling', disc:['sambo'], noun:'belt', belts:['white','yellow','orange','green','blue','brown','black'], sub:dan(10), tint:'#dc2626' },
   karate:{ label:'Karate', cat:'striking', disc:['karate'], noun:'belt', belts:['white','yellow','orange','green','blue','purple','brown','black'], sub:dan(10), tint:'#e5e7eb' },
@@ -805,7 +805,7 @@ function viewBelts(want){
 
 /* ---------------- disciplines ---------------- */
 const CATS = {
-  grappling:{ label:'Grappling', sub:'BJJ, Wrestling, Judo', color:'#F2711C', dur:60, discLabel:'Sport', disc:[['bjj','BJJ'],['wrestling','Wrestling'],['judo','Judo'],['sambo','Sambo'],['subgrappling','Submission grappling']],
+  grappling:{ label:'Grappling', sub:'BJJ, Wrestling, Judo', color:'#D7261E', dur:60, discLabel:'Sport', disc:[['bjj','BJJ'],['wrestling','Wrestling'],['judo','Judo'],['sambo','Sambo'],['subgrappling','Submission grappling']],
     icon:'<path d="M8 4a2 2 0 1 0 0 .1M16 4a2 2 0 1 0 0 .1M5 21l2-7-3-3 4-4h8l4 4-3 3 2 7M9 11l3 2 3-2"/>' },
   striking:{ label:'Striking', sub:'Boxing, Muay Thai, Kickboxing', color:'#F5C542', dur:60, discLabel:'Style', disc:[['boxing','Boxing'],['muaythai','Muay Thai'],['kickboxing','Kickboxing'],['karate','Karate/Taekwondo'],['other','Other']],
     icon:'<path d="M6 10a5 5 0 0 1 5-5h3a4 4 0 0 1 4 4v4a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5zM8 18v3h8v-3M9.5 10.5h5.5"/>' },
@@ -2422,7 +2422,7 @@ function viewSettings(){
   const p = db.profile, v = $('#view'); v.innerHTML = '';
   if (ret) { const bb = h(`<div class="card goalsback" id="goalsBackCard"><span>Goals save as you type. When you're done:</span><button type="button" class="btn primary" id="goalsBack">← Back to ${esc(retName)}</button></div>`);
     bb.querySelector('#goalsBack').onclick = () => { goalsReturn = null; go('#' + ret); }; v.appendChild(bb); }
-  if (paywallOn()) v.appendChild(h(`<a class="card prorow" id="proRow" href="#/pro"><span class="protag">PRO</span><div class="grow"><b>Forged Pro</b><small>Programs, weight plans, advanced stats, extra looks · ${PRO_TRIAL_DAYS}-day free trial</small></div>›</a>`));
+  if (paywallOn()) v.appendChild(h(`<a class="card prorow" id="proRow" href="#/pro"><span class="protag">PRO</span><div class="grow"><b>Forged Pro</b><small>Programs, weight plans, advanced stats · ${PRO_TRIAL_DAYS}-day free trial</small></div>›</a>`));
   const sec = h(`<div class="card" id="sectionsCard"><h2>What I track</h2><div class="toggles"></div><div class="hint">Hidden sections disappear from the app. Your data is kept.</div></div>`);
   [...CAT_KEYS.map(k => [k, CATS[k].label, CATS[k].disc.map(d => d[1]).join(', ')]), ['weight','Weight goal','Weigh-ins & progress'], ['food','Food','Calories, protein, meals']].forEach(([k,l,sub]) => {
     const row = h(`<label class="toggle"><span><b>${l}</b><small>${esc(sub)}</small></span><input type="checkbox" role="switch" data-sec="${k}" ${enabled(k)?'checked':''}><i></i></label>`);
@@ -2517,7 +2517,7 @@ function viewSettings(){
   v.appendChild(data);
   v.appendChild(h(`<div class="card"><h2>Install on iPhone</h2><div style="color:var(--muted);font-size:14px">In Safari, tap <b style="color:var(--text)">Share</b> → <b style="color:var(--text)">Add to Home Screen</b>. It opens full-screen and works offline.</div></div>`));
   if (socialOn()) v.appendChild(h(`<div class="card" id="friendsCard"><h2>Friends</h2><a class="list-row" href="#/friends" id="friendsProfileLink" style="text-decoration:none;color:inherit"><div class="grow"><b>Friends &amp; head-to-head</b><small>${sUser() ? `Signed in as ${esc(sUser().email)}` : 'Optional account. Only summaries are shared.'}</small></div>›</a></div>`));
-  v.appendChild(gameProfileCard());   // rank, badges & looks: last section on Profile
+  // 3.13.0: medals, badges and looks removed from Profile (data kept, not shown)
   v.appendChild(h(`<div class="foot">Forged · v${APP_VERSION} · ${db.sessions.length} sessions · ${db.nutrition.entries.length} food entries stored</div>`));
 
   $('#exp').onclick = exportData;
@@ -2804,9 +2804,10 @@ function checkChallenge(){
 }
 function celebrate(){
   const el = $('#challenge'); if (el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  return;   // 3.13.0: no popups or confetti
   toast('Monthly goal hit! 🎉');
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const box = h('<div class="confetti" aria-hidden="true"></div>'), cols = ['#F2711C','#F5C542','#FFFFFF','#B48CF2','#6FD3A8','#E5484D'];
+  const box = h('<div class="confetti" aria-hidden="true"></div>'), cols = ['#D7261E','#F5C542','#FFFFFF','#B48CF2','#6FD3A8','#E5484D'];
   for (let i = 0; i < 48; i++) box.appendChild(h(`<i style="left:${Math.random()*100}%;background:${cols[i % cols.length]};animation-delay:${(Math.random()*.35).toFixed(2)}s;animation-duration:${(1.3 + Math.random()*.9).toFixed(2)}s;transform:rotate(${Math.round(Math.random()*360)}deg)"></i>`));
   document.body.appendChild(box); setTimeout(() => box.remove(), 2600);
 }
@@ -3376,7 +3377,7 @@ function showGoalHits(hits){
   el.querySelector('#shareGoal').onclick = () => { closeSheet(); whenSettled(() => shareSheet('goal', hits[0])); };
   el.querySelector('#nextTarget').onclick = () => { const g = hits[0]; closeSheet(); whenSettled(() => strengthSheet(null, { kind:g.kind, key:g.key, name:g.name, target:nextTarget(g), date:'' })); };
   openSheet(el);
-  if (!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) { const box = h('<div class="confetti" aria-hidden="true"></div>'), cols = ['#F2711C','#F5C542','#FFFFFF','#B48CF2','#6FD3A8'];
+  if (!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) { const box = h('<div class="confetti" aria-hidden="true"></div>'), cols = ['#D7261E','#F5C542','#FFFFFF','#B48CF2','#6FD3A8'];
     for (let i = 0; i < 40; i++) box.appendChild(h(`<i style="left:${Math.random()*100}%;background:${cols[i % cols.length]};animation-delay:${(Math.random()*.35).toFixed(2)}s;animation-duration:${(1.3 + Math.random()*.9).toFixed(2)}s"></i>`));
     document.body.appendChild(box); setTimeout(() => box.remove(), 2600); }
 }
@@ -3772,7 +3773,7 @@ function badgeState(){
 /* ---------- unlockable looks ---------- */
 const LOOKS = {
   accent:[
-    { id:'flame', name:'Flame', col:'#F2711C', how:'Default' },
+    { id:'flame', name:'Flame', col:'#D7261E', how:'Default' },
     { id:'ember', name:'Ember', col:'#E5484D', how:'Reach Striker (level 5)', unlock:g => g.level >= 5 },
     { id:'steel', name:'Steel', col:'#8FB0D9', how:'Reach Journeyman (level 10)', unlock:g => g.level >= 10 },
     { id:'gold', name:'Molten gold', col:'#F5C542', how:'Reach Smith (level 15)', unlock:g => g.level >= 15 },
@@ -3797,11 +3798,15 @@ function lookUnlocked(kind, id){ const it = LOOKS[kind].find(x => x.id === id); 
   const b = Object.fromEntries(badgeState().map(x => [x.id, x.earned])); return !!it.unlock(gameState(), b); }
 function unlockedLooks(){ const gs = gameState(), b = Object.fromEntries(badgeState().map(x => [x.id, x.earned])); return ['accent','frame','flair'].flatMap(k => LOOKS[k].filter(x => x.unlock && x.unlock(gs, b)).map(x => `${k}:${x.id}`)); }
 function currentLook(){ const l = game().look; return { accent: lookUnlocked('accent', l.accent) ? l.accent : 'flame', frame: lookUnlocked('frame', l.frame) ? l.frame : 'classic', flair: lookUnlocked('flair', l.flair) ? l.flair : 'none' }; }
-function applyLook(){ try { const a = currentLook().accent; if (a === 'flame') delete document.documentElement.dataset.look; else document.documentElement.dataset.look = a; } catch(e) {} }
+function applyLook(){ try { delete document.documentElement.dataset.look; return; /* 3.13.0: one look, FORGED red */ const a = currentLook().accent; if (a === 'flame') delete document.documentElement.dataset.look; else document.documentElement.dataset.look = a; } catch(e) {} }
 const flairSym = () => (LOOKS.flair.find(x => x.id === currentLook().flair) || {}).sym || '';
 
 /* ---------- celebrations: run after renders; first run after upgrade/sample load records silently ---------- */
 function gameCheck(silent){
+  // 3.13.0: no medals, badges, unlocks or celebration popups. Only past Perfect Week results are still frozen (daily marks use them).
+  try { const raw = localStorage.getItem(STORE_KEY); if (!silent && lastRaw != null && raw != null && raw !== lastRaw) return; } catch(e) {}
+  { const before = JSON.stringify(db.game || null); game(); freezeWeeks(); if (JSON.stringify(db.game) !== before) saveDb(); }
+  return;
   // storage changed outside this tab's view of it (another tab, a restore): never overwrite it from a background check
   try { const raw = localStorage.getItem(STORE_KEY); if (!silent && lastRaw != null && raw != null && raw !== lastRaw) return; } catch(e) {}
   const before = JSON.stringify(db.game || null);
@@ -3862,12 +3867,12 @@ function actionToast(msg, label, fn){
 }
 function confettiBurst(){
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const box = h('<div class="confetti" aria-hidden="true"></div>'), cols = ['#F2711C','#F5C542','#FFFFFF','#E5484D','#B48CF2'];
+  const box = h('<div class="confetti" aria-hidden="true"></div>'), cols = ['#D7261E','#F5C542','#FFFFFF','#E5484D','#B48CF2'];
   for (let i = 0; i < 44; i++) box.appendChild(h(`<i style="left:${Math.random()*100}%;background:${cols[i % cols.length]};animation-delay:${(Math.random()*.35).toFixed(2)}s;animation-duration:${(1.3 + Math.random()*.9).toFixed(2)}s"></i>`));
   document.body.appendChild(box); setTimeout(() => box.remove(), 2600);
 }
 function rankEmblem(ri, size = 96){
-  const col = ['#9AA3AE','#F2711C','#E5484D','#8FB0D9','#F5C542','#6FD3A8','#B48CF2','#FFFFFF'][ri] || '#F2711C';
+  const col = ['#9AA3AE','#D7261E','#E5484D','#8FB0D9','#F5C542','#6FD3A8','#B48CF2','#FFFFFF'][ri] || '#D7261E';
   return `<svg class="emblem" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true"><path d="M50 4 90 22v28c0 24-17 40-40 46C27 90 10 74 10 50V22z" fill="#141416" stroke="${col}" stroke-width="5"/><path d="M30 56h40l-6 8H36zM34 46h32v8H34zM46 64h8v12h-8z" fill="${col}"/><path d="M50 18c6 8 10 12 4 22 8-3 10-9 8-14 6 6 6 16-2 20H40c-8-5-6-14 2-20-1 5 1 9 5 11-3-8 1-13 3-19z" fill="${col}" opacity=".9"/><text x="50" y="94" text-anchor="middle" font-size="0">${ri}</text></svg>`;
 }
 function rankUpSheet(gs){
@@ -3990,7 +3995,7 @@ function freezeWeeks(){ const g = game(), cur = gWeekKey(today()); g.pw = g.pw |
 
 /* Monthly medals: one per month, rotating metric, goal personalised from your previous 3 months (~10% more), frozen once the month starts.
    Limited medals: short fighter-themed windows. Both run through evalChallenge (no XP). */
-const MEDAL_COLS = ['#8FB0D9','#E5484D','#6FD3A8','#F5C542','#F28FB0','#F2711C','#E5484D','#4FC3F7','#C98A3A','#B48CF2','#C98A3A','#8FB0D9'];
+const MEDAL_COLS = ['#8FB0D9','#E5484D','#6FD3A8','#F5C542','#F28FB0','#D7261E','#E5484D','#4FC3F7','#C98A3A','#B48CF2','#C98A3A','#8FB0D9'];
 const MEDAL_ICONS = ['🧊','🥊','🌱','⚡','🌸','☀️','🔥','🌊','🍂','🌙','🍁','❄️'];
 const matMin = c => sumBy(c.s.filter(s => ['grappling','striking','mma'].includes(s.category)), sessMin);
 const MEDAL_KINDS = [
@@ -4004,7 +4009,7 @@ const MEDAL_KINDS = [
 const LTD = [
   { id:'firstroll', name:'First Roll of the Year', icon:'🎆', col:'#F5C542', from:'01-01', to:'01-07', kind:'sess', fixed:3 },
   { id:'springcamp', name:'Spring Camp', icon:'🌱', col:'#6FD3A8', from:'03-20', to:'04-02', kind:'days' },
-  { id:'summergrind', name:'Summer Grind', icon:'☀️', col:'#F2711C', from:'07-01', to:'07-14', kind:'mins' },
+  { id:'summergrind', name:'Summer Grind', icon:'☀️', col:'#D7261E', from:'07-01', to:'07-14', kind:'mins' },
   { id:'frightrounds', name:'Fright Night Rounds', icon:'🎃', col:'#B48CF2', from:'10-25', to:'10-31', kind:'sess' },
   { id:'yearend', name:'Year-End Grind', icon:'⚒️', col:'#E5484D', from:'12-15', to:'12-31', kind:'days' },
 ];
@@ -4046,7 +4051,7 @@ function upcomingLtd(){ const t = today(), y = Number(t.slice(0, 4)); return LTD
 /* one list for the medal case and the celebration queue */
 function medalList(){
   const bs = badgeState(), st = pwStats(), dates = (db.game && db.game.medalDates) || {};
-  const list = bs.map(b => ({ id:'b-' + b.id, kind:'badge', name:b.name, icon:b.icon, col:'#F2711C', earned:b.earned, sub:b.how }));
+  const list = bs.map(b => ({ id:'b-' + b.id, kind:'badge', name:b.name, icon:b.icon, col:'#D7261E', earned:b.earned, sub:b.how }));
   list.push({ id:'pw', kind:'pw', name:'Perfect Week', icon:'📅', col:'#6FD3A8', earned:st.count > 0, count:st.count, sub:`${st.count} perfect ${st.count === 1 ? 'week' : 'weeks'}` });
   [2, 4, 8, 12, 26, 52].forEach(n => list.push({ id:'pws' + n, kind:'pwstreak', name:`${n} perfect weeks in a row`, icon:'⛓️', col:'#F5C542', earned:st.best >= n, sub:`Best streak: ${st.best} weeks` }));
   timedMedals().filter(m => !m.active || m.earned).forEach(m => list.push({ ...m, sub:m.earned ? m.how : '' }));
@@ -4182,7 +4187,7 @@ function viewChallenges(){
   const cur = currentChallenges(), gs = gameState(), v = $('#view');
   const sec = (p, title) => { const l = cur.filter(c => c.p === p); return l.length ? `<div class="card" id="ch-${p}"><h2>${title} <small data-left>${timeLeft(l[0].to)}</small></h2>${p === 'd' ? '<div class="hint chintro">Quick no-equipment workouts, 5–15 minutes, anywhere. Pick your level.</div>' : ''}${l.map(chRow).join('')}</div>` : ''; };
   const fr = game().friend.filter(x => x.to >= iso(addDays(new Date(), -7)));
-  v.innerHTML = `${sec('d','Daily')}${sec('w','Weekly')}${sec('m','Monthly')}${medalsCard()}
+  v.innerHTML = `${sec('d','Daily')}${sec('w','Weekly')}${sec('m','Monthly')}
     <div class="card" id="friendCard"><h2>Friend challenges</h2>${fr.length ? fr.map(friendRow).join('') : '<div class="hint" style="margin:-4px 0 8px">Send a challenge link. Your friend joins on their own phone and tracks it with their own workouts (self-reported, no accounts).</div>'}
       <button type="button" class="btn block" id="challengeFriend" style="margin-top:8px">Challenge a friend</button>${socialOn() ? '<a class="list-row" href="#/friends" id="friendsLink" style="text-decoration:none;color:inherit;margin-top:6px"><div class="grow"><b>Friends &amp; head-to-head</b><small>Live standings with friends (optional account)</small></div>›</a>' : ''}</div>
     <div class="hint" style="padding:0 6px 20px">New daily challenges at midnight, weekly on Monday, monthly on the 1st. Progress comes from what you log. Workouts added more than 7 days late don't count toward challenges. ${gs.done.length} completed so far.</div>`;
@@ -4298,7 +4303,7 @@ const sUser = () => socialOn() ? Cloud().user : null;
 const S_ROUTES = ['friends','signin','invite','h2h'];
 const S_METRIC = { sessions:{ label:'Sessions', unit:'sessions' }, pushups:{ label:'Push-ups', unit:'push-ups' }, mat_minutes:{ label:'Mat hours', unit:'h' }, daily_streak:{ label:'Daily challenge streak', unit:'days in a row' }, xp:{ label:'Workout XP', unit:'XP' } };
 const S_SYNC = ['sessions','xp','pushups','mat_minutes','daily_done'];
-const AV_COLORS = { flame:'#F2711C', ember:'#E5484D', gold:'#F5C542', steel:'#8FB0D9', jade:'#6FD3A8', violet:'#B48CF2', sky:'#38BDF8', rose:'#F472B6' };
+const AV_COLORS = { flame:'#D7261E', ember:'#E5484D', gold:'#F5C542', steel:'#8FB0D9', jade:'#6FD3A8', violet:'#B48CF2', sky:'#38BDF8', rose:'#F472B6' };
 const INVITE_RE = /^[A-HJ-NP-Z2-9]{8}$/;
 const sLS = {
   get(k, d){ try { const v = localStorage.getItem('forged.social.' + k); return v == null ? d : JSON.parse(v); } catch(e) { return d; } },
@@ -4748,25 +4753,25 @@ function shareContent(kind, x, showNums){
     if (c === 'weights') { const v = volumeOf(x); if (v) st.push([hide(Math.round(v).toLocaleString()), `${u} volume`]); }
     else if (x.rounds) st.push([hide(String(x.rounds)), 'rounds']);
     if (c === 'cardio' && x.cardio?.dist) st.push([hide(String(x.cardio.dist)), distU()]);
-    return { eyebrow:'Workout logged', title:sessTitle(x), sub:fmtShort(x.date), stats:st.slice(0, 3), color:CATS[c]?.color || '#F2711C', foot:x.feel ? `Felt: ${(FEELS[x.feel-1]||[])[2] || ''}` : '' }; }
+    return { eyebrow:'Workout logged', title:sessTitle(x), sub:fmtShort(x.date), stats:st.slice(0, 3), color:CATS[c]?.color || '#D7261E', foot:x.feel ? `Felt: ${(FEELS[x.feel-1]||[])[2] || ''}` : '' }; }
   if (kind === 'goal') return { eyebrow:'Goal hit · New PR', title:sgLabel(x), sub:x.achieved ? fmtShort(x.achieved.date) : fmtShort(today()), stats:[[hide(String(x.achieved ? x.achieved.value : sgTarget(x))), sgUnit(x)], [hide(String(sgTarget(x))), 'target']], color:'#F5C542' };
-  if (kind === 'rank') return { eyebrow:`Level ${x.level}`, title:x.rank, sub:'Rank on Forged', stats:[[hide(x.xp.toLocaleString()), 'XP'], [String(badgeState().filter(b => b.earned).length), 'badges']], color:'#F2711C', emblem:x.rankIdx };
+  if (kind === 'rank') return { eyebrow:`Level ${x.level}`, title:x.rank, sub:'Rank on Forged', stats:[[hide(x.xp.toLocaleString()), 'XP'], [String(badgeState().filter(b => b.earned).length), 'badges']], color:'#D7261E', emblem:x.rankIdx };
   if (kind === 'challenge') return { eyebrow:`${{ d:'Daily', w:'Weekly', m:'Monthly' }[x.p]} challenge complete`, title:x.title, sub:fmtShort(today()), stats:[[`+${x.xp}`, 'XP'], [TIER[x.tier], 'tier']], color:'#6FD3A8' };
-  if (kind === 'streak') return { eyebrow:'Streak', title:`${x.weeks}-week streak`, sub:'Training every week', stats:[[String(x.weeks), 'weeks'], [hide(String(x.sessions)), 'sessions']], color:'#F2711C' };
-  if (kind === 'ring') return { eyebrow:'Monthly goal hit', title:x.label, sub:'Ring closed', stats:[[hide(`${x.n}`), 'workouts'], [hide(`${x.target}`), 'goal']], color:'#F2711C', ring:true };
-  if (kind === 'medal') return { eyebrow:x.eyebrow || 'Medal earned', title:x.name, sub:x.date ? fmtShort(x.date) : fmtShort(today()), stats:x.count > 1 ? [[String(x.count), 'times']] : [], color:x.col || '#F2711C', medal:x, foot:x.kind === 'badge' ? '' : (x.how || x.sub || '') };
+  if (kind === 'streak') return { eyebrow:'Streak', title:`${x.weeks}-week streak`, sub:'Training every week', stats:[[String(x.weeks), 'weeks'], [hide(String(x.sessions)), 'sessions']], color:'#D7261E' };
+  if (kind === 'ring') return { eyebrow:'Monthly goal hit', title:x.label, sub:'Ring closed', stats:[[hide(`${x.n}`), 'workouts'], [hide(`${x.target}`), 'goal']], color:'#D7261E', ring:true };
+  if (kind === 'medal') return { eyebrow:x.eyebrow || 'Medal earned', title:x.name, sub:x.date ? fmtShort(x.date) : fmtShort(today()), stats:x.count > 1 ? [[String(x.count), 'times']] : [], color:x.col || '#D7261E', medal:x, foot:x.kind === 'badge' ? '' : (x.how || x.sub || '') };
   if (kind === 'recap') return { eyebrow:'Week recap', title:`Week of ${MONTHS[parse(x.wk).getMonth()]} ${parse(x.wk).getDate()}`, sub:x.plan.perfect ? 'Perfect week ✓' : `${Math.min(x.plan.trained, x.plan.planned)} of ${x.plan.planned} planned days`, stats:[[hide(String(x.sessions)), 'sessions'], [hide(String(hrs(x.min))), 'hours'], [`${x.tMet}/${x.planned}`, 'train days']], color:'#6FD3A8' };
-  return { eyebrow:'Forged', title:'For the fight', sub:'', stats:[], color:'#F2711C' };
+  return { eyebrow:'Forged', title:'For the fight', sub:'', stats:[], color:'#D7261E' };
 }
 async function renderShareCard(kind, x, fmt = 'square', showNums = true){
   const [W, H] = SHARE_FMT[fmt] || SHARE_FMT.square, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const g = cv.getContext('2d'), c = shareContent(kind, x, showNums), frame = currentLook().frame, accent = (LOOKS.accent.find(a => a.id === currentLook().accent) || LOOKS.accent[0]).col;
   try { await Promise.all([document.fonts.load('800 120px "Barlow Condensed"'), document.fonts.load('600 40px "Barlow"')]); } catch(e) {}
   g.fillStyle = '#0B0B0C'; g.fillRect(0, 0, W, H);
-  const glow = g.createRadialGradient(W * .5, H * 1.05, 40, W * .5, H * 1.05, H * .9); glow.addColorStop(0, 'rgba(242,113,28,.55)'); glow.addColorStop(.45, 'rgba(242,113,28,.12)'); glow.addColorStop(1, 'rgba(242,113,28,0)'); g.fillStyle = glow; g.fillRect(0, 0, W, H);
+  const glow = g.createRadialGradient(W * .5, H * 1.05, 40, W * .5, H * 1.05, H * .9); glow.addColorStop(0, 'rgba(215,38,30,.55)'); glow.addColorStop(.45, 'rgba(215,38,30,.12)'); glow.addColorStop(1, 'rgba(215,38,30,0)'); g.fillStyle = glow; g.fillRect(0, 0, W, H);
   // frame
   const fcol = { classic:accent, ember:'#E5484D', gold:'#F5C542', damascus:'#B48CF2' }[frame] || accent;
-  g.lineWidth = frame === 'classic' ? 6 : 14; g.strokeStyle = fcol; if (frame === 'ember') { g.shadowColor = '#F2711C'; g.shadowBlur = 40; }
+  g.lineWidth = frame === 'classic' ? 6 : 14; g.strokeStyle = fcol; if (frame === 'ember') { g.shadowColor = '#D7261E'; g.shadowBlur = 40; }
   g.strokeRect(36, 36, W - 72, H - 72); g.shadowBlur = 0;
   if (frame === 'damascus') { g.globalAlpha = .12; g.strokeStyle = '#B48CF2'; g.lineWidth = 3; for (let i = -H; i < W; i += 46) { g.beginPath(); g.moveTo(i, 0); g.bezierCurveTo(i + 120, H * .3, i - 120, H * .6, i + 60, H); g.stroke(); } g.globalAlpha = 1; }
   // category accent bar
@@ -4872,7 +4877,7 @@ function route(){
     case 'comps': viewComps(); break;
     case 'challenges': viewChallenges(); break;
     case 'rank': location.replace('#/settings'); break;
-    case 'badges': viewBadges(); break;
+    case 'badges': go('#/settings'); return;
     case 'join': viewJoin(b); break;
     case 'friends': viewFriends(); break;
     case 'h2h': viewH2h(b || ''); break;

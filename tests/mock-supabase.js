@@ -10,7 +10,7 @@
   const addD = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return iso(d); };
   const today = () => iso(new Date());
   const weekStart = () => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return iso(d); };
-  const blank = () => ({ users:{}, profiles:{}, invites:{}, friends:[], challenges:{}, parts:[], progress:{}, session:null, otp:{}, n:0 });
+  const blank = () => ({ users:{}, profiles:{}, invites:{}, friends:[], challenges:{}, parts:[], progress:{}, session:null, otp:{}, n:0, media:[], objects:{} });
   let S; try { S = JSON.parse(localStorage.getItem(K)) || blank(); } catch(e) { S = blank(); }
   const save = () => { try { localStorage.setItem(K, JSON.stringify(S)); } catch(e) {} };
   const listeners = [];
@@ -24,7 +24,10 @@
     progress(uid, metric, day, value){ S.progress[`${uid}|${metric}|${day}`] = value; save(); },
     challengeFrom(uid, metric, friendIds, days = 7){ const id = 'c' + (++S.n); S.challenges[id] = { id, kind:friendIds.length > 1 ? 'group' : 'h2h', metric, title:'', starts_on:today(), ends_on:addD(today(), days - 1), created_by:uid };
       S.parts.push({ c:id, u:uid, status:'joined' }, ...friendIds.map(f => ({ c:id, u:f, status:'invited' }))); save(); return id; },
-    me(){ return S.session && S.session.user.id; }
+    me(){ return S.session && S.session.user.id; },
+    mediaOff:false,   // true = migration 004 not run yet
+    postAs(uid, kind, caption, ageDays = 0){ const id = 'm' + (++S.n), path = `${uid}/${id}.${kind === 'photo' ? 'jpg' : 'mp4'}`; S.objects[path] = { size:1000, type:kind === 'photo' ? 'image/jpeg' : 'video/mp4' };
+      S.media.push({ id, owner:uid, kind, path, caption:caption || '', created_at:new Date(Date.now() - ageDays * 864e5).toISOString() }); save(); return id; }
   };
   const isFriend = (a, b) => S.friends.some(([x, y]) => x === a && y === b);
   const uid = () => S.session && S.session.user.id;
@@ -34,7 +37,13 @@
   const prof = id => S.profiles[id];
   const ensure = id => { if (!S.profiles[id]) S.profiles[id] = { id, display_name:'Fighter', avatar_initial:'F', avatar_color:'flame', rank_idx:0, level:1, xp:0, belt:'' }; };
   const active = (c, u) => S.parts.find(p => p.c === c && p.u === u && (p.status === 'invited' || p.status === 'joined'));
+  const PIX = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#2a2a2e"/><circle cx="400" cy="300" r="120" fill="#F2711C"/></svg>');
+  const canSee = path => { const o = path.split('/')[0]; return o === uid() || isFriend(uid(), o); };
+  const mediaRow = m => { const p = prof(m.owner) || {}; return { ...m, display_name:p.display_name || 'Fighter', avatar_initial:p.avatar_initial || 'F', avatar_color:p.avatar_color || 'flame', is_me:m.owner === uid() }; };
   const RPC = {
+    list_media(a){ if (M.mediaOff) return err('Could not find the function public.list_media'); const cut = Date.now() - 30 * 864e5;
+      return { data:S.media.filter(m => canSee(m.path) && Date.parse(m.created_at) > cut).sort((x, y) => y.created_at.localeCompare(x.created_at)).slice(0, a.p_limit || 30).map(mediaRow), error:null }; },
+    my_expired_media(){ const cut = Date.now() - 30 * 864e5; return { data:S.media.filter(m => m.owner === uid() && Date.parse(m.created_at) <= cut).map(m => ({ id:m.id, path:m.path })), error:null }; },
     upsert_profile(a){ const u = uid(); let nm = String(a.p_display_name || '').replace(/[\u0000-\u001f<>]/g, '').trim(); if (!nm) nm = 'Fighter';
       if (nm.length > 30) return err('Name is too long (max 30)'); if (!(a.p_rank_idx >= 0 && a.p_rank_idx <= 7)) return err('Invalid rank');
       if (!(a.p_level >= 1 && a.p_level <= 200)) return err('Invalid level'); if (!(a.p_xp >= 0 && a.p_xp <= 5e6)) return err('Invalid XP');
@@ -117,7 +126,21 @@
       if (name !== 'get_invite' && !uid()) return err('Not signed in');
       const r = RPC[name](args || {}); save(); return async(r);
     },
+    storage:{ from(bucket){ return {
+      async upload(path, blob, o){ M.calls.push({ fn:'upload', bucket, path, size:blob.size, type:o && o.contentType }); if (netDown()) return err('Failed to fetch'); if (M.mediaOff) return err('Bucket not found');
+        if (!uid() || path.split('/')[0] !== uid()) return err('new row violates row-level security policy'); if (blob.size > 25 * 1048576) return err('The object exceeded the maximum allowed size');
+        S.objects[path] = { size:blob.size, type:o && o.contentType }; save(); return { data:{ path }, error:null }; },
+      async createSignedUrls(paths){ return { data:paths.filter(p => S.objects[p] && canSee(p)).map(p => ({ path:p, signedUrl:PIX + '#' + p })), error:null }; },
+      async remove(paths){ M.calls.push({ fn:'remove', paths }); paths.forEach(p => { if (p.split('/')[0] === uid()) delete S.objects[p]; }); save(); return { data:[], error:null }; } }; } },
     from(table){
+      if (table === 'media_posts') { let op = null, row = null, eqId = null;
+        const q = { insert(r){ op = 'insert'; row = r; return q; }, delete(){ op = 'delete'; return q; }, eq(k, v){ eqId = v; return q; }, select(){ return q; }, single(){ return q; },
+          then(res, rej){ M.calls.push({ fn:'media_posts.' + op, row, eqId }); let out;
+            if (M.mediaOff) out = err('relation "public.media_posts" does not exist'); else if (!uid()) out = err('permission denied');
+            else if (op === 'insert') { if (row.path.split('/')[0] !== uid()) out = err('row-level security'); else { const m = { id:'m' + (++S.n), owner:uid(), kind:row.kind, path:row.path, caption:row.caption || '', created_at:new Date().toISOString() }; S.media.push(m); save(); out = { data:m, error:null }; } }
+            else { S.media = S.media.filter(m => !(m.id === eqId && m.owner === uid())); save(); out = { data:null, error:null }; }
+            return async(out).then(res, rej); } };
+        return q; }
       const q = { select(){ return q; }, order(){ return q; },
         then(res, rej){ M.calls.push({ fn:'from', table }); const out = netDown() ? err('TypeError: Failed to fetch') : !uid() ? err('permission denied') : table === 'friends_leaderboard' ? { data:leaderboard(), error:null } : err('not mocked');
           return async(out).then(res, rej); } };

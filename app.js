@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.11.0';
+const APP_VERSION = '3.12.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -4422,6 +4422,7 @@ const privacyCard = () => `<div class="card privacy" id="privacyCard"><h2>What f
 
 /* ----- Friends screen ----- */
 async function viewFriends(){
+  mediaLoaded = false;
   if (!socialOn()) { replacing = true; location.replace('#/'); return; }
   setHeader('Friends');
   const v = $('#view');
@@ -4446,6 +4447,7 @@ async function viewFriends(){
         <div class="addrow"><input class="input" id="addCode" placeholder="Friend's code" autocapitalize="characters" autocomplete="off" maxlength="8"><button type="button" class="btn" id="addFriend">Add</button></div></div>
       <div class="card" id="h2hCard"><h2>Head-to-head</h2>${chs.length ? chs.map(ch => h2hRow(ch, (c.boards || {})[ch.id] || [])).join('') : `<div class="hint" style="margin:-4px 0 10px">${friends.length ? 'Pick a friend and a metric. Progress comes from what you both log.' : 'Add a friend first, then challenge them.'}</div>`}
         <button type="button" class="btn block" id="newH2h" ${friends.length ? '' : 'disabled'}>Challenge a friend</button></div>
+      ${mediaOn() ? `<div class="card" id="mediaCard"><h2>Clips &amp; photos <small>30 days</small></h2><button type="button" class="btn primary block" id="shareMedia">📷 Share clip or photo</button><div id="mediaFeed" style="margin-top:12px">${mediaFeedHtml(mediaCache)}</div></div>` : ''}
       <div class="card" id="boardCard"><h2>This week <small>Mon–Sun</small></h2>${(c.board || [meRow]).map(friendBoardRow).join('')}
         ${friends.length ? '' : '<div class="hint">No friends yet. Share your code or link.</div>'}<div class="hint">Ranked by verified XP from logging (max 30 a day), then sessions.</div></div>
       ${privacyCard()}
@@ -4459,6 +4461,7 @@ async function viewFriends(){
     $('#addFriend').onclick = () => { const code = $('#addCode').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (!INVITE_RE.test(code)) { toast('Codes are 8 letters and numbers'); return; } socialAccept(code).then(f => { if (f) refresh(); }); };
     $('#newH2h').onclick = () => h2hSheet(c);
+    if (mediaOn()) { $('#shareMedia').onclick = mediaPick; wireMediaFeed(); if (!mediaLoaded) { mediaLoaded = true; mediaRefresh(); } }
     $('#syncNow').onclick = async () => { await socialSync(true); refresh(); };
     $('#signOut').onclick = async () => { await Cloud().signOut(); socialClearLocal(); toast('Signed out'); route(); };
     $('#delAcct').onclick = async () => { if (!(await confirmSheet('Delete your account?', 'This removes your profile, friends and challenge results from the server for good. Your workouts on this phone are not touched.', 'Delete account'))) return;
@@ -4472,6 +4475,66 @@ async function viewFriends(){
   render(sCache());
   refresh();
   socialPoll(refresh);
+}
+/* ---------- 3.12.0: share a clip or photo with friends (private bucket, friends-only, 30 days) ---------- */
+const mediaOn = () => { try { return socialOn() && !!(CFG.media || localStorage.getItem('forged.media.preview') === '1'); } catch(e) { return false; } };
+const MEDIA_MAX_MB = 25, MEDIA_MAX_S = 60, MEDIA_PX = 1600;
+let mediaCache = null, mediaLoaded = false;
+function mediaFeedHtml(list){
+  if (!list) return '<div class="hint" id="mediaLoading">Loading…</div>';
+  if (!list.length) return '<div class="hint" id="mediaEmpty">Nothing yet. Film a roll or snap a photo and share it with your friends.</div>';
+  return list.map(p => `<div class="mpost" data-mid="${esc(p.id)}"><div class="frow">${sAvatar(p)}<div class="grow"><b>${esc(p.display_name)}${p.is_me ? ' <span class="pill">You</span>' : ''}</b><small>${sAgo(Date.parse(p.created_at))}</small></div>${p.is_me ? `<button type="button" class="btn sm ghost" data-mdel="${esc(p.id)}" aria-label="Delete post">Delete</button>` : ''}</div>
+    <div class="mmedia">${!p.url ? '<div class="hint">Loading…</div>' : p.kind === 'video' ? `<video src="${esc(p.url)}" controls playsinline preload="metadata"></video>` : `<img src="${esc(p.url)}" alt="${esc(p.caption || 'Photo')}" loading="lazy">`}</div>
+    ${p.caption ? `<div class="mcap">${esc(p.caption)}</div>` : ''}</div>`).join('');
+}
+function wireMediaFeed(){
+  document.querySelectorAll('[data-mdel]').forEach(b => b.onclick = async () => { const p = (mediaCache || []).find(x => x.id === b.dataset.mdel); if (!p) return;
+    if (!(await confirmSheet('Delete this post?', 'It is removed for you and your friends.', 'Delete'))) return;
+    try { await Cloud().mediaDelete(p); mediaCache = mediaCache.filter(x => x.id !== p.id); toast('Post deleted'); mediaPaint(); } catch(e) { toast(e.message); } });
+}
+function mediaPaint(){ const f = $('#mediaFeed'); if (f) { f.innerHTML = mediaFeedHtml(mediaCache); wireMediaFeed(); } }
+async function mediaRefresh(){
+  try { const list = await Cloud().mediaList(30); const urls = await Cloud().mediaUrls(list.map(p => p.path)).catch(() => ({}));
+    mediaCache = list.map(p => ({ ...p, url:urls[p.path] || '' })); mediaPaint();
+    Cloud().mediaCleanup().catch(() => {}); }
+  catch(e) { if (!mediaCache) mediaCache = []; mediaPaint(); const f = $('#mediaFeed'); if (f && !e.offline) f.insertAdjacentHTML('afterbegin', `<div class="hint" id="mediaErr">Couldn't load posts. ${esc(e.message)}</div>`); }
+}
+function mediaPick(){
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,video/*'; inp.id = 'mediaInput'; inp.style.display = 'none';
+  inp.onchange = () => { const f = inp.files && inp.files[0]; inp.remove(); if (f) mediaPrepare(f).then(r => r && mediaSheet(r)).catch(e => toast(e.message || 'Could not open that file')); };
+  document.body.appendChild(inp); inp.click();
+}
+const videoSecs = f => new Promise(res => { const v = document.createElement('video'), u = URL.createObjectURL(f); let done = false; const fin = x => { if (done) return; done = true; URL.revokeObjectURL(u); res(x); };
+  v.preload = 'metadata'; v.muted = true; v.onloadedmetadata = () => fin(isFinite(v.duration) ? v.duration : 0); v.onerror = () => fin(0); setTimeout(() => fin(0), 5000); v.src = u; });
+async function shrinkImage(f){
+  const url = URL.createObjectURL(f);
+  try { const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Could not read that photo')); i.src = url; });
+    const k = Math.min(1, MEDIA_PX / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.round(img.naturalWidth * k), hh = Math.round(img.naturalHeight * k);
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = hh; cv.getContext('2d').drawImage(img, 0, 0, w, hh);
+    const b = await new Promise(res => cv.toBlob(res, 'image/jpeg', 0.82)); if (!b) throw new Error('Could not read that photo');
+    return { blob:b, w, h:hh }; } finally { URL.revokeObjectURL(url); }
+}
+async function mediaPrepare(f){
+  const isVid = /^video\//.test(f.type) || /\.(mov|mp4|m4v|webm)$/i.test(f.name || '');
+  if (isVid) {
+    if (f.size > MEDIA_MAX_MB * 1048576) { toast(`That clip is ${Math.round(f.size / 1048576)} MB. Keep it under ${MEDIA_MAX_MB} MB (about ${MEDIA_MAX_S} seconds). Trim it in Photos first.`); return null; }
+    const d = await videoSecs(f); if (d > MEDIA_MAX_S + 1) { toast(`Clips can be up to ${MEDIA_MAX_S} seconds. This one is ${Math.round(d)} s. Trim it in Photos first.`); return null; }
+    return { kind:'video', blob:f, secs:d };
+  }
+  if (!/^image\//.test(f.type) && !/\.(jpe?g|png|heic|webp)$/i.test(f.name || '')) { toast('Pick a photo or a video'); return null; }
+  return { kind:'photo', ...(await shrinkImage(f)) };
+}
+function mediaSheet(m){
+  const url = URL.createObjectURL(m.blob);
+  const el = h(`<div id="mediaSheet"><h3>Share with friends</h3>
+    <div class="mmedia">${m.kind === 'video' ? `<video src="${url}" controls playsinline muted></video>` : `<img src="${url}" alt="Preview">`}</div>
+    <input class="input" id="mediaCap" maxlength="200" placeholder="Add a caption (optional)" style="margin-top:12px">
+    <div class="hint" style="margin-top:6px">Only your friends can see it. Gone after 30 days.</div>
+    <button type="button" class="btn primary block" id="mediaPost" style="margin-top:12px">Post</button></div>`);
+  el.querySelector('#mediaPost').onclick = async () => { const b = el.querySelector('#mediaPost'); b.disabled = true; b.textContent = 'Posting…';
+    try { await Cloud().mediaPost(m.blob, { kind:m.kind, caption:el.querySelector('#mediaCap').value.trim().slice(0, 200) }); closeSheet(); toast('Shared with friends'); mediaRefresh(); }
+    catch(e) { b.disabled = false; b.textContent = 'Post'; toast(/bucket|relation|media_posts|list_media|not found/i.test(e.message) ? 'Sharing isn\'t switched on yet.' : e.message); } };
+  openSheet(el, () => URL.revokeObjectURL(url));
 }
 function friendBoardRow(x){
   return `<div class="frow${x.is_me ? ' me' : ''}" data-uid="${esc(x.user_id || '')}"><span class="place">${x.place || ''}</span>${sAvatar(x)}<div class="grow"><b>${esc(x.display_name)}${x.is_me ? ' <span class="pill">You</span>' : ''}</b></div>
@@ -4836,7 +4899,7 @@ function route(){
   if (a === 'settings' && b === 'schedule') { const g = $('#scheduleCard'); if (g) g.scrollIntoView({ block:'start' }); }
   if (window.FORGED_TUT) FORGED_TUT.check(curRoute);
 }
-window.DM_TEST = { h2hOutcome, h2hResults, h2hFinal, inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
+window.DM_TEST = { mediaOn, mediaPrepare, MEDIA_MAX_MB, MEDIA_MAX_S, h2hOutcome, h2hResults, h2hFinal, inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
 window.addEventListener('hashchange', route);
 // Bottom nav: always closes whatever is open (sheet or form) and goes to that screen.
 document.querySelector('.tabbar').addEventListener('click', e => {

@@ -31,6 +31,7 @@ const T = {
   friends:{ title:'Friends', steps:[
     ['#friendsIntro, #goSignin, #youCard', 'Sign in', 'Sign in with your email to use Friends. Everything else works without an account.'],
     ['#inviteCard, #shareInvite', 'Invite', 'Share your invite link or code so friends can add you.'],
+    ['#shareMedia', 'Share a clip', 'Film a roll or snap a photo and share it with friends. Gone after 30 days.'],
     ['#boardCard', 'Leaderboard', 'See how you stack up this week. Friends never see notes, weight or food.'] ] },
   belts:{ title:'Belt tracker', steps:[
     ['#artSwitch, #view .seg', 'Your art', 'Switch between martial arts if you train more than one.'],

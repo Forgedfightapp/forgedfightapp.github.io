@@ -105,6 +105,36 @@
     respond(id, accept){ return rpc('respond_challenge', { p_challenge:id, p_accept:!!accept }); },
     leave(id){ return rpc('leave_challenge', { p_challenge:id }); },
     // --- progress (per-day totals; the server validates the same rules as the app) ---
-    submit(entries){ return rpc('submit_progress', { p_entries:entries }); }
+    submit(entries){ return rpc('submit_progress', { p_entries:entries }); },
+    // --- 3.12.0 media: private bucket 'media' at <uid>/<random>.<ext>, rows in media_posts (supabase/migrations/004_media.sql) ---
+    mediaList(limit){ return rpc('list_media', { p_limit:limit || 30 }).then(r => r || []); },
+    async mediaPost(blob, o){
+      if (navigator.onLine === false) throw friendly('offline');
+      const c = await sb(); if (!user) throw friendly('Not signed in');
+      const ext = o.kind === 'photo' ? 'jpg' : (/quicktime/.test(blob.type) ? 'mov' : /webm/.test(blob.type) ? 'webm' : 'mp4');
+      const rnd = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+      const path = `${user.id}/${rnd}.${ext}`;
+      const up = await c.storage.from('media').upload(path, blob, { contentType:blob.type || (o.kind === 'photo' ? 'image/jpeg' : 'video/mp4'), upsert:false });
+      if (up.error) throw friendly(up.error);
+      const { data, error } = await c.from('media_posts').insert({ kind:o.kind, path, caption:o.caption || '' }).select().single();
+      if (error) { try { await c.storage.from('media').remove([path]); } catch(e) {} throw friendly(error); }
+      return data;
+    },
+    async mediaUrls(paths){
+      if (!paths.length) return {};
+      const c = await sb(); const { data, error } = await c.storage.from('media').createSignedUrls(paths, 3600);
+      if (error) throw friendly(error);
+      const out = {}; (data || []).forEach(x => { if (x && x.signedUrl) out[x.path] = x.signedUrl; }); return out;
+    },
+    async mediaDelete(post){
+      const c = await sb();
+      const r = await c.storage.from('media').remove([post.path]); if (r.error) throw friendly(r.error);
+      const { error } = await c.from('media_posts').delete().eq('id', post.id); if (error) throw friendly(error);
+    },
+    async mediaCleanup(){   // my posts past 30 days: delete file then row (keeps the free tier's 1 GB)
+      const old = await rpc('my_expired_media').catch(() => []);
+      for (const p of old || []) { try { await this.mediaDelete(p); } catch(e) {} }
+      return (old || []).length;
+    }
   };
 })();

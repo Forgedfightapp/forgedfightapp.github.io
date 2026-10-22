@@ -43,16 +43,11 @@ const T = {
     ['#view .card', 'Benchmarks', 'Log tests like your best lift. Set goals and watch your progress.'] ] },
   programs:{ title:'Programs', steps:[
     ['#view .card', 'Programs', 'Pick a plan and we lay out each session for you, week by week.'] ] },
-  badges:{ title:'Badges', steps:[
-    ['#view .card', 'Badges', 'Earn badges and medals as you train. Tap one to see how.'] ] },
   settings:{ title:'Profile', steps:[
     ['#beltsProfile .card, #injuryCard', 'Belt & injuries', 'Your belt rank and any injuries live here.'],
     ['#sectionsCard', 'Pick what you track', 'Turn sections like Food or Weight on and off.'],
     ['#targetsCard', 'Goals', 'Set calorie, protein and water goals, or use the calculator.'],
-    ['#tutReplay', 'Need a refresher?', 'Tap Replay tutorials to see these tips again.'] ] },
-  pro:{ title:'Forged Pro', steps:[
-    ['#pwFeats', 'What you get', 'Pro unlocks extra features. The free app keeps working either way.'],
-    ['#pwPlans', 'Pick a plan', 'Choose monthly or yearly. Cancel any time.'] ] }
+    ['#tutReplay', 'Need a refresher?', 'Tap Replay tutorials to see these tips again.'] ] }
 };
 const seen = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch(e) { return {}; } };
 const mark = k => { const s = seen(); s[k] = 1; try { localStorage.setItem(KEY, JSON.stringify(s)); } catch(e) {} };

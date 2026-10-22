@@ -80,8 +80,8 @@ await page.goto(BASE + '#/h2h/' + grace); await page.waitForSelector('#h2hBoard 
 ok('ended yesterday: no result yet, "Final results tomorrow"', await page.locator('#h2hResult').count() === 0 && /Final results tomorrow/.test(await page.locator('#h2hBoard').innerText()));
 const won = await mkEnded('sessions', 4, 2, 3);
 await page.goto(BASE + '#/h2h/' + won); await page.waitForSelector('#h2hResult', { timeout:8000 }); await settle(500);
-ok('final: "You won! +50 XP" banner + badge line', /You won! \+50 XP/i.test(await page.locator('#h2hResult').innerText()) && /Head-to-head winner/i.test(await page.locator('#h2hResult').innerText()));
-ok('win toast', /You won vs Alex! \+50 XP/.test(await toastText()));
+ok('final: "You won!" banner, no XP', /You won!/i.test(await page.locator('#h2hResult').innerText()) && !/XP/.test(await page.locator('#h2hResult').innerText()));
+ok('win toast (no XP)', /You won vs Alex!/.test(await toastText()) && !/XP/.test(await toastText()));
 ok('win stored once with +50 XP', await ev(id => DM_TEST.db.game.h2h[id].r, won) === 'won' && (await ev(() => DM_TEST.gameState().xp)) === xp0 + 50);
 ok('badge earned: Head-to-head winner', await ev(() => DM_TEST.badgeState().find(b => b.id === 'h2hwin').earned));
 ok('Leave hidden after final', await page.locator('#h2hLeave').isHidden());
@@ -94,7 +94,7 @@ ok('Friends refresh records loss + tie: tie +25, loss 0', await ev(([l, t]) => [
 await page.goto(BASE + '#/h2h/' + lost); await page.waitForSelector('#h2hResult');
 ok('loss shows who won', /Alex won/i.test(await page.locator('#h2hResult').innerText()));
 
-await page.goto(BASE + '#/h2h/' + none); await page.waitForSelector('#h2hResult');
+await page.goto(BASE + '#/h2h/' + none); await page.waitForSelector('#h2hResult'); await settle(800);
 ok('0-0: no winner declared', /No winner/i.test(await page.locator('#h2hResult').innerText()), await page.locator('#h2hResult').innerText());
 await page.goto(BASE + '#/h2h/' + lost); await page.waitForSelector('#h2hResult');
 /* 5. rematch */

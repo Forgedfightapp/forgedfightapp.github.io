@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.13.4';
+const APP_VERSION = '3.13.5';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -823,8 +823,9 @@ const CAT_KEYS = Object.keys(CATS);
 const allDisc = c => [...CATS[c].disc, ...(CATS[c].legacy || [])];
 const STRIKE_TECH = ['Jab','Cross','Lead hook','Rear hook','Uppercut','Teep','Roundhouse kick','Low kick','Body kick','Head kick','Knee','Elbow','Clinch','Check kick','Slip & counter','Roll under','Parry','Footwork','Head movement','1-2-3','Jab-cross-low kick','Level change','Cage work'];
 const STRIKE_MIX = [['shadow','Shadow'],['pads','Pads'],['bag','Bag'],['drills','Drills'],['sparring','Sparring']];
-const MMA_MIX = [['pads','Pad work'],['drills','Drilling'],['sparring','Sparring'],['grappling','Grappling rounds']];
-const MIX_KEYS = [...new Set(STRIKE_MIX.concat(MMA_MIX).map(x => x[0]))];
+const MMA_MIX = [['pads','Pad work'],['sparring','Sparring'],['grappling','Grappling rounds']];
+const MIX_LEGACY = { drills:'Drilling' };   // 3.13.5: no longer in the picker; old sessions keep their label
+const MIX_KEYS = [...new Set(STRIKE_MIX.concat(MMA_MIX).map(x => x[0]).concat(Object.keys(MIX_LEGACY)))];
 const mixOf = c => c === 'mma' ? MMA_MIX : STRIKE_MIX;
 const FOCUS = [['hips','Hips'],['hamstrings','Hamstrings'],['shoulders','Shoulders'],['back','Back'],['neck','Neck'],['ankles','Ankles'],['full','Full body']];
 const COMBAT = c => c === 'grappling' || c === 'striking' || c === 'mma';
@@ -1168,7 +1169,7 @@ function viewSession(id){
   if (c === 'grappling') body = `<div class="card"><h2>Techniques drilled</h2>${(s.techniques||[]).length ? `<div class="chips">${s.techniques.map(t => `<span class="chip" style="padding:7px 12px">${esc(t)}</span>`).join('')}</div>` : '<div class="empty" style="padding:4px 0">—</div>'}</div>
     <div class="card"><h2>Rolls <small>${rolls.filter(r=>r.result==='win').length}W · ${rolls.filter(r=>r.result==='loss').length}L · ${rolls.filter(r=>r.result==='draw').length}D</small></h2>${rolls.length ? rolls.map((r,i) => rollCard(r,i,false)).join('') : '<div class="empty" style="padding:4px 0">No rolls logged</div>'}</div>`;
   const chipCard = (arr, t) => (arr||[]).length ? `<div class="card"><h2>${t}</h2><div class="chips">${arr.map(x => `<span class="chip" style="padding:7px 12px">${esc(x)}</span>`).join('')}</div></div>` : '';
-  if (c === 'striking' || c === 'mma') { const m = s.strike?.mix || {}; body = `<div class="card"><h2>Rounds <small>${s.rounds||0} × ${s.strike?.roundLen||3} min</small></h2><div class="mix">${mixOf(c).map(([k,l]) => `<div><b>${m[k]||0}</b><span>${l}</span></div>`).join('')}</div></div>
+  if (c === 'striking' || c === 'mma') { const m = s.strike?.mix || {}; body = `<div class="card"><h2>Rounds <small>${s.rounds||0} × ${s.strike?.roundLen||3} min</small></h2><div class="mix">${mixOf(c).concat(Object.entries(MIX_LEGACY).filter(([k]) => m[k] > 0)).map(([k,l]) => `<div><b>${m[k]||0}</b><span>${l}</span></div>`).join('')}</div></div>
     ${(s.strike?.spar||[]).length ? `<div class="card"><h2>Sparring notes</h2>${s.strike.spar.map(x => `<div class="list-row"><div class="grow"><b>${esc(x.partner||'Partner')}</b><small style="white-space:pre-wrap">${esc(x.notes)}</small></div></div>`).join('')}</div>` : ''}
     ${chipCard(s.techniques, c === 'mma' ? 'Striking techniques' : 'Worked on')}${c === 'mma' ? chipCard(s.gtech, 'Grappling techniques') : ''}`; }
   if (c === 'mobility') body = chipCard((s.focus||[]).map(k => (FOCUS.find(f => f[0] === k)||[k,k])[1]), 'Focus areas');
@@ -1227,7 +1228,7 @@ function toRecord(f){
   const c = f.category, out = { ...f };
   delete out._open; delete out._durTouched;
   if (c !== 'grappling') { out.rolls = []; }
-  if (c !== 'striking' && c !== 'mma') delete out.strike; else out.strike = { ...f.strike, mix:Object.fromEntries(mixOf(c).map(([k]) => [k, Number(f.strike.mix[k])||0])) };
+  if (c !== 'striking' && c !== 'mma') delete out.strike; else out.strike = { ...f.strike, mix:{ ...Object.fromEntries(Object.keys(MIX_LEGACY).filter(k => Number(f.strike.mix[k]) > 0).map(k => [k, Number(f.strike.mix[k])])), ...Object.fromEntries(mixOf(c).map(([k]) => [k, Number(f.strike.mix[k])||0])) } };
   if (c !== 'mma' || !f.gtech.length) delete out.gtech;
   if (c !== 'mobility' || !f.focus.length) delete out.focus;
   if (c === 'mobility') out.techniques = [];
@@ -1554,9 +1555,7 @@ function viewStats(){
     ${enabled('weight') || ws.length ? weightStatsCard() : ''}
     ${enabled('food') ? nutritionCard() : ''}
     ${grapplingStats()}
-    <div class="card"><h2>Recent <a href="#/history" style="color:var(--accent);text-decoration:none;text-transform:none;letter-spacing:0;font-size:13px">History ›</a></h2>${sorted().slice(0,3).map(sessRow).join('')}</div>
-    ${challengeHistory()}
-    <div class="foot">${st.total} sessions · ${hrs(st.totalMin)} total hours</div>`;
+    ${challengeHistory()}`;
   wireWeight(v); wireBench(v); wireStrength(v);
 }
 
@@ -3865,7 +3864,7 @@ function gameCheck(silent){
   setTimeout(() => whenSettled(() => tryRun()), 700);
 }
 let gPending = null;
-function grantPro(){ const g = game(); g.proGranted = today(); g.proUntil = iso(addDays(new Date(), 7)); ForgedSync.emit('pro.granted', { until:g.proUntil }); }
+function grantPro(){ return;  const g = game(); g.proGranted = today(); g.proUntil = iso(addDays(new Date(), 7)); ForgedSync.emit('pro.granted', { until:g.proUntil }); }
 function actionToast(msg, label, fn){
   const t = $('#toast'); t.innerHTML = `${esc(msg)} <button type="button" class="tbtn">${esc(label)}</button>`; t.classList.add('show', 'act');
   t.querySelector('.tbtn').onclick = () => { t.classList.remove('show','act'); fn(); };
@@ -4262,7 +4261,7 @@ const Cloud = () => window.ForgedCloud;
    StoreKit / Play Billing (e.g. RevenueCat via Capacitor) or Stripe on the web when Pro goes live. */
 (() => { try { const q = new URLSearchParams(location.search).get('pro');
   if (q === '1') localStorage.setItem('forged.pro.preview', '1'); if (q === '0') localStorage.removeItem('forged.pro.preview'); } catch(e) {} })();
-const paywallOn = () => { try { return !!(CFG.pro || localStorage.getItem('forged.pro.preview') === '1'); } catch(e) { return false; } };
+const paywallOn = () => false;   // 3.13.5: Forged Pro removed
 const proTag = () => paywallOn() ? '<a class="protag" href="#/pro" aria-label="Forged Pro feature">PRO</a>' : '';
 const PRO_PLANS = [
   { id:'forged_pro_yearly', label:'Yearly', price:'$35.99', per:'/ year', note:'$3.00 / month · save 40%', best:true },
@@ -4342,7 +4341,7 @@ function socialQueueDiff(){
 }
 function socialProfile(){
   const gs = gameState(), name = String(db.profile.name || '').trim().slice(0, 30) || 'Fighter';
-  return { name, color:AV_COLORS[db.profile.avatarColor] ? db.profile.avatarColor : 'flame', rank:gs.rankIdx, level:clamp(gs.level, 1, 200), xp:clamp(gs.xp, 0, 5e6), belt:enabled('grappling') ? String(db.profile.belt || '') : '' };
+  return { name, color:AV_COLORS[db.profile.avatarColor] ? db.profile.avatarColor : 'flame', rank:0, level:1, xp:0, belt:enabled('grappling') ? String(db.profile.belt || '') : '' };
 }
 let sTimer = null, sBusy = null, sPoll = null;
 function socialSchedule(ms = 3000){ if (!sUser()) return; clearTimeout(sTimer); sTimer = setTimeout(() => socialSync(), ms); }
@@ -4407,7 +4406,7 @@ function h2hResults(chs, boards){
     g.h2h[ch.id] = { end:ch.ends_on, metric:ch.metric, r:o.r, vs:them.slice(0, 3).join(', ').slice(0, 60) }; fresh.push(g.h2h[ch.id]); });
   if (!fresh.length) return [];
   saveDb(); const best = fresh.find(x => x.r === 'won') || fresh.find(x => x.r === 'tied') || fresh[0];
-  if (!window.__FORGED_QUIET_H2H) toast(best.r === 'won' ? `You won vs ${best.vs}! +${XP_H2H_WIN} XP` : best.r === 'tied' ? `Tied with ${best.vs}. +${XP_H2H_TIE} XP` : `${best.vs} won this one. Run it back?`);
+  if (!window.__FORGED_QUIET_H2H) toast(best.r === 'won' ? `You won vs ${best.vs}!` : best.r === 'tied' ? `Tied with ${best.vs}.` : `${best.vs} won this one. Run it back?`);
   return fresh;
 }
 const sCache = () => { const c = sLS.get('cache', {}); return c.uid && sUser() && c.uid === sUser().id ? c : {}; };
@@ -4428,7 +4427,7 @@ async function socialAccept(code){
   catch(e) { toast(e.message); return null; }
 }
 const privacyCard = () => `<div class="card privacy" id="privacyCard"><h2>What friends see</h2>
-  <ul><li>Your name, initial, rank, level, XP and belt</li><li>Daily counts: sessions, push-ups, mat time, daily challenges done</li></ul>
+  <ul><li>Your name, initial and belt</li><li>Daily counts: sessions, push-ups, mat time, daily challenges done</li></ul>
   <p><b>Never shared:</b> notes, body weight, food, injuries or workout details. Your full log stays on this phone.</p></div>`;
 
 /* ----- Friends screen ----- */
@@ -4449,7 +4448,7 @@ async function viewFriends(){
   const render = c => {
     if (curRoute !== 'friends') return;
     const me = (c.board || []).find(x => x.is_me), friends = (c.board || []).filter(x => !x.is_me), prof = socialProfile();
-    const meRow = me || { display_name:prof.name, avatar_initial:prof.name[0].toUpperCase(), avatar_color:prof.color, rank_idx:prof.rank, level:prof.level };
+    const meRow = me || { display_name:prof.name, avatar_initial:prof.name[0].toUpperCase(), avatar_color:prof.color };
     const chs = c.challenges || [], link = c.invite ? `${location.origin}${location.pathname}#/invite/${c.invite}` : '';
     v.innerHTML = `${navigator.onLine === false ? `<div class="card offline" id="offlineNote">You're offline. Showing what was last synced${c.at ? ` (${sAgo(c.at)})` : ''}. Your progress syncs when you're back online.</div>` : ''}
       <div class="card" id="youCard"><div class="frow me">${sAvatar(meRow, 'lg')}<div class="grow"><b>${esc(meRow.display_name)}</b><small>${esc(u.email)}</small></div><button type="button" class="btn sm" id="editMe">Edit</button></div></div>
@@ -4460,7 +4459,7 @@ async function viewFriends(){
       <div class="card" id="h2hCard"><h2>Head-to-head</h2>${chs.length ? chs.map(ch => h2hRow(ch, (c.boards || {})[ch.id] || [])).join('') : `<div class="hint" style="margin:-4px 0 10px">${friends.length ? 'Pick a friend and a metric. Progress comes from what you both log.' : 'Add a friend first, then challenge them.'}</div>`}
         <button type="button" class="btn block" id="newH2h" ${friends.length ? '' : 'disabled'}>Challenge a friend</button></div>
       <div class="card" id="boardCard"><h2>This week <small>Mon–Sun</small></h2>${(c.board || [meRow]).map(friendBoardRow).join('')}
-        ${friends.length ? '' : '<div class="hint">No friends yet. Share your code or link.</div>'}<div class="hint">Ranked by verified XP from logging (max 30 a day), then sessions.</div></div>
+        ${friends.length ? '' : '<div class="hint">No friends yet. Share your code or link.</div>'}<div class="hint">Ranked by sessions logged this week.</div></div>
       ${privacyCard()}
       <div class="card" id="acctCard"><h2>Account</h2><div class="hint" id="sSync" style="margin:-4px 0 10px"></div>
         <div class="btnrow"><button type="button" class="btn" id="syncNow">Sync now</button><button type="button" class="btn" id="signOut">Sign out</button></div>
@@ -4618,7 +4617,7 @@ async function viewH2h(id){
       <div class="card" id="h2hHead"><div class="eyebrow">${ch.kind === 'group' ? `Group challenge · ${board.length} people` : `You vs ${esc((board.find(x => !x.is_me) || {}).display_name || 'friend')}`}</div><h2 class="h2ht">${esc(ch.title || m.label)}</h2>
         <div class="dim">${fmtShort(ch.starts_on)} – ${fmtShort(ch.ends_on)} · ${ended ? 'Ended' : timeLeft(ch.ends_on)}</div></div>
       ${(() => { const o = h2hOutcome(ch, board), r = (game().h2h || {})[ch.id]; if (!o && !(h2hFinal(ch) && board[0])) return ''; const res = r ? r.r : o ? o.r : '';
-        const txt = res === 'won' ? `You won! +${XP_H2H_WIN} XP` : res === 'tied' ? `Tied for first. +${XP_H2H_TIE} XP` : o ? `${esc(o.winners.join(' & '))} won` : 'No winner this time';
+        const txt = res === 'won' ? `You won!` : res === 'tied' ? 'Tied for first.' : o ? `${esc(o.winners.join(' & '))} won` : 'No winner this time';
         return `<div class="card h2hres ${res || 'done'}" id="h2hResult"><div class="eyebrow">Final</div><h2>${res === 'won' ? '🥊 ' : ''}${txt}</h2>${res === 'won' ? '<div class="hint">Badge earned: Head-to-head winner</div>' : ''}<button type="button" class="btn block" id="h2hRematch" style="margin-top:10px">Rematch</button></div>`; })()}
       <div class="card" id="h2hBoard"><h2>Standings <small>${esc(m.unit)}</small></h2>${board.map(b => `<div class="brow${b.is_me ? ' me' : ''}"><span class="place">${b.place}</span>${sAvatar(b)}<div class="grow"><b>${esc(b.display_name)}${b.is_me ? ' <span class="pill">You</span>' : ''}${b.status === 'invited' ? ' <span class="dim">(invited)</span>' : ''}</b><span class="sgbar"><i style="width:${Math.round((b.score || 0) / max * 100)}%"></i></span></div><b class="bscore" data-score>${sScore(ch.metric, b.score)}</b></div>`).join('')}
         <div class="hint">Synced from your log automatically. ${ended ? (h2hFinal(ch) ? '' : 'Final results tomorrow, once late logs sync.') : 'Updates every 20 seconds while this screen is open.'}</div>
@@ -4762,7 +4761,7 @@ function shareContent(kind, x, showNums){
     return { eyebrow:'Workout logged', title:sessTitle(x), sub:fmtShort(x.date), stats:st.slice(0, 3), color:CATS[c]?.color || '#D7261E', foot:x.feel ? `Felt: ${(FEELS[x.feel-1]||[])[2] || ''}` : '' }; }
   if (kind === 'goal') return { eyebrow:'Goal hit · New PR', title:sgLabel(x), sub:x.achieved ? fmtShort(x.achieved.date) : fmtShort(today()), stats:[[hide(String(x.achieved ? x.achieved.value : sgTarget(x))), sgUnit(x)], [hide(String(sgTarget(x))), 'target']], color:'#F5C542' };
   if (kind === 'rank') return { eyebrow:`Level ${x.level}`, title:x.rank, sub:'Rank on Forged', stats:[[hide(x.xp.toLocaleString()), 'XP'], [String(badgeState().filter(b => b.earned).length), 'badges']], color:'#D7261E', emblem:x.rankIdx };
-  if (kind === 'challenge') return { eyebrow:`${{ d:'Daily', w:'Weekly', m:'Monthly' }[x.p]} challenge complete`, title:x.title, sub:fmtShort(today()), stats:[[`+${x.xp}`, 'XP'], [TIER[x.tier], 'tier']], color:'#6FD3A8' };
+  if (kind === 'challenge') return { eyebrow:`${{ d:'Daily', w:'Weekly', m:'Monthly' }[x.p]} challenge complete`, title:x.title, sub:fmtShort(today()), stats:[[TIER[x.tier], 'tier']], color:'#6FD3A8' };
   if (kind === 'streak') return { eyebrow:'Streak', title:`${x.weeks}-week streak`, sub:'Training every week', stats:[[String(x.weeks), 'weeks'], [hide(String(x.sessions)), 'sessions']], color:'#D7261E' };
   if (kind === 'ring') return { eyebrow:'Monthly goal hit', title:x.label, sub:'Ring closed', stats:[[hide(`${x.n}`), 'workouts'], [hide(`${x.target}`), 'goal']], color:'#D7261E', ring:true };
   if (kind === 'medal') return { eyebrow:x.eyebrow || 'Medal earned', title:x.name, sub:x.date ? fmtShort(x.date) : fmtShort(today()), stats:x.count > 1 ? [[String(x.count), 'times']] : [], color:x.col || '#D7261E', medal:x, foot:x.kind === 'badge' ? '' : (x.how || x.sub || '') };
@@ -4899,7 +4898,7 @@ function route(){
     case 'food': viewFood(b); break;
     case 'supps': go('#/food'); return;
     case 'settings': viewSettings(); break;
-    case 'pro': viewPro(); break;
+    case 'pro': location.replace('#/settings'); break;
     default: viewHome();
   }
   if (a !== 'settings') goalsReturn = null;

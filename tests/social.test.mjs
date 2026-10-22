@@ -54,11 +54,11 @@ await ctx.route('**/*supabase.co/**', r => { sbHits++; r.abort(); });
 await seed(page, '#/challenges'); await page.waitForSelector('#ch-d');
 ok('flag on: Friends button on Challenges + link in the friend card', await page.locator('#friendsTop').count() === 1 && await page.locator('#friendsLink').count() === 1);
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#friendsCard');
-ok('flag on: Friends card in Profile (above Rank, badges & looks)', /optional account/i.test(await page.locator('#friendsCard').innerText()) && await page.evaluate(() => document.querySelector('#friendsCard').nextElementSibling.id === 'gameProfile'));
+ok('flag on: Friends card in Profile ', /optional account/i.test(await page.locator('#friendsCard').innerText())));
 await page.goto(BASE + '#/friends'); await page.waitForSelector('#friendsIntro');
 ok('signed out: intro + Sign in with email; app stays usable without an account', /sign in with email/i.test(await page.locator('#goSignin').innerText()) && /optional/i.test(await page.locator('#friendsIntro').innerText()));
 const priv = await page.locator('#privacyCard').innerText();
-ok('privacy on screen: only summaries; never notes, weight, food', /rank, level, XP/i.test(priv) && /never shared/i.test(priv) && /notes/i.test(priv) && /weight/i.test(priv) && /food/i.test(priv));
+ok('privacy on screen: only summaries; never notes, weight, food', /name, initial and belt/i.test(priv) && !/rank|level|XP/i.test(priv) && /never shared/i.test(priv) && /notes/i.test(priv) && /weight/i.test(priv) && /food/i.test(priv));
 ok('Sign in with Apple hidden until enabled (hook only)', await page.locator('#appleSignin').count() === 0 && await page.evaluate(() => typeof window.ForgedCloud.signInWithApple === 'function'));
 // a friend exists on the server
 const alex = await page.evaluate(D0 => { const m = window.__mockSb; const id = m.addUser({ name:'Alex', color:'sky', rank:2, level:12, xp:5200, invite:'ALEX2345' });

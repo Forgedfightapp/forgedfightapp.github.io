@@ -17,7 +17,7 @@ await page.goto(BASE + '#/settings'); await page.waitForSelector('#beltCard'); a
 const prof = await page.locator('#view').innerText();
 ok('Profile: no medals/badges/looks', await page.locator('#gameProfile, #medalCase, .lookgrid').count() === 0 && !/Medal case|badges|Accent colou?r/i.test(prof));
 await page.screenshot({ path:`${SHOTS}/91-profile.png`, fullPage:true });
-ok('Profile: Find a gym row links to MatFinder', await page.locator('#findGym[href="https://matfinderhq.vercel.app"]').count() === 1);
+ok('Profile: Find a gym row links to MatFinder', await page.locator('#findGym[href="https://matfinderhq.com"]').count() === 1);
 await page.locator('#findGymCard').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, 200)); await page.waitForTimeout(300);
 await page.screenshot({ path:`${SHOTS}/92-profile-findgym.png` });
 ok('Profile: FORGED Shop row above Find a gym', await page.locator('#forgedShop[href="https://forgedfight.com/shop/"]').count() === 1 && await page.evaluate(() => document.querySelector('#shopCard').nextElementSibling?.id === 'findGymCard'));

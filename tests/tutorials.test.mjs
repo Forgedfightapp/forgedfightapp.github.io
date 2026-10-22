@@ -28,7 +28,7 @@ ok('no tutorial for automated runs without opt-in', await tut().count() === 0);
 await seed(data, '#/');
 ok('Home: tutorial shows on first visit', await tut().count() === 1 && await tut().getAttribute('data-page') === 'home');
 ok('Home: dialog with step counter, title, Next + Skip', /Home · 1 of \d/.test(await page.locator('.tut-n').textContent()) && (await page.locator('.tut-card h3').textContent()).length > 0 && await page.locator('#tutNext').textContent() === 'Next' && await page.locator('#tutSkip').isVisible());
-ok('Home: highlight ring visible in brand orange', await page.locator('.tut-hole').evaluate(e => getComputedStyle(e).display !== 'none' && getComputedStyle(e).borderTopColor === 'rgb(242, 113, 28)'));
+ok('Home: highlight ring visible in brand red', await page.locator('.tut-hole').evaluate(e => getComputedStyle(e).display !== 'none' && getComputedStyle(e).borderTopColor === 'rgb(215, 38, 30)'));
 ok('card is FORGED dark', await page.locator('.tut-card').evaluate(e => getComputedStyle(e).backgroundColor === 'rgb(11, 11, 12)'));
 await page.screenshot({ path:`${SHOTS}/79-tutorial-home.png` });
 const total = +(await page.locator('.tut-n').textContent()).match(/of (\d)/)[1];
@@ -50,7 +50,7 @@ ok('Skip closes and marks log seen', await tut().count() === 0 && (await seenNow
 ok('log form still works under it', await page.locator('#view .field').count() > 0);
 
 /* 5. every page */
-for (const [hash, key] of [['#/food','food'],['#/history','history'],['#/challenges','challenges'],['#/belts','belts'],['#/friends','friends'],['#/settings','settings'],['#/stats','stats'],['#/programs','programs'],['#/benchmarks','benchmarks'],['#/comps','comps'],['#/badges','badges'],['#/pro?pro=1','pro']]) {
+for (const [hash, key] of [['#/food','food'],['#/history','history'],['#/challenges','challenges'],['#/belts','belts'],['#/friends','friends'],['#/settings','settings'],['#/stats','stats'],['#/programs','programs'],['#/benchmarks','benchmarks'],['#/comps','comps']]) {
   const all = await page.evaluate(() => FORGED_TUT.pages);
   const seen = Object.fromEntries(all.filter(k => k !== key).map(k => [k, 1]));
   await seed(data, hash.replace('?pro=1',''), seen);

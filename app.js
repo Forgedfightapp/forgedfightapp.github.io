@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.13.3';
+const APP_VERSION = '3.13.4';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -2521,7 +2521,7 @@ function viewSettings(){
   { const SH = 'https://forgedfight.com/shop/', row = h(`<div class="card" id="shopCard"><a class="list-row" id="forgedShop" href="${SH}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><div class="grow"><b>FORGED Shop</b><small>Rash guards, shorts, tees &amp; hoodies</small></div><span style="color:var(--accent)">↗</span></a></div>`);
     row.querySelector('#forgedShop').onclick = e => { e.preventDefault(); try { window.open(SH, window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank', 'noopener'); } catch(x) { location.href = SH; } };
     v.appendChild(row); }
-  { const MF = 'https://matfinderhq.vercel.app', row = h(`<div class="card" id="findGymCard"><a class="list-row" id="findGym" href="${MF}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><div class="grow"><b>Find a gym</b><small>Search gyms near you on MatFinder</small></div><span style="color:var(--accent)">↗</span></a></div>`);
+  { const MF = 'https://matfinderhq.com', row = h(`<div class="card" id="findGymCard"><a class="list-row" id="findGym" href="${MF}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><div class="grow"><b>Find a gym</b><small>Search gyms near you on MatFinder</small></div><span style="color:var(--accent)">↗</span></a></div>`);
     row.querySelector('#findGym').onclick = e => { e.preventDefault(); try { window.open(MF, window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank', 'noopener'); } catch(x) { location.href = MF; } };
     v.appendChild(row); }
   v.appendChild(h(`<div class="foot">Forged · v${APP_VERSION} · ${db.sessions.length} sessions · ${db.nutrition.entries.length} food entries stored</div>`));

@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.13.5';
+const APP_VERSION = '3.14.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -1272,6 +1272,7 @@ function viewForm(id){
     redraw();
   });
   v.appendChild(field('Workout', catEl));
+  const wgSlot = h('<div id="wgSlot"></div>'); v.appendChild(wgSlot);
   // 2. discipline (+ gi for BJJ)
   const C = CATS[f.category];
   const discOpts = [...C.disc, ...(C.legacy || []).filter(d => d[0] === f.discipline)];   // a legacy type shows only when editing a session that has it
@@ -1370,7 +1371,10 @@ function viewForm(id){
     fc.querySelectorAll('button').forEach(b => b.onclick = () => { const k = b.dataset.f; f.focus = f.focus.includes(k) ? f.focus.filter(x => x !== k) : f.focus.concat(k); syncF(); });
     syncF(); D.appendChild(field('Focus areas', fc)); placeNotes();
   }
-  if (f.category === 'weights') { D.appendChild(exerciseEditor(f)); placeNotes(); }
+  if (f.category === 'weights') {
+    let ed = exerciseEditor(f);
+    if (!f.id && !f.prog) wgSlot.appendChild(workoutGenCard(f, list => { f.exercises = list.map(e => progExercise(e)); const ne = exerciseEditor(f); ed.replaceWith(ne); ed = ne; ne.scrollIntoView({ block:'start', behavior:'smooth' }); toast(`${list.length} exercises added`); }));
+    D.appendChild(ed); placeNotes(); }
   if (f.category === 'cardio') {
     const k = f.cardio;
     const g3 = h('<div class="grid2"></div>');
@@ -3117,6 +3121,59 @@ function suggest(name, rx, u = unit()){
     return { weight:nw, reps:lo, basis:'up', last }; }
   const best = Math.max(...sets.map(x => num(x.reps))), add = lib.unit === 'sec' ? 5 : lib.unit === 'm' ? 10 : 1;
   return complete ? { weight:'', reps:best + add, basis:'up', last } : { weight:'', reps:Math.max(lo, best), basis:'repeat', last };
+}
+// ---- Quick workout generator (3.14.0): offline, built-in list, deterministic per day + shuffle ----
+const WG_GROUPS = [['chest','Chest'],['back','Back'],['shoulders','Shoulders'],['arms','Arms'],['legs','Legs'],['core','Core'],['full','Full body'],['grip','Grip'],['neck','Neck']];
+const WG_EXTRA = [['Bicep curl','arms','dumbbell'],['Hammer curl','arms','dumbbell'],['Tricep extension','arms','dumbbell'],['Dip','arms','bodyweight'],['Lateral raise','shoulders','dumbbell']];
+const WG_PAT = { 'h-push':'chest', 'h-pull':'back', 'v-pull':'back', 'v-push':'shoulders', 'shoulder health':'shoulders', squat:'legs', 'single-leg':'legs', hinge:'legs', 'hip-ext':'legs', 'knee health':'legs', core:'core', 'anti-rotation':'core', carry:'core', grip:'grip', neck:'neck' };
+const WG_MAIN = ['barbell','trap bar'];
+function wgPool(){
+  const out = Object.values(PROG.library).filter(L => WG_PAT[L.pattern]).map(L => ({ name:L.name, g:WG_PAT[L.pattern], pat:L.pattern, equip:L.equip }));
+  out.push({ name:'Chin-up', g:'arms', pat:'v-pull', equip:'pull-up bar' }, { name:'Farmer carry', g:'grip', pat:'carry', equip:'dumbbell' });
+  WG_EXTRA.forEach(([name, g, equip]) => out.push({ name, g, pat:g, equip }));
+  return out;
+}
+function wgRx(x){
+  const u = (PROG.library[x.name]||{}).unit; if (u === 'sec') return { sets:x.g === 'neck' ? 2 : 3, reps:[20,40], rest:60, u:'s' }; if (u === 'm') return { sets:3, reps:[20,40], rest:60, u:' m' };
+  if (['core','grip','neck'].includes(x.g) || x.pat === 'carry' || /health/.test(x.pat)) return { sets:x.g === 'neck' ? 2 : 3, reps:x.g === 'neck' ? [12,15] : [10,15], rest:60 };
+  if (WG_MAIN.includes(x.equip) && x.g !== 'arms') return { sets:4, reps:[5,6], rest:150 };
+  return { sets:3, reps:[8,12], rest:90 };
+}
+function wgRand(seed){ let s = 0; for (const ch of seed) s = (s * 31 + ch.charCodeAt(0)) >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function genWorkout(groups, seed){
+  const gs = groups.includes('full') || !groups.length ? ['legs','chest','back','shoulders','core'] : groups.slice();
+  const rnd = wgRand(seed), pool = wgPool();
+  const known = new Set(db.sessions.flatMap(s => (s.exercises||[]).map(e => (PROG.library[e.name]||{}).equip)).filter(Boolean));
+  const score = x => rnd() + (known.size ? (known.has(x.equip) ? .6 : 0) : (['dumbbell','barbell','bodyweight','kettlebell'].includes(x.equip) ? .4 : 0)) + (WG_MAIN.includes(x.equip) ? .2 : 0);
+  const by = {}; gs.forEach(g => { by[g] = pool.filter(x => x.g === g).map(x => [score(x), x]).sort((a,b) => b[0]-a[0]).map(y => y[1]); });
+  const n = Math.min(6, Math.max(4, gs.length >= 3 ? 6 : 5)), pick = [], pats = new Set(), names = new Set();
+  for (let pass = 0; pick.length < n && pass < 4; pass++) for (const g of gs) {
+    if (pick.length >= n) break;
+    const c = by[g].find(x => !names.has(x.name) && (pass > 1 || !pats.has(x.pat)));
+    if (c) { pick.push(c); names.add(c.name); pats.add(c.pat); }
+  }
+  const order = x => WG_MAIN.includes(x.equip) ? 0 : ['core','grip','neck'].includes(x.g) ? 2 : 1;
+  return pick.sort((a,b) => order(a) - order(b)).map(x => ({ name:x.name, ...wgRx(x), equip:x.equip }));
+}
+window.DM_TEST_GEN = g => genWorkout(g, `${today()}|${g.join(',')}|0`).map(e => e.name);
+function workoutGenCard(f, onUse){
+  const sel = () => (db.profile.wgroups || []).filter(k => WG_GROUPS.some(g => g[0] === k));
+  let shuf = 0, cur = [];
+  const c = h(`<div class="card" id="wgCard"><h2>Quick workout <small>pick muscle groups</small></h2><div class="focuschips" id="wgChips" role="group" aria-label="Muscle groups">${WG_GROUPS.map(([k,l]) => `<button type="button" data-g="${k}" aria-pressed="false">${l}</button>`).join('')}</div><div id="wgOut"></div></div>`);
+  const out = c.querySelector('#wgOut');
+  const fmtRest = s => s >= 120 ? `${s/60} min` : `${s}s`;
+  const draw = () => {
+    const g = sel();
+    c.querySelectorAll('#wgChips button').forEach(b => { const on = g.includes(b.dataset.g); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+    if (!g.length) { out.innerHTML = '<div class="hint" style="margin-top:10px">Choose one or more to get today\'s workout.</div>'; cur = []; return; }
+    cur = genWorkout(g, `${today()}|${g.join(',')}|${shuf}`);
+    out.innerHTML = `<div id="wgList" style="margin-top:10px">${cur.map(e => `<div class="list-row wg-ex"><div class="grow"><b>${esc(e.name)}</b><small>${e.sets} × ${e.reps.join('–')}${e.u||''} · rest ${fmtRest(e.rest)}</small></div></div>`).join('')}</div>
+      <div class="grid2" style="margin-top:10px"><button type="button" class="btn" id="wgShuffle">Shuffle</button><button type="button" class="btn primary" id="wgUse">Log workout</button></div>`;
+    out.querySelector('#wgShuffle').onclick = () => { shuf++; draw(); };
+    out.querySelector('#wgUse').onclick = () => onUse(cur);
+  };
+  c.querySelectorAll('#wgChips button').forEach(b => b.onclick = () => { const k = b.dataset.g, g = sel(); db.profile.wgroups = g.includes(k) ? g.filter(x => x !== k) : g.concat(k); shuf = 0; save(); draw(); });
+  draw(); return c;
 }
 function progExercise(e){ const sg = suggest(e.name, e), [lo, hi] = repsRange(e.reps), lib = PROG.library[e.name] || {};
   return { name:e.name, sets:Array.from({ length:e.sets }, () => ({ reps:sg.reps, weight:sg.weight, rpe:'' })), plan:{ sets:e.sets, lo, hi, unit:lib.unit || 'reps' }, _orig:e.orig || e.name, _rest:e.rest, _sugg:sg.basis }; }

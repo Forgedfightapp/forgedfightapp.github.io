@@ -54,7 +54,7 @@ await ctx.route('**/*supabase.co/**', r => { sbHits++; r.abort(); });
 await seed(page, '#/challenges'); await page.waitForSelector('#ch-d');
 ok('flag on: Friends button on Challenges + link in the friend card', await page.locator('#friendsTop').count() === 1 && await page.locator('#friendsLink').count() === 1);
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#friendsCard');
-ok('flag on: Friends card in Profile ', /optional account/i.test(await page.locator('#friendsCard').innerText())));
+ok('flag on: Friends card in Profile ', /optional account/i.test(await page.locator('#friendsCard').innerText()));
 await page.goto(BASE + '#/friends'); await page.waitForSelector('#friendsIntro');
 ok('signed out: intro + Sign in with email; app stays usable without an account', /sign in with email/i.test(await page.locator('#goSignin').innerText()) && /optional/i.test(await page.locator('#friendsIntro').innerText()));
 const priv = await page.locator('#privacyCard').innerText();

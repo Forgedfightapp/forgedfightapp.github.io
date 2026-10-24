@@ -1055,11 +1055,12 @@ body.legal{padding-bottom:40px}
 .livebar{display:flex;align-items:center;gap:8px;padding:10px 12px;margin-bottom:10px;border-radius:12px;background:rgba(215,38,30,.12);border:1px solid rgba(215,38,30,.4);font-size:15px}
 .livebar b{font-variant-numeric:tabular-nums;font-size:18px}
 .livebar small{margin-left:auto;color:var(--muted)}
-.banner.live{background:rgba(215,38,30,.12);border-color:rgba(215,38,30,.45);color:var(--text,#fff);flex-wrap:wrap}
+.banner.live{background:rgba(215,38,30,.12);border-color:rgba(215,38,30,.45);color:var(--text,#fff);flex-wrap:nowrap}
+.banner.live>span{flex:1;min-width:0}
 .banner.live b{color:#EF4B43;display:block}
 .banner.live small{display:block;color:var(--muted);font-variant-numeric:tabular-nums}
 .banner.live .btn{min-height:40px}
-.banner.live #draftDiscard{margin-left:auto}
+.banner.live #draftDiscard{margin-left:0}
 .banner.live #draftResume{margin-left:0}
 .exfoot [data-addset]{min-height:44px;padding:0 16px}
 .carow select{flex:1}

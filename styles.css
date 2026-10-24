@@ -1046,3 +1046,20 @@ body.legal{padding-bottom:40px}
 .mpost{padding:12px 0;border-top:1px solid var(--surface2)}.mpost:first-child{border-top:0;padding-top:0}
 .mmedia{margin-top:10px;border-radius:14px;overflow:hidden;background:#000}.mmedia img,.mmedia video{display:block;width:100%;max-height:70vh;object-fit:contain}
 .mcap{margin-top:8px;font-size:15px}
+/* 3.15.0 live logging */
+.sethead,.setrow{grid-template-columns:24px 1fr 1fr 1fr 48px 32px}
+.setdone{min-height:44px;min-width:44px;border-radius:12px;border:1.5px solid var(--line);background:transparent;display:grid;place-items:center;color:var(--muted)}
+.setdone svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.setdone.on{background:#D7261E;border-color:#D7261E;color:#fff}
+.setrow.done .input{opacity:.6}
+.livebar{display:flex;align-items:center;gap:8px;padding:10px 12px;margin-bottom:10px;border-radius:12px;background:rgba(215,38,30,.12);border:1px solid rgba(215,38,30,.4);font-size:15px}
+.livebar b{font-variant-numeric:tabular-nums;font-size:18px}
+.livebar small{margin-left:auto;color:var(--muted)}
+.banner.live{background:rgba(215,38,30,.12);border-color:rgba(215,38,30,.45);color:var(--text,#fff);flex-wrap:wrap}
+.banner.live b{color:#EF4B43;display:block}
+.banner.live small{display:block;color:var(--muted);font-variant-numeric:tabular-nums}
+.banner.live .btn{min-height:40px}
+.banner.live #draftDiscard{margin-left:auto}
+.banner.live #draftResume{margin-left:0}
+.exfoot [data-addset]{min-height:44px;padding:0 16px}
+.carow select{flex:1}

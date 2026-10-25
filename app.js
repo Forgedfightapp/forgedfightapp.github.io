@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.16.2';
+const APP_VERSION = '3.16.3';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -22,12 +22,12 @@ const ADULT_BELTS = ['white','blue','purple','brown','black'], KIDS_BELTS = ['gr
    Colour orders follow common systems; clubs and federations vary, so every colour is pickable. */
 const dan = to => b => b === 'black' ? { word:'dan', from:2, to } : null;
 const BELT_ARTS = {
-  bjj:{ label:'BJJ', cat:'grappling', disc:['bjj', ''], noun:'belt', belts:ADULT_BELTS, kids:KIDS_BELTS, sub:b => b === 'black' ? { word:'degree', from:1, to:6 } : { word:'stripe', from:1, to:4 }, tint:'#D7261E' },
-  judo:{ label:'Judo', cat:'grappling', disc:['judo'], noun:'belt', belts:['white','yellow','orange','green','blue','brown','black'], kyu:{ white:'6th kyu', yellow:'5th kyu', orange:'4th kyu', green:'3rd kyu', blue:'2nd kyu', brown:'1st kyu', black:'1st dan' }, sub:dan(10), tint:'#3b82f6' },
-  sambo:{ label:'Sambo', cat:'grappling', disc:['sambo'], noun:'belt', belts:['white','yellow','orange','green','blue','brown','black'], sub:dan(10), tint:'#dc2626' },
-  karate:{ label:'Karate', cat:'striking', disc:['karate'], noun:'belt', belts:['white','yellow','orange','green','blue','purple','brown','black'], sub:dan(10), tint:'#e5e7eb' },
-  taekwondo:{ label:'Taekwondo', cat:'striking', disc:['karate', 'taekwondo'], noun:'belt', belts:['white','yellow','green','blue','red','black'], sub:dan(9), tint:'#2563eb' },
-  muaythai:{ label:'Muay Thai', cat:'striking', disc:['muaythai'], noun:'prajied', belts:['white','yellow','orange','green','blue','purple','brown','red','black'], sub:() => null, tint:'#F5C542' } };
+  bjj:{ label:'BJJ', cat:'grappling', noun:'belt', belts:ADULT_BELTS, kids:KIDS_BELTS, sub:b => b === 'black' ? { word:'degree', from:1, to:6 } : { word:'stripe', from:1, to:4 }, tint:'#D7261E' },
+  judo:{ label:'Judo', cat:'grappling', noun:'belt', belts:['white','yellow','orange','green','blue','brown','black'], kyu:{ white:'6th kyu', yellow:'5th kyu', orange:'4th kyu', green:'3rd kyu', blue:'2nd kyu', brown:'1st kyu', black:'1st dan' }, sub:dan(10), tint:'#3b82f6' },
+  sambo:{ label:'Sambo', cat:'grappling', noun:'belt', belts:['white','yellow','orange','green','blue','brown','black'], sub:dan(10), tint:'#dc2626' },
+  karate:{ label:'Karate', cat:'striking', noun:'belt', belts:['white','yellow','orange','green','blue','purple','brown','black'], sub:dan(10), tint:'#e5e7eb' },
+  taekwondo:{ label:'Taekwondo', cat:'striking', noun:'belt', belts:['white','yellow','green','blue','red','black'], sub:dan(9), tint:'#2563eb' },
+  muaythai:{ label:'Muay Thai', cat:'striking', noun:'prajied', belts:['white','yellow','orange','green','blue','purple','brown','red','black'], sub:() => null, tint:'#F5C542' } };
 const ART_KEYS = Object.keys(BELT_ARTS);
 const artOf = e => (e && BELT_ARTS[e.art]) ? e.art : 'bjj';
 const artBelts = art => { const A = BELT_ARTS[art] || BELT_ARTS.bjj; return A.belts.concat(A.kids || []); };
@@ -629,15 +629,12 @@ const rankLabel = (e, short) => { const a = artOf(e), w = subWord(e.belt, a);
   return e.stripes ? (w === 'stripe' ? `${e.stripes} stripe${e.stripes > 1 ? 's' : ''}` : `${ordN(e.stripes)} ${w}`) : (short ? (a === 'bjj' ? 'No stripes' : kyuOf(e.belt, a) || '') : `Promoted to ${beltName(e.belt, a).toLowerCase()}`); };
 function syncProfileRank(){ const c = currentRank(); db.profile = { ...db.profile, belt:c ? c.belt : 'white', stripes:c ? c.stripes : 0, promotedOn:c ? c.beltDate : '' }; }
 /* mat time logged in [from, to) (to inclusive when it is today) */
-/* sessions of that art: BJJ = grappling sessions logged as BJJ (or with no discipline), Judo = Judo, Karate = Karate/Taekwondo, … */
-const artSession = (s, art = 'bjj') => { const A = BELT_ARTS[art] || BELT_ARTS.bjj; return catOf(s) === A.cat && A.disc.includes(s.discipline || ''); };
-function matIn(from, to, inclusive, art = 'bjj'){ const ss = db.sessions.filter(s => artSession(s, art) && s.date >= from && (inclusive ? s.date <= to : s.date < to)); return { n:ss.length, min:ss.reduce((a,s) => a + (Number(s.duration)||0), 0) }; }
 /* consecutive entries at the same belt form one group; a group runs until the next belt's first entry (or today) */
 function beltGroups(art = 'bjj'){
   const h = beltHistory(art), t = today(), groups = [];
   h.forEach((e, i) => { const prev = h[i-1]; e = { ...e, took: prev ? diffYMD(prev.date, e.date) : null, end: h[i+1] ? h[i+1].date : t, current: i === h.length-1 };
     const g = groups[groups.length-1]; if (g && g.belt === e.belt) g.items.push(e); else groups.push({ belt:e.belt, start:e.date, items:[e] }); });
-  groups.forEach((g, i) => { g.current = i === groups.length-1; g.end = g.current ? t : groups[i+1].start; g.span = diffYMD(g.start, g.end); g.mat = matIn(g.start, g.end, g.current, art); });
+  groups.forEach((g, i) => { g.current = i === groups.length-1; g.end = g.current ? t : groups[i+1].start; g.span = diffYMD(g.start, g.end); });
   return groups;
 }
 // Belt illustration (SVG). size 'lg' = tied belt with hanging tails; 'sm' = flat bar for lists/timeline.
@@ -691,12 +688,11 @@ const beltEmpty = () => `<div class="belt empty-belt">${beltSVG('white', 0, 'lg'
 function beltCard(art = 'bjj'){
   const cur = currentRank(art), A = BELT_ARTS[art], id = art === 'bjj' ? 'beltCard' : `beltCard-${art}`, pre = art !== 'bjj' || artsUsed().length > 1 ? `${A.label} · ` : '', href = art === 'bjj' ? '#/belts' : `#/belts/${art}`;
   if (!cur) return `<div class="card beltcard" id="${id}" data-art="${art}"><h2>${art === 'bjj' ? 'Belt' : `${A.label} rank`}</h2>${art === 'bjj' ? beltEmpty() : ''}<button type="button" class="btn primary block" data-promo data-art="${art}">Log promotion</button></div>`;
-  const B = cap(A.noun), b = beltOf(cur.belt), atBelt = diffYMD(cur.beltDate, today()), m = matIn(cur.date, today(), true, art) /* that art's sessions on or after the latest belt or stripe date */, sb = subOf(cur.belt, art), sw = sb ? sb.word : '';
+  const B = cap(A.noun), atBelt = diffYMD(cur.beltDate, today()), sb = subOf(cur.belt, art), sw = sb ? sb.word : '';
   return `<div class="card tappable beltcard" id="${id}" data-art="${art}" data-href="${href}"><h2>${esc(pre)}${esc(beltName(cur.belt, art))}${cur.stripes ? ` · ${rankLabel(cur)}` : kyuOf(cur.belt, art) ? ` · ${kyuOf(cur.belt, art)}` : ''} ${cur.sample ? '<span class="pill sample">Sample</span>' : ''}<a class="lnk" href="${href}">Timeline ›</a></h2>
     <div class="belt">${beltBar(cur.belt, cur.stripes, '', art)}</div>
     <div class="belt-meta"><span>Time at ${A.noun} <b data-b="rank">${fmtYM(atBelt)}</b></span>${sw ? `<span>Time since last ${sw} <b data-b="since">${cur.lastStripe ? fmtYM(diffYMD(cur.lastStripe, today())) : `no ${sw}s yet`}</b></span>` : ''}</div>
     <div class="belt-meta" style="margin-top:4px"><span>${B} earned <b data-b="beltdate">${fmtShort(cur.beltDate)}</b></span>${cur.lastStripe ? `<span>Last ${sw} <b data-b="stripedate">${fmtShort(cur.lastStripe)}</b></span>` : ''}</div>
-    <div class="belt-meta" style="margin-top:4px"><span data-b="sessions"><b>${m.n}</b> ${esc(art === 'bjj' ? '' : A.label + ' ')}session${m.n === 1 ? '' : 's'} since last promotion</span></div>
     <button type="button" class="btn block" data-promo data-art="${art}" style="margin-top:12px">Log promotion</button></div>`;
 }
 function wireBelt(root){
@@ -791,7 +787,6 @@ function viewBelts(want){
     ${groups.length ? `<div class="timeline" id="timeline" data-art="${art}">${groups.map(g => { const b = beltOf(g.belt); return `<section class="tl-group ${g.current ? 'current' : ''}" data-belt="${g.belt}" style="--belt:${b[2]}">
       <div class="tl-head">${beltBar(g.belt, g.items[g.items.length-1].stripes, 'mini', art)}<div class="grow"><b>${esc(beltName(g.belt, art))}${kyuOf(g.belt, art) ? ` <small class="kyu">${kyuOf(g.belt, art)}</small>` : ''}</b><small>${fmtShort(g.start)} – ${g.current ? 'today' : fmtShort(g.end)}</small></div>
         <div class="tl-dur"><b data-span>${fmtSpan(g.span)}</b><small>${g.current ? 'so far' : `at this ${N}`}</small></div></div>
-      ${g.mat.n ? `<div class="tl-meta">${g.mat.n} ${art === 'bjj' ? '' : esc(A.label) + ' '}session${g.mat.n > 1 ? 's' : ''} · ${hrs(g.mat.min)} h ${art === 'bjj' ? 'on the mat ' : ''}logged</div>` : ''}
       <div class="tl-items">${items(g)}</div>${(() => { const sb = subOf(g.belt, art); if (!sb) return ''; const miss = missingStripes(g.belt, art), top = Math.max(sb.from - 1, ...g.items.filter(e => e.kind === 'stripe').map(e => e.stripes)), n = miss[0] || (top < sb.to ? top + 1 : 0);
         return n ? `<button type="button" class="btn sm ghost addstripe" data-addstripe="${g.belt}" data-art="${art}" data-n="${n}">+ ${miss.length ? 'Add missing' : 'Add'} ${sb.word} ${n} date</button>` : ''; })()}</section>`; }).join('')}</div>
       <div class="hint" style="text-align:center;margin-top:8px">${art === 'bjj' ? 'Tap a belt or stripe to change its date or delete it. Add past belts and stripes in any order; they\'re sorted by date. A new belt starts at 0 stripes.' : `Tap any entry to change its date or delete it. Add past ranks in any order; they're sorted by date.${A.noun === 'prajied' ? ' Prajied colours vary by gym and organisation: pick the colour you were given.' : ' Colour orders vary by club: pick the colour you were given.'}`}</div>`
@@ -5164,7 +5159,7 @@ function route(){
   if (a === 'settings' && b === 'schedule') { const g = $('#scheduleCard'); if (g) g.scrollIntoView({ block:'start' }); }
   if (window.FORGED_TUT) FORGED_TUT.check(curRoute);
 }
-window.DM_TEST = { mediaOn, mediaPrepare, MEDIA_MAX_MB, MEDIA_MAX_S, h2hOutcome, h2hResults, h2hFinal, inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, matIn, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
+window.DM_TEST = { mediaOn, mediaPrepare, MEDIA_MAX_MB, MEDIA_MAX_S, h2hOutcome, h2hResults, h2hFinal, inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
 window.addEventListener('hashchange', route);
 // 3.16.2: in-sheet hash links (e.g. Today's marks > Food). Closing the sheet calls history.back(), which used to
 // land after the link's own navigation and undo it (back to Home). Close first, then navigate once the pop settles.

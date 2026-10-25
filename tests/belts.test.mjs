@@ -139,7 +139,7 @@ await page.goto(BASE + '#/settings'); await page.reload(); await page.waitForSel
 let mg = await page.evaluate(() => ({ d:JSON.parse(localStorage.getItem('dm.bjj.v1')), b:localStorage.getItem('dm.bjj.v1.backup.v3') }));
 ok('v3 → v4: old belt setting becomes a belt event + 3 stripe events (dates flagged to set)', mg.d.schema === 7 && mg.d.belts.length === 4 && mg.d.belts[0].belt === 'purple' && mg.d.belts[0].kind === 'belt' && mg.d.belts[0].date === '2025-05-01' && mg.d.belts.filter(e => e.kind === 'stripe' && e.approx).length === 3 && mg.d.sessions.length === 1, JSON.stringify(mg.d.belts));
 ok('v3 → v4: backup kept', !!mg.b && JSON.parse(mg.b).schema === 3 && JSON.parse(mg.b).profile.belt === 'purple');
-ok('migrated rank shows on Home with sessions since promotion (no mat hours)', (await page.locator('#beltCard').textContent()).includes('Purple belt · 3 stripes') && (await page.locator('#beltCard').textContent()).replace(/\s+/g,' ').includes('1 session since last promotion') && !/ h since/.test(await page.locator('#beltCard').textContent()));
+ok('migrated rank shows on Home (3.16.3: no session count / mat hours)', (await page.locator('#beltCard').textContent()).includes('Purple belt · 3 stripes') && !/session|on the mat/i.test(await page.locator('#beltCard').textContent()) && !/ h since/.test(await page.locator('#beltCard').textContent()));
 await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ schema:3, sessions:[], profile:{ belt:'blue', stripes:1, promotedOn:'', setupDone:true }, nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] }, weights:[] })); });
 await page.reload(); await settle(300);
 mg = await page.evaluate(() => JSON.parse(localStorage.getItem('dm.bjj.v1')));
@@ -155,7 +155,7 @@ await page.goto(BASE); await page.waitForSelector('#loadSample'); await page.loc
 d = await db();
 ok('sample: white → blue 1 stripe over ~3 years', d.belts.length === 7 && d.profile.belt === 'blue' && d.profile.stripes === 1 && d.belts.every(b => b.sample) && d.belts.filter(b => b.kind === 'belt').length === 2);
 await page.goto(BASE + '#/belts'); await page.waitForSelector('.tl-group'); await hideToast();
-ok('sample timeline: 2 belts, mat time logged for current belt', await page.locator('.tl-group').count() === 2 && (await page.locator('.tl-group.current .tl-meta').innerText()).includes('sessions'));
+ok('sample timeline: 2 belts, no session count / mat time (3.16.3)', await page.locator('.tl-group').count() === 2 && await page.locator('.tl-meta').count() === 0 && !/session|on the mat/i.test(await page.locator('#timeline').innerText()));
 await page.screenshot({ path:`${SHOTS}/24-belt-timeline.png` });
 await page.locator('[data-promo]').first().tap(); await page.waitForSelector('#beltPick'); await settle(400);
 await page.screenshot({ path:`${SHOTS}/25-log-promotion.png` });
@@ -163,17 +163,9 @@ await page.locator('.sheet [data-close]').tap(); await settle();
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#rmS'); await page.locator('#rmS').tap(); await settle(400);
 ok('remove sample removes sample promotions', (await db()).belts.length === 0);
 
-/* sessions since last promotion: BJJ/grappling on or after the latest belt OR stripe date */
-{ const Dd = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
-  const G = (id, date, cat = 'grappling') => ({ id, date, category:cat, discipline:cat === 'grappling' ? 'bjj' : 'strength', type:'class', duration:60, intensity:3, rpe:6, rounds:4, notes:'', sample:false, createdAt:1 });
-  const seedS = async sessions => { await page.evaluate(([ss, b, s]) => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ schema:7, profile:{ setupDone:true, enabled:{ grappling:true, weights:true } }, sessions:ss, nutrition:{ entries:[], foods:[], water:[] }, weights:[],
-    belts:[{ id:'b1', date:b, belt:'blue', stripes:0, kind:'belt' }, { id:'s1', date:s, belt:'blue', stripes:1, kind:'stripe' }] })); }, [sessions, Dd(-100), Dd(-10)]); await page.goto(BASE + '#/'); await page.goto(BASE + '#/settings'); await page.reload(); await page.waitForSelector('#beltCard'); };
-  await seedS([G('a', Dd(-50)), G('b', Dd(-10)), G('c', Dd(-2), 'weights')]);
-  const t1 = (await page.locator('#beltCard [data-b="sessions"]').textContent()).replace(/\s+/g, ' ').trim();
-  ok('counts grappling sessions from the latest stripe date (on the day counts; earlier and other sports do not), singular', t1 === '1 session since last promotion', t1);
-  await seedS([G('a', Dd(-50)), G('b', Dd(-10)), G('d', Dd(-1))]);
-  const t2 = (await page.locator('#beltCard [data-b="sessions"]').textContent()).replace(/\s+/g, ' ').trim();
-  ok('plural sessions', t2 === '2 sessions since last promotion', t2); }
+/* 3.16.3: belt card keeps time at belt / stripe + dates, no session count */
+ok('belt card: time at belt, earned date; no sessions line', await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ schema:7, profile:{ setupDone:true, enabled:{ grappling:true } }, sessions:[{ id:'a', date:new Date().toLocaleDateString('en-CA'), category:'grappling', discipline:'bjj', type:'class', duration:60, intensity:3, rpe:6, rounds:4, notes:'', createdAt:1 }], nutrition:{ entries:[], foods:[], water:[] }, weights:[], belts:[{ id:'b1', date:'2024-01-01', belt:'blue', stripes:0, kind:'belt' }] })); return true; }) && (await page.goto(BASE + '#/settings'), await page.reload(), await page.waitForSelector('#beltCard'), true)
+  && await page.locator('#beltCard [data-b="rank"]').count() === 1 && await page.locator('#beltCard [data-b="beltdate"]').count() === 1 && await page.locator('#beltCard [data-b="sessions"]').count() === 0 && !/session/i.test(await page.locator('#beltCard').innerText()));
 ok('no console errors', errors.length === 0, JSON.stringify(errors));
 console.log(results.join('\n'));
 await browser.close();

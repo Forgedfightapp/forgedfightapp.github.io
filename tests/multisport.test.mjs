@@ -94,7 +94,7 @@ d = await db();
 ok('existing BJJ belt data unchanged (no art field added)', JSON.stringify(d.belts) === JSON.stringify(bjj), JSON.stringify(d.belts));
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#beltCard');
 ok('Profile: just the BJJ belt card (as before)', await page.locator('.beltcard').count() === 1 && await page.locator('#beltCard').count() === 1 && /^Blue belt/i.test(await page.locator('#beltCard h2').innerText()));
-ok('BJJ sessions since last promotion count only BJJ sessions (1 BJJ, 3 judo ignored)', (await page.locator('#beltCard [data-b="sessions"]').innerText()).startsWith('1 '), await page.locator('#beltCard [data-b="sessions"]').innerText());
+ok('BJJ card: no sessions-since-promotion line (3.16.3)', await page.locator('#beltCard [data-b="sessions"]').count() === 0);
 await page.goto(BASE + '#/belts'); await page.waitForSelector('#timeline');
 ok('one art: no art switcher; offers "Track another art"', await page.locator('#artSwitch').count() === 0 && await page.locator('#addArt').count() === 1);
 await page.locator('#addArt').tap(); await page.waitForSelector('[data-pickart]');
@@ -111,7 +111,7 @@ d = await db(); const je = d.belts.filter(e => e.art === 'judo');
 ok('judo events stored with art: judo; BJJ events untouched', je.length === 2 && je.every(e => e.kind === 'belt') && JSON.stringify(d.belts.filter(e => !e.art)) === JSON.stringify(bjj));
 ok('art switcher appears with BJJ and Judo', await page.locator('#artSwitch a').count() === 2 && await page.locator('#artSwitch a.on').innerText() === 'Judo');
 ok('Judo timeline: Orange belt (4th kyu) current, Yellow before, judo-coloured graphic', await page.locator('#timeline').getAttribute('data-art') === 'judo' && await page.locator('#timeline .tl-group').count() === 2 && /Orange belt/.test(await page.locator('#timeline .tl-group.current').innerText()) && /4th kyu/.test(await page.locator('#timeline .tl-group.current').innerText()) && await page.locator('#timeline .beltsvg[data-art="judo"][data-belt="orange"]').count() === 1);
-ok('Judo card: time at belt, belt earned date, judo sessions since last promotion', /Time at belt/.test(await page.locator('#beltCard-judo').innerText()) && /3 Judo sessions since last promotion/.test(await page.locator('#beltCard-judo [data-b="sessions"]').innerText()), await page.locator('#beltCard-judo').innerText());
+ok('Judo card: time at belt, belt earned date, no session count', /Time at belt/.test(await page.locator('#beltCard-judo').innerText()) && await page.locator('#beltCard-judo [data-b="sessions"]').count() === 0 && !/session/i.test(await page.locator('#beltCard-judo').innerText()), await page.locator('#beltCard-judo').innerText());
 /* black belt + dan */
 await T(([a, b]) => { const x = JSON.parse(localStorage.getItem('dm.bjj.v1')); x.belts.push({ id:'jb', art:'judo', date:a, belt:'black', kind:'belt', stripes:0, createdAt:9 }, { id:'jd2', art:'judo', date:b, belt:'black', kind:'stripe', stripes:2, createdAt:10 }); localStorage.setItem('dm.bjj.v1', JSON.stringify(x)); }, [D(-10), D(-5)]);
 await page.reload(); await page.waitForSelector('#timeline');

@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.16.3';
+const APP_VERSION = '3.17.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -906,8 +906,7 @@ function viewSetup(step = 1){
   const sync = () => v.querySelectorAll('.tile').forEach(b => { b.classList.toggle('on', !!pick[b.dataset.k]); b.setAttribute('aria-pressed', !!pick[b.dataset.k]); });
   v.querySelectorAll('.tile').forEach(b => b.onclick = () => { pick[b.dataset.k] = !pick[b.dataset.k]; if (!CAT_KEYS.some(k => pick[k])) pick.grappling = true; sync(); });
   sync();
-  let uf = null; if (unameOn() && !sUser()) { uf = unameField({ remote:true, label:'Pick a username (optional)', value:sLS.get('wantUname', '') }); const slot = $('#go'); slot.parentNode.insertBefore(uf, slot); uf.style.textAlign = 'left'; uf.style.margin = '14px 0'; }
-  $('#go').onclick = async () => { if (uf && $('#unIn').value.trim()) { await uf.check(); if (!uf.value()) { toast('Fix your username or clear it'); return; } sLS.set('wantUname', uf.value()); }
+  $('#go').onclick = () => {
     db.profile = { ...db.profile, enabled:{ ...pick } }; viewSetup(2); window.scrollTo(0, 0); };
   $('#loadSample').onclick = () => { setupPick = null; setupAbout = null; loadSample(); };
 }
@@ -921,11 +920,22 @@ function viewSetupAbout(){
     <button class="btn primary block" id="aboutNext" style="margin-top:18px">Next: set your goals</button>
     <button type="button" class="lnk skip" id="skipAbout">Skip for now</button></div>`;
   const F = macroCalcForm({ units:true, state:A.st, pre:{ u:unit() } }); A.st = F.st;
+  /* 3.17.0: username lives in About you. Optional and never blocks setup: checked with the 3.16.0 rules + profiles.username
+     availability when online; offline / signed out it is kept and claimed on sign-in (wantUname). */
+  const uf = unameOn() && !sLS.get('uname', '') ? unameField({ remote:true, label:'Username', value:A.un ?? sLS.get('wantUname', '') }) : null;
+  if (uf) { uf.id = 'aboutUname'; uf.classList.add('card', 'goalsec'); uf.style.textAlign = 'left'; $('#aboutForm').before(uf); }
   $('#aboutForm').appendChild(F.el);
   const next = () => { viewSetupGoals(); window.scrollTo(0, 0); };
-  $('#aboutNext').onclick = () => { const err = F.validate(); if (err) { toast(err); return; }
+  const keepUname = async () => { if (!uf) return true; const raw = $('#unIn').value.trim(); A.un = raw;
+    if (!raw) { sLS.del('wantUname'); return true; }
+    await uf.check(); const hd = uf.value(); if (!hd) { toast('Fix your username or clear it'); $('#unIn').focus(); return false; }
+    if (sUser()) { try { const r = await Cloud().claimUsername(hd); sLS.set('uname', r || hd); sLS.del('wantUname'); } catch(e) { if (/taken|unique|duplicate/i.test(e.message)) { uf.setError(`@${hd} is taken`); return false; } sLS.set('wantUname', hd); } }
+    else sLS.set('wantUname', hd);
+    return true; };
+  $('#aboutNext').onclick = async () => { const err = F.validate(); if (err) { toast(err); return; }
+    if (!await keepUname()) return;
     A.done = F.calc(); db.profile = { ...db.profile, unit:A.done.s.u }; next(); };
-  $('#skipAbout').onclick = () => { A.done = null; next(); };
+  $('#skipAbout').onclick = async () => { if (!await keepUname()) return; A.done = null; next(); };
   $('#setupBack').onclick = () => { viewSetup(1); window.scrollTo(0, 0); };
 }
 function viewSetupGoals(){
@@ -2298,7 +2308,7 @@ function foodPicker({ meal = null } = {}){
     drawT(); openSheet(sv, null, { closeLabel:'Cancel' });
   }
   function scanView(){
-    const can = 'BarcodeDetector' in window && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+    const can = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);   // 3.17.0: ZXing fallback, so iOS Safari / the iOS app (no BarcodeDetector) can scan too
     const sv = h(`<div class="foodpick" id="scanView"><button type="button" class="lnk fpback" id="scBack">‹ Back to search</button><h3>Scan a barcode</h3>
       ${can ? '<div class="scanbox"><video id="scVideo" playsinline muted></video><i class="scanline"></i></div><div class="hint" id="scHint">Point the camera at the barcode.</div>' : '<div class="hint" id="scHint">Camera scanning isn\'t available in this browser. Type the numbers under the barcode instead.</div>'}
       <div class="field" style="margin-top:12px"><label>Barcode number</label><div class="fpbar"><input class="input grow" type="text" inputmode="numeric" id="scCode" placeholder="e.g. 0123456789012"><button type="button" class="btn primary" id="scGo">Look up</button></div></div>
@@ -2318,14 +2328,33 @@ function foodPicker({ meal = null } = {}){
     sv.querySelector('#scBack').onclick = () => { stop(); openSheet(el, null, { closeLabel:'Cancel' }); draw(); };
     openSheet(sv, stop, { closeLabel:'Cancel' });
     if (can) (async () => {
-      try { const det = new window.BarcodeDetector({ formats:['ean_13','ean_8','upc_a','upc_e'] }); stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
+      const hn = sv.querySelector('#scHint');
+      try { stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
+        if (!alive) { stop(); return; }
         const v = sv.querySelector('#scVideo'); v.srcObject = stream; await v.play();
-        const tick = async () => { if (!alive) return; try { const r = await det.detect(v); if (r && r[0]) { sv.querySelector('#scCode').value = r[0].rawValue; look(r[0].rawValue); return; } } catch(e) {} setTimeout(tick, 250); }; tick(); }
-      catch(e) { const hn = sv.querySelector('#scHint'); if (hn) hn.textContent = 'Camera unavailable. Type the barcode number instead.'; }
+        const det = await barcodeReader(); if (!alive) return;
+        const tick = async () => { if (!alive) return; const code = await det(v).catch(() => null); if (code && alive) { sv.querySelector('#scCode').value = code; look(code); return; } setTimeout(tick, 200); }; tick(); }
+      catch(e) { if (hn) hn.textContent = e && e.name === 'NotAllowedError' ? 'Camera access is off. Allow camera access for FORGED in Settings, or type the barcode number.' : 'Camera unavailable. Type the barcode number instead.'; }
     })();
   }
   draw(); openSheet(el, null, { closeLabel:'Cancel' });
   Q.focus({ preventScroll:true });
+}
+/* 3.17.0: barcode reader. Native BarcodeDetector where it exists (Chrome/Android); otherwise the vendored ZXing build
+   (loaded on first scan, cached offline by the service worker) decoding frames from the getUserMedia video. */
+const ZXING_SRC = 'vendor/zxing-library-0.21.3.min.js';
+let zxingP = null;
+const loadZXing = () => window.ZXing ? Promise.resolve(window.ZXing) : (zxingP = zxingP || new Promise((ok, no) => { const s = document.createElement('script'); s.src = ZXING_SRC; s.onload = () => window.ZXing ? ok(window.ZXing) : no(new Error('zxing')); s.onerror = () => { zxingP = null; no(new Error('zxing')); }; document.head.appendChild(s); }));
+async function barcodeReader(){
+  const F = ['ean_13','ean_8','upc_a','upc_e'];
+  if ('BarcodeDetector' in window) { try { const d = new window.BarcodeDetector({ formats:F }); return async v => { const r = await d.detect(v); return r && r[0] ? r[0].rawValue : null; }; } catch(e) {} }
+  const Z = await loadZXing(), hints = new Map();
+  hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E]); hints.set(Z.DecodeHintType.TRY_HARDER, true);
+  const rd = new Z.MultiFormatReader(); rd.setHints(hints);
+  const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently:true });
+  return async v => { const w = v.videoWidth, h0 = v.videoHeight; if (!w || !h0) return null;
+    const sc = Math.min(1, 800 / w); cv.width = Math.round(w * sc); cv.height = Math.round(h0 * sc); cx.drawImage(v, 0, 0, cv.width, cv.height);
+    try { return rd.decode(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(cv)))).getText(); } catch(e) { return null; } };
 }
 function savedFoodsSheet(){
   const el = h(`<div><h3>My foods</h3><p class="hint" style="margin:-8px 0 12px">Tap + to add a serving to ${foodDate === today() ? 'today' : fmtShort(foodDate)}. Foods you save while logging appear here.</p><div class="search" style="margin-bottom:10px"><input class="input" type="search" placeholder="Search my foods…"></div><div class="flist"></div></div>`);
@@ -4106,7 +4135,26 @@ function marksSheet(){
   };
   draw(); openSheet(el, () => { if (!curRoute) whenSettled(route); });
 }
-function wireMarks(v){ const b = v.querySelector('#marks'); if (b) b.onclick = marksSheet; }
+function wireMarks(v){ const b = v.querySelector('#marks'); if (b) b.onclick = marksSheet;
+  v.querySelectorAll('#weekStrip .wday').forEach(d => { d.setAttribute('role', 'button'); d.tabIndex = 0; d.setAttribute('aria-label', `Review ${fmtDate(d.dataset.day)}`); d.onclick = () => daySheet(d.dataset.day); d.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); daySheet(d.dataset.day); } }; }); }
+/* 3.17.0: tap a day on the This Week strip to review / edit / delete what was logged that day, or add a workout for it */
+function daySheet(d){
+  const el = h('<div id="daySheet"></div>');
+  const draw = () => {
+    const ss = db.sessions.filter(s => s.date === d).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const fe = enabled('food') ? entriesOn(d) : [], kcal = Math.round(totals(fe).cal);
+    el.innerHTML = `<h3>${d === today() ? 'Today' : esc(fmtDate(d))}</h3>
+      ${ss.length ? ss.map(s => `<div class="dayitem" data-sid="${esc(s.id)}">${sessRow(s)}<div class="dayacts"><a class="btn sm" href="#/edit/${esc(s.id)}" data-dedit>Edit</a><button type="button" class="btn sm danger" data-ddel>Delete</button></div></div>`).join('')
+        : `<div class="empty" id="dayEmpty">Nothing logged ${d === today() ? 'today' : 'this day'}.</div>`}
+      ${enabled('food') ? `<a class="list-row dayfood" id="dayFood" href="#/food/${d}"><div class="grow"><b>Food</b><small>${fe.length ? `${fe.length} item${fe.length === 1 ? '' : 's'} · ${kcal.toLocaleString()} kcal` : 'Nothing logged'}</small></div><span class="dim">›</span></a>` : ''}
+      ${d <= today() ? `<button type="button" class="btn primary block" id="dayAdd" style="margin-top:12px">+ Log a workout for ${d === today() ? 'today' : esc(fmtShort(d))}</button>` : ''}`;
+    el.querySelectorAll('[data-ddel]').forEach(b => b.onclick = async () => { const s = db.sessions.find(x => x.id === b.closest('[data-sid]').dataset.sid); if (!s) return;
+      if (!await confirmSheet('Delete this workout?', `${fmtDate(s.date)} · ${sessTitle(s)}. This can't be undone.`)) { daySheet(d); return; }
+      db.sessions = db.sessions.filter(x => x.id !== s.id); save(); toast('Workout deleted'); daySheet(d); });
+    const add = el.querySelector('#dayAdd'); if (add) add.onclick = () => { closeSheet(); form = blankSession(); form.date = d; formBase = null; go('#/log'); };
+  };
+  draw(); openSheet(el, () => { if (!curRoute || curRoute === 'home') whenSettled(route); });
+}
 function offerMarksPause(sev){
   if (curPause()) return;
   const days = sev >= 4 ? 14 : 7;
@@ -5159,7 +5207,7 @@ function route(){
   if (a === 'settings' && b === 'schedule') { const g = $('#scheduleCard'); if (g) g.scrollIntoView({ block:'start' }); }
   if (window.FORGED_TUT) FORGED_TUT.check(curRoute);
 }
-window.DM_TEST = { mediaOn, mediaPrepare, MEDIA_MAX_MB, MEDIA_MAX_S, h2hOutcome, h2hResults, h2hFinal, inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
+window.DM_TEST = { barcodeReader, loadZXing, mediaOn, mediaPrepare, MEDIA_MAX_MB, MEDIA_MAX_S, h2hOutcome, h2hResults, h2hFinal, inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
 window.addEventListener('hashchange', route);
 // 3.16.2: in-sheet hash links (e.g. Today's marks > Food). Closing the sheet calls history.back(), which used to
 // land after the link's own navigation and undo it (back to Home). Close first, then navigate once the pop settles.

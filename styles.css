@@ -546,6 +546,8 @@ body.setup-mode .topbar{display:none}
 .wday.today{background:var(--accent-soft);box-shadow:0 0 0 1.5px var(--brand) inset}
 .wday.today span{color:var(--accent)}
 .wday.future b{color:var(--muted)}
+.wday[role=button]{cursor:pointer;-webkit-tap-highlight-color:transparent}.wday[role=button]:active{transform:scale(.94)}
+#daySheet .dayitem{margin-bottom:10px}#daySheet .dayacts{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}#daySheet .dayfood{margin-top:6px}
 .wdots{display:flex;flex-wrap:wrap;justify-content:center;gap:3px;min-height:9px;max-width:38px}
 .wd{display:inline-block;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 1.5px var(--c) inset;flex:none}
 .wd.on{background:var(--c);box-shadow:none}

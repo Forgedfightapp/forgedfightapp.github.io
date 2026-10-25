@@ -162,7 +162,7 @@ const usedPositions = () => countBy(allRolls().flatMap(r => r.stuck||[])).map(x 
 const usedPartners = () => countBy(allRolls().map(r => r.partner||'')).map(x => x[0]);
 
 let toastTimer;
-function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.remove('act'); t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200); }
+function toast(msg){ clearTimeout(chUndoTimer); chUndo = []; const t = $("#toast"); t.textContent = msg; t.classList.remove('act'); t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200); }
 
 function h(html){ const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; }
 
@@ -2464,6 +2464,16 @@ function wireWater(root, day){
 }
 
 /* ---------------- undo toast ---------------- */
+/* challenge Done taps: one shared undo stack, toast stays 9 s and resets on every tap; each Undo reverts one tap */
+var chUndo = [], chUndoTimer = null;
+function chUndoPush(msg, fn){ chUndo.push({ msg, fn }); chUndoShow(); }
+function chUndoShow(){
+  const t = $('#toast'), n = chUndo.length; clearTimeout(toastTimer); clearTimeout(chUndoTimer);
+  if (!n) { t.classList.remove('show','act'); return; }
+  t.innerHTML = `${esc(chUndo[n - 1].msg)} <button type="button" class="undo">Undo${n > 1 ? ` (${n})` : ''}</button>`; t.classList.add('show', 'act');
+  t.querySelector('.undo').onclick = () => { const u = chUndo.pop(); if (u) u.fn(); chUndoShow(); };
+  chUndoTimer = setTimeout(() => { chUndo = []; t.classList.remove('show','act'); }, 9000);
+}
 function undoToast(msg, undo){
   const t = $('#toast'); t.innerHTML = `${esc(msg)} <button type="button" class="undo">Undo</button>`; t.classList.add('show', 'act');
   t.querySelector('.undo').onclick = () => { t.classList.remove('show','act'); undo(); };
@@ -3721,7 +3731,7 @@ function markChallengeDone(key){
   const day = today(), added = [];
   c.parts.forEach(([ex, n]) => { const left = n - repTotal(ex, day, day); if (left > 0) { const rec = { id:uid(), date:day, ex, n:left, createdAt:Date.now() }; (db.reps = db.reps || []).push(rec); added.push(rec.id); } });
   if (!added.length) return; save();
-  undoToast(`Done: ${c.title}`, () => { db.reps = db.reps.filter(x => !added.includes(x.id)); save(); route(); });
+  chUndoPush(`Done: ${c.title}`, () => { db.reps = db.reps.filter(x => !added.includes(x.id)); save(); route(); });
   const y = window.scrollY; route(); window.scrollTo(0, y);
 }
 document.addEventListener('click', e => {
@@ -3789,7 +3799,7 @@ function chTick(key, dir){
   if (dir > 0) { if (c.value >= c.goal) return; m[key] = Math.min(c.goal, c.value + 1); }
   else { const nv = c.value - 1; if (nv <= c.auto) delete m[key]; else m[key] = nv; }
   save(); const y = window.scrollY; route(); window.scrollTo(0, y);
-  if (dir > 0) undoToast(`Done: ${c.title} (${Math.min(c.goal, c.value + 1)} / ${c.goal})`, () => { if (prev === undefined) delete m[key]; else m[key] = prev; save(); const y2 = window.scrollY; route(); window.scrollTo(0, y2); });
+  if (dir > 0) chUndoPush(`Done: ${c.title} (${Math.min(c.goal, c.value + 1)} / ${c.goal})`, () => { if (prev === undefined) delete m[key]; else m[key] = prev; save(); const y2 = window.scrollY; route(); window.scrollTo(0, y2); });
 }
 const chGoal = t => t.parts ? (t.parts.length === 1 ? t.parts[0][1] : 100) : typeof t.goal === 'function' ? t.goal() : t.goal;
 /* rep-based value: single exercise = its total; combos = % of the slowest part */

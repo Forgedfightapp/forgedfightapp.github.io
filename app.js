@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.15.2';
+const APP_VERSION = '3.15.3';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -822,7 +822,7 @@ const CATS = {
 const CAT_KEYS = Object.keys(CATS);
 const allDisc = c => [...CATS[c].disc, ...(CATS[c].legacy || [])];
 const STRIKE_TECH = ['Jab','Cross','Lead hook','Rear hook','Uppercut','Teep','Roundhouse kick','Low kick','Body kick','Head kick','Knee','Elbow','Clinch','Check kick','Slip & counter','Roll under','Parry','Footwork','Head movement','1-2-3','Jab-cross-low kick','Level change','Cage work'];
-const STRIKE_MIX = [['shadow','Shadow'],['pads','Pads'],['bag','Bag'],['drills','Drills'],['sparring','Sparring']];
+const STRIKE_MIX = [['shadow','Shadow'],['pads','Pads'],['bag','Bag'],['drills','Drills'],['sparring','Sparring'],['circuit','Circuit']];
 const MMA_MIX = [['pads','Pad work'],['sparring','Sparring'],['grappling','Grappling rounds'],['circuit','Circuit']];
 const MIX_LEGACY = { drills:'Drilling' };   // 3.13.5: no longer in the picker; old sessions keep their label
 const MIX_KEYS = [...new Set(STRIKE_MIX.concat(MMA_MIX).map(x => x[0]).concat(Object.keys(MIX_LEGACY)))];

@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.17.0';
+const APP_VERSION = '3.17.1';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -2310,7 +2310,7 @@ function foodPicker({ meal = null } = {}){
   function scanView(){
     const can = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);   // 3.17.0: ZXing fallback, so iOS Safari / the iOS app (no BarcodeDetector) can scan too
     const sv = h(`<div class="foodpick" id="scanView"><button type="button" class="lnk fpback" id="scBack">‹ Back to search</button><h3>Scan a barcode</h3>
-      ${can ? '<div class="scanbox"><video id="scVideo" playsinline muted></video><i class="scanline"></i></div><div class="hint" id="scHint">Point the camera at the barcode.</div>' : '<div class="hint" id="scHint">Camera scanning isn\'t available in this browser. Type the numbers under the barcode instead.</div>'}
+      ${can ? '<div class="scanbox" id="scBox"><i class="scanline"></i></div><div class="hint" id="scHint">Point the camera at the barcode.</div>' : '<div class="hint" id="scHint">Camera scanning isn\'t available in this browser. Type the numbers under the barcode instead.</div>'}
       <div class="field" style="margin-top:12px"><label>Barcode number</label><div class="fpbar"><input class="input grow" type="text" inputmode="numeric" id="scCode" placeholder="e.g. 0123456789012"><button type="button" class="btn primary" id="scGo">Look up</button></div></div>
       <div id="scMsg"></div></div>`);
     let stream = null, alive = true;
@@ -2331,7 +2331,7 @@ function foodPicker({ meal = null } = {}){
       const hn = sv.querySelector('#scHint');
       try { stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
         if (!alive) { stop(); return; }
-        const v = sv.querySelector('#scVideo'); v.srcObject = stream; await v.play();
+        const v = await attachCam(sv.querySelector('#scBox'), stream, () => alive); if (!v) return;
         const det = await barcodeReader(); if (!alive) return;
         const tick = async () => { if (!alive) return; const code = await det(v).catch(() => null); if (code && alive) { sv.querySelector('#scCode').value = code; look(code); return; } setTimeout(tick, 200); }; tick(); }
       catch(e) { if (hn) hn.textContent = e && e.name === 'NotAllowedError' ? 'Camera access is off. Allow camera access for FORGED in Settings, or type the barcode number.' : 'Camera unavailable. Type the barcode number instead.'; }
@@ -2342,6 +2342,24 @@ function foodPicker({ meal = null } = {}){
 }
 /* 3.17.0: barcode reader. Native BarcodeDetector where it exists (Chrome/Android); otherwise the vendored ZXing build
    (loaded on first scan, cached offline by the service worker) decoding frames from the getUserMedia video. */
+/* 3.17.1: iOS black preview. The <video> used to be parsed inside a <template> (inert document) and attached while the sheet
+   was still animating in, with no autoplay. WKWebView ran the stream (green dot) but never painted it. Build the element in the live
+   document, set playsinline/webkit-playsinline/muted/autoplay as attributes AND properties before srcObject, insert it once the sheet
+   has settled, then await metadata + play(). */
+async function attachCam(box, stream, alive = () => true){
+  if (!box) return null;
+  await new Promise(r => { const p = box.closest('.panel'); let done = false; const go = () => { if (!done) { done = true; r(); } };
+    if (p && p.getAnimations && p.getAnimations().length) Promise.all(p.getAnimations().map(a => a.finished)).then(go, go); else go(); setTimeout(go, 400); });
+  if (!alive()) return null;
+  const v = document.createElement('video'); v.id = 'scVideo';
+  ['playsinline', 'webkit-playsinline', 'muted', 'autoplay'].forEach(a => v.setAttribute(a, ''));
+  v.playsInline = true; v.muted = true; v.defaultMuted = true; v.autoplay = true;
+  box.insertBefore(v, box.firstChild);
+  v.srcObject = stream;
+  if (v.readyState < 1) await new Promise(r => { v.addEventListener('loadedmetadata', r, { once:true }); setTimeout(r, 1500); });
+  try { await v.play(); } catch(e) { box.addEventListener('click', () => v.play().catch(() => {}), { once:true }); }
+  return v;
+}
 const ZXING_SRC = 'vendor/zxing-library-0.21.3.min.js';
 let zxingP = null;
 const loadZXing = () => window.ZXing ? Promise.resolve(window.ZXing) : (zxingP = zxingP || new Promise((ok, no) => { const s = document.createElement('script'); s.src = ZXING_SRC; s.onload = () => window.ZXing ? ok(window.ZXing) : no(new Error('zxing')); s.onerror = () => { zxingP = null; no(new Error('zxing')); }; document.head.appendChild(s); }));
@@ -5207,7 +5225,7 @@ function route(){
   if (a === 'settings' && b === 'schedule') { const g = $('#scheduleCard'); if (g) g.scrollIntoView({ block:'start' }); }
   if (window.FORGED_TUT) FORGED_TUT.check(curRoute);
 }
-window.DM_TEST = { barcodeReader, loadZXing, mediaOn, mediaPrepare, MEDIA_MAX_MB, MEDIA_MAX_S, h2hOutcome, h2hResults, h2hFinal, inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
+window.DM_TEST = { attachCam, barcodeReader, loadZXing, mediaOn, mediaPrepare, MEDIA_MAX_MB, MEDIA_MAX_S, h2hOutcome, h2hResults, h2hFinal, inferMode, weightMode, weightGoal, weeklyAverages, avg7, paceWarn, planRows, planBase, planAdvice, activeWPlan, wplanOf, setWeightMode, migrateWeightMode, compKind, compSports, compRecord, compRecordBySport, sanitizeComps, BELT_ARTS, artsUsed, artOf, currentRank, beltHistory, sanitizeBelts, nextRank, tipDeck, tipFor, tipContext, seededShuffle, TIP_TOPICS, socialDaily, socialQueueDiff, socialOn, socialSync, waterConv, galFrac, repTotal, REP_EX, repGoalsToday, sanitizeReps, searchFoods, foodsDb, foodFor, foodUnits, offNormalize, recentFoods, macroCalc, calcInputsKg, calcDrift, guessActivity, ACTIVITY, gameState, currentChallenges, pickChallenges, periodOf, evalChallenge, CH_POOL, badgeState, levelOf, xpForLevel, rankIdx, RANKS, renderShareCard, shareContent, readFriendCode, friendCode, lookUnlocked, currentLook, proActive, prEvents, timeLeft, gFair, strengthBest, strengthProgress, checkStrengthGoals, sanitizeStrength, nextTarget, sgTarget, diffYMD, fmtSpan, beltGroups, rpeFromIntensity, rpeOf, loadOf, loadStatus, weeklyLoad, backToBack, epley, benchSeries, benchDue, challengeStatus, challengeMonths, daysTo, nextComp, suggest, progSchedule, prescription, progNext, activeProgram, injDay, injName, activeInjuries, isPro, typeLabel, marksCfg, marksDay, setMarks, pauseMarks, resumeMarks, curPause, weekPlan, pwHistory, pwStats, freezeWeeks, timedMedals, monthMedal, ltdMedal, personalGoal, medalKindFor, medalList, medalEvents, medalCelebration, upcomingLtd, recapData, recapSuggest, recapDue, LTD, MEDAL_KINDS, gameCheck, paywallOn, proTag, Payments, PRO_PLANS, PRO_FEATURES, get db(){ return db; } };
 window.addEventListener('hashchange', route);
 // 3.16.2: in-sheet hash links (e.g. Today's marks > Food). Closing the sheet calls history.back(), which used to
 // land after the link's own navigation and undo it (back to Home). Close first, then navigate once the pop settles.

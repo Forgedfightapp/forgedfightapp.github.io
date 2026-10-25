@@ -19,6 +19,7 @@
     reset(){ S = blank(); save(); },
     addUser(o){ const id = o.id || ('u-' + (++S.n)); S.users[id] = { id, email:o.email || id + '@test' };
       S.profiles[id] = { id, display_name:o.name || 'Friend', avatar_initial:(o.name || 'F')[0].toUpperCase(), avatar_color:o.color || 'sky', rank_idx:o.rank || 0, level:o.level || 1, xp:o.xp || 0, belt:o.belt || '' };
+      if (o.username) S.profiles[id].username = o.username; if (o.allowTags === false) S.profiles[id].allow_tags = false;
       if (o.invite) S.invites[o.invite] = { code:o.invite, inviter_id:id, uses:0, max_uses:25, expires:Date.now() + 30 * 864e5 }; save(); return id; },
     befriend(a, b){ if (!isFriend(a, b)) S.friends.push([a, b], [b, a]); save(); },
     progress(uid, metric, day, value){ S.progress[`${uid}|${metric}|${day}`] = value; save(); },
@@ -39,7 +40,7 @@
   const active = (c, u) => S.parts.find(p => p.c === c && p.u === u && (p.status === 'invited' || p.status === 'joined'));
   const PIX = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#2a2a2e"/><circle cx="400" cy="300" r="120" fill="#F2711C"/></svg>');
   const canSee = path => { const o = path.split('/')[0]; return o === uid() || isFriend(uid(), o); };
-  const mediaRow = m => { const p = prof(m.owner) || {}; return { ...m, display_name:p.display_name || 'Fighter', avatar_initial:p.avatar_initial || 'F', avatar_color:p.avatar_color || 'flame', is_me:m.owner === uid() }; };
+  const mediaRow = m => { const p = prof(m.owner) || {}; return { ...m, tags:(m.tags || []).map(t => (prof(t) || {}).username).filter(Boolean), display_name:p.display_name || 'Fighter', avatar_initial:p.avatar_initial || 'F', avatar_color:p.avatar_color || 'flame', is_me:m.owner === uid() }; };
   const RPC = {
     list_media(a){ if (M.mediaOff) return err('Could not find the function public.list_media'); const cut = Date.now() - 30 * 864e5;
       return { data:S.media.filter(m => canSee(m.path) && Date.parse(m.created_at) > cut).sort((x, y) => y.created_at.localeCompare(x.created_at)).slice(0, a.p_limit || 30).map(mediaRow), error:null }; },
@@ -49,6 +50,22 @@
       if (!(a.p_level >= 1 && a.p_level <= 200)) return err('Invalid level'); if (!(a.p_xp >= 0 && a.p_xp <= 5e6)) return err('Invalid XP');
       S.profiles[u] = { id:u, display_name:nm, avatar_initial:nm[0].toUpperCase(), avatar_color:a.p_avatar_color || 'flame', rank_idx:a.p_rank_idx, level:a.p_level, xp:a.p_xp, belt:a.p_belt || '' };
       return { data:S.profiles[u], error:null }; },
+    my_username(){ const p = S.profiles[uid()]; return { data:p ? p.username || null : null, error:null }; },
+    username_available(a){ const n = String(a.p_username || '').toLowerCase(), U = window.ForgedUsername; if (U && !U.check(n).ok) return { data:false, error:null };
+      return { data:!Object.values(S.profiles).some(p => p.username && p.username.toLowerCase() === n && p.id !== uid()), error:null }; },
+    claim_username(a){ const u = uid(); ensure(u); const n = String(a.p_username || '').replace(/^@/, '').trim(), c = window.ForgedUsername.check(n); if (!c.ok) return err(c.msg);
+      if (Object.values(S.profiles).some(p => p.username && p.username.toLowerCase() === n.toLowerCase() && p.id !== u)) return err('That username is taken');
+      S.profiles[u].username = n; return { data:n, error:null }; },
+    find_username(a){ const n = String(a.p_username || '').replace(/^@/, '').toLowerCase(), p = Object.values(S.profiles).find(p => p.username && p.username.toLowerCase() === n);
+      return { data:p ? [{ username:p.username, display_name:p.display_name, avatar_initial:p.avatar_initial, avatar_color:p.avatar_color, belt:p.belt || '' }] : [], error:null }; },
+    taggable_friends(){ const u = uid(); return { data:Object.values(S.profiles).filter(p => p.id !== u && p.username && p.allow_tags !== false && isFriend(u, p.id)).map(p => ({ username:p.username, display_name:p.display_name, avatar_initial:p.avatar_initial, avatar_color:p.avatar_color })), error:null }; },
+    tag_media(a){ const u = uid(), post = S.media.find(x => x.id === a.p_post && x.owner === u); if (!post) return err('Post not found');
+      for (const n of a.p_usernames || []) { const p = Object.values(S.profiles).find(p => p.username && p.username.toLowerCase() === String(n).toLowerCase());
+        if (!p || !isFriend(u, p.id)) return err(`@${n} isn't your friend`); if (p.allow_tags === false) return err(`@${n} has tags turned off`); post.tags = [...new Set([...(post.tags || []), p.id])]; } save(); return { data:null, error:null }; },
+    set_allow_tags(a){ const u = uid(); ensure(u); S.profiles[u].allow_tags = !!a.p_allow; if (!a.p_allow) S.media.forEach(x => { if (x.tags) x.tags = x.tags.filter(t => t !== u); }); save(); return { data:null, error:null }; },
+    add_friend_by_username(a){ const u = uid(); ensure(u); const n = String(a.p_username || '').replace(/^@/, '').toLowerCase(), p = Object.values(S.profiles).find(p => p.username && p.username.toLowerCase() === n);
+      if (!p) return err('No one has that username'); if (p.id === u) return err('That is your own username'); const was = isFriend(u, p.id); if (!was) S.friends.push([u, p.id], [p.id, u]);
+      return { data:[{ friend_id:p.id, display_name:p.display_name, avatar_initial:p.avatar_initial, avatar_color:p.avatar_color, rank_idx:p.rank_idx, already:was }], error:null }; },
     create_invite(){ const u = uid(); ensure(u); const ex = Object.values(S.invites).find(i => i.inviter_id === u && i.uses < i.max_uses && i.expires > Date.now() + 3 * 864e5);
       if (ex) return { data:ex.code, error:null };
       let c = ''; for (let i = 0; i < 8; i++) c += ALPHA[Math.floor(Math.random() * 32)];

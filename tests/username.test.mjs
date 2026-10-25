@@ -1,0 +1,11 @@
+import { createRequire } from 'module'; const U = createRequire(import.meta.url)('../username.js');
+let f = 0; const ok = (n, c) => { console.log(`${c ? 'PASS' : 'FAIL'} ${n}`); if (!c) f++; };
+const code = s => U.check(s).code;
+for (const s of ['steve','Steve_Caldwell','bjj.steve','a_b','iron.mike99','The_Grappler','classic_bjj','cucumber_rolls','x'.repeat(20)]) ok(`valid: ${s}`, U.check(s).ok);
+ok('space', code('steve c') === 'space'); ok('chars dash', code('steve-c') === 'chars'); ok('chars emoji', code('steve🔥') === 'chars');
+ok('short', code('ab') === 'short'); ok('long', code('x'.repeat(21)) === 'long'); ok('empty', code('') === 'empty');
+ok('leading .', code('.steve') === 'period'); ok('trailing .', code('steve.') === 'period'); ok('double .', code('st..eve') === 'period');
+for (const s of ['admin','Forged','FERRO','ferroco','support','matfinder','help','official','staff','moderator','root','f0rged','4dmin','ferro_co']) ok(`reserved: ${s}`, code(s) === 'reserved');
+for (const s of ['fuck','FuCk_you','f.u.c.k','fvck'.replace('v','u'),'sh1t','b1tch','a55hole','n1gg3r','f4gg0t','r3t4rd','ass','k_y_s','fuuuuck','c0ck','p0rn']) ok(`offensive: ${s}`, code(s) === 'offensive');
+ok('$lut refused', !U.check('$lut').ok); ok('@ prefix stripped', U.check('@steve').ok); ok('key lowercases', U.key('@Steve') === 'steve');
+console.log(f ? `${f} FAILED` : 'ALL PASS'); process.exitCode = f ? 1 : 0;

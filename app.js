@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.15.3';
+const APP_VERSION = '3.16.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -898,7 +898,8 @@ function viewSetup(step = 1){
   const v = $('#view'), pick = setupPick || (setupPick = { grappling:true, striking:false, mma:false, mobility:false, weights:false, cardio:false, food:true, weight:false });
   if (step === 2) return viewSetupAbout();
   if (step === 3) return viewSetupGoals();
-  v.innerHTML = `<div class="welcome setup"><img class="lockup" src="brand/forged/wordmark.svg" alt="Forged: for the fight" width="926" height="327">
+  const pa = pendingAdd();
+  v.innerHTML = `<div class="welcome setup"><img class="lockup" src="brand/forged/wordmark.svg" alt="Forged: for the fight" width="926" height="327">${pa ? `<div class="card" id="invitedNote" style="text-align:center;margin:10px 0"><b>You were invited by ${esc(pa.name || 'a friend')}</b><div class="hint" style="margin:4px 0 0">Finish setup and we'll add ${esc(pa.name || 'them')} as your friend.</div></div>` : ''}
     <div class="stepper-dots" id="setupStep" aria-label="Step 1 of 3"><i class="on"></i><i></i><i></i><span>Step 1 of 3</span></div>
     <h2>What do you train?</h2><p>Pick all that apply. You can change this any time in Profile.</p>
     <div class="tiles" id="catTiles">${CAT_KEYS.map(k => `<button type="button" class="tile" data-k="${k}" aria-pressed="false"><svg viewBox="0 0 24 24">${CATS[k].icon}</svg><b>${CATS[k].label}</b><small>${CATS[k].sub || CATS[k].disc.map(d=>d[1]).slice(0,3).join(', ')}</small></button>`).join('')}</div>
@@ -910,7 +911,9 @@ function viewSetup(step = 1){
   const sync = () => v.querySelectorAll('.tile').forEach(b => { b.classList.toggle('on', !!pick[b.dataset.k]); b.setAttribute('aria-pressed', !!pick[b.dataset.k]); });
   v.querySelectorAll('.tile').forEach(b => b.onclick = () => { pick[b.dataset.k] = !pick[b.dataset.k]; if (!CAT_KEYS.some(k => pick[k])) pick.grappling = true; sync(); });
   sync();
-  $('#go').onclick = () => { db.profile = { ...db.profile, enabled:{ ...pick } }; viewSetup(2); window.scrollTo(0, 0); };
+  let uf = null; if (unameOn() && !sUser()) { uf = unameField({ remote:true, label:'Pick a username (optional)', value:sLS.get('wantUname', '') }); const slot = $('#go'); slot.parentNode.insertBefore(uf, slot); uf.style.textAlign = 'left'; uf.style.margin = '14px 0'; }
+  $('#go').onclick = async () => { if (uf && $('#unIn').value.trim()) { await uf.check(); if (!uf.value()) { toast('Fix your username or clear it'); return; } sLS.set('wantUname', uf.value()); }
+    db.profile = { ...db.profile, enabled:{ ...pick } }; viewSetup(2); window.scrollTo(0, 0); };
   $('#loadSample').onclick = () => { setupPick = null; setupAbout = null; loadSample(); };
 }
 function viewSetupAbout(){
@@ -2486,6 +2489,9 @@ function viewSettings(){
   { const row = h(`<label class="toggle" id="tipsRow"><span><b>Tip of the day</b><small>One short training tip on Home</small></span><input type="checkbox" role="switch" id="tipsToggle" ${tipsOn() ? 'checked' : ''}><i></i></label>`);
     row.querySelector('input').onchange = e => { p.tips = e.target.checked; save(); toast(`Tips ${e.target.checked ? 'shown' : 'hidden'}`); };
     sec.querySelector('.toggles').appendChild(row); }
+  if (unameOn() && sUser()) { const at = sLS.get('allowTags', true), row = h(`<label class="toggle" id="allowTagsRow"><span><b>Allow tags</b><small>Friends can tag your @username on clips and photos. Turning this off removes you from tag suggestions and deletes tags you're already in.</small></span><input type="checkbox" role="switch" id="allowTags" ${at ? 'checked' : ''}><i></i></label>`);
+    row.querySelector('input').onchange = async e => { const on = e.target.checked; try { await Cloud().setAllowTags(on); sLS.set('allowTags', on); toast(on ? 'Friends can tag you' : 'Tags off. Removed you from existing tags'); } catch(x) { e.target.checked = !on; toast(x.message); } };
+    sec.querySelector('.toggles').appendChild(row); }
   { const rb = h(`<button type="button" class="btn block" id="tutReplay" style="margin-top:10px">Replay tutorials</button>`);
     rb.onclick = () => { if (window.FORGED_TUT) { FORGED_TUT.reset(); toast('Tutorials will show again on each page'); FORGED_TUT.check('settings'); } };
     sec.appendChild(rb); }
@@ -2573,6 +2579,8 @@ function viewSettings(){
   { const SH = 'https://forgedfight.com/shop/', row = h(`<div class="card" id="shopCard"><a class="list-row" id="forgedShop" href="${SH}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><div class="grow"><b>FORGED Shop</b><small>Rash guards, shorts, tees &amp; hoodies</small></div><span style="color:var(--accent)">↗</span></a></div>`);
     row.querySelector('#forgedShop').onclick = e => { e.preventDefault(); try { window.open(SH, window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank', 'noopener'); } catch(x) { location.href = SH; } };
     v.appendChild(row); }
+  { const row = h(`<div class="card" id="shareProfileCard"><h2>Train with friends</h2><div class="hint" style="margin:-4px 0 10px">Send your link. Friends who tap it can add you in one step, even if they're new to Forged.</div><button type="button" class="btn primary block" id="shareProfile">Share my profile</button></div>`);
+    row.querySelector('#shareProfile').onclick = shareProfile; v.appendChild(row); }
   { const MF = 'https://matfinderhq.com', row = h(`<div class="card" id="findGymCard"><a class="list-row" id="findGym" href="${MF}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><div class="grow"><b>Find a gym</b><small>Search gyms near you on MatFinder</small></div><span style="color:var(--accent)">↗</span></a></div>`);
     row.querySelector('#findGym').onclick = e => { e.preventDefault(); try { window.open(MF, window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank', 'noopener'); } catch(x) { location.href = MF; } };
     v.appendChild(row); }
@@ -4370,6 +4378,8 @@ function viewJoin(code){
 const CFG = window.FORGED_CONFIG || {};
 (() => { try { const q = new URLSearchParams(location.search).get('social');
   if (q === '1') localStorage.setItem('forged.social.preview', '1'); if (q === '0') localStorage.removeItem('forged.social.preview'); } catch(e) {} })();
+(() => { try { const q = new URLSearchParams(location.search).get('uname'); if (q === '1') localStorage.setItem('forged.uname.preview', '1'); if (q === '0') localStorage.removeItem('forged.uname.preview'); } catch(e) {} })();
+const unameOn = () => { try { return socialOn() && !!window.ForgedUsername && (!!CFG.usernames || localStorage.getItem('forged.uname.preview') === '1'); } catch(e) { return false; } };
 const socialOn = () => { try { return !!(window.ForgedCloud && (CFG.social || localStorage.getItem('forged.social.preview') === '1')); } catch(e) { return false; } };
 const Cloud = () => window.ForgedCloud;
 
@@ -4423,7 +4433,7 @@ function viewPro(){
   $('#pwRestore').onclick = async () => { const r = await Payments.restore(); toast(r.stub ? 'Preview only: no purchases to restore' : `Restored ${r.restored}`); };
 }
 const sUser = () => socialOn() ? Cloud().user : null;
-const S_ROUTES = ['friends','signin','invite','h2h'];
+const S_ROUTES = ['friends','signin','invite','h2h','add'];
 const S_METRIC = { sessions:{ label:'Sessions', unit:'sessions' }, pushups:{ label:'Push-ups', unit:'push-ups' }, mat_minutes:{ label:'Mat hours', unit:'h' }, daily_streak:{ label:'Daily challenge streak', unit:'days in a row' }, xp:{ label:'Workout XP', unit:'XP' } };
 const S_SYNC = ['sessions','xp','pushups','mat_minutes','daily_done'];
 const AV_COLORS = { flame:'#D7261E', ember:'#E5484D', gold:'#F5C542', steel:'#8FB0D9', jade:'#6FD3A8', violet:'#B48CF2', sky:'#38BDF8', rose:'#F472B6' };
@@ -4492,14 +4502,112 @@ function socialStatus(){
   const n = Object.keys(sLS.get('queue', {})).length;
   el.textContent = navigator.onLine === false ? `Offline · ${n ? `${n} update${n === 1 ? '' : 's'} waiting to sync` : 'nothing waiting'}` : n ? `${n} update${n === 1 ? '' : 's'} waiting to sync` : `Synced ${sAgo(sLS.get('last', 0))}`;
 }
+/* 3.16.0: Share my profile. Link = ?add=<invite code>&n=<name>; opening it adds the sharer through the invite flow. */
+async function shareProfile(){
+  if (!socialOn()) { toast('Friends are not available yet'); return; }
+  if (!sUser()) { toast('Sign in once to get your friend link'); go('#/signin'); return; }
+  if (unameOn()) { const un = sLS.get('uname', ''); if (!un) { unamePrompt(true); return; }
+    const nm = socialProfile().name, who = nm && nm !== 'Fighter' ? nm : '';
+    shareLink(`https://forgedfight.com/u/${encodeURIComponent(un)}`, `${who || 'I'} ${who ? 'is' : 'am'} on Forged as @${un}. Add me as a friend:`); return; }
+  let inv = sCache().invite || ''; if (!inv) try { inv = await Cloud().myInvite(); } catch(e) { toast('Could not get your link. Try again online.'); return; }
+  const name = socialProfile().name || (db.profile.name || '').trim(), url = `${location.origin}${location.pathname}?add=${inv}${name ? '&n=' + encodeURIComponent(name.slice(0, 30)) : ''}`;
+  shareLink(url, `${name || 'I'} ${name ? 'is' : 'am'} training on Forged. Add me as a friend:`);
+}
+(() => { try { const q = new URLSearchParams(location.search), c = String(q.get('add') || '').toUpperCase();
+  const raw = String(q.get('add') || ''), nm = String(q.get('n') || '').slice(0, 30);
+  if (INVITE_RE.test(c) && raw === c) sLS.set('pendingAdd', { code:c, name:nm });
+  else if (window.ForgedUsername && ForgedUsername.check(raw).ok) sLS.set('pendingAdd', { u:raw, name:nm });
+  if (q.has('add')) history.replaceState(history.state, '', location.pathname + location.hash); } catch(e) {} })();
+const pendingAdd = () => sLS.get('pendingAdd', null);
+/* ----- 3.16.0 usernames ----- */
+async function addByUsername(u){
+  try { const f = await Cloud().addByUsername(u); toast(f.already ? `You and ${f.display_name} are already friends` : `You and ${f.display_name} are now friends`); sLS.del('friendTags'); go('#/friends'); return f; }
+  catch(e) { toast(e.message); return null; }
+}
+function unameField(o = {}){
+  const w = h(`<div class="unamebox"><div class="field"><label for="unIn">${o.label || 'Username'}</label><div style="display:flex;gap:8px;align-items:center"><span class="dim" style="font-weight:700">@</span><input class="input" id="unIn" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="24" placeholder="e.g. steve_bjj" value="${esc(o.value || '')}"></div>
+    <div class="hint" id="unMsg" style="margin-top:6px">3–20 letters, numbers, _ or . No spaces.</div></div>${o.button ? `<button type="button" class="btn primary block" id="unGo">${o.button}</button>` : ''}</div>`);
+  const inp = w.querySelector('#unIn'), msg = w.querySelector('#unMsg'); let seq = 0, okVal = '';
+  const show = (t, bad) => { msg.textContent = t; msg.dataset.state = bad ? 'bad' : bad === false ? 'ok' : ''; msg.style.color = bad ? '#EF4B43' : bad === false ? '#3fbf6f' : ''; };
+  const run = async () => { okVal = ''; const v = inp.value, c = ForgedUsername.check(v); if (!v) { show('3–20 letters, numbers, _ or . No spaces.'); return; }
+    if (!c.ok) { show(c.msg, true); return; } if (!o.remote) { okVal = c.handle; show(`@${c.handle} looks good`, false); return; }
+    const my = ++seq; show('Checking…'); let free = null; try { free = await Cloud().usernameAvailable(c.handle); } catch(e) {}
+    if (my !== seq) return; if (free === false) { show(`@${c.handle} is taken`, true); return; } okVal = c.handle; show(free ? `@${c.handle} is available` : `@${c.handle} looks good`, false); };
+  let t; inp.oninput = () => { clearTimeout(t); t = setTimeout(run, 250); };
+  w.value = () => okVal; w.check = run; w.setError = m => show(m, true);
+  const b = w.querySelector('#unGo'); if (b) b.onclick = async () => { await run(); if (!okVal) { inp.focus(); return; } o.done && o.done(okVal, w); };
+  if (o.value) setTimeout(run, 0);
+  return w;
+}
+async function claimFrom(w, hd, after){ try { const r = await Cloud().claimUsername(hd); sLS.set('uname', r || hd); toast(`You're @${r || hd}`); after && after(); } catch(e) { w.setError(/taken|unique|duplicate/i.test(e.message) ? `@${hd} is taken` : e.message); } }
+/* one-time prompt for accounts without a valid handle (no grandfathering: old display names like "CRUSHER CALDWELL" don't count) */
+function unamePrompt(force){
+  if (!unameOn() || !sUser() || sLS.get('uname', '') || (!force && sLS.get('unamePrompted', 0))) return;
+  sLS.set('unamePrompted', 1);
+  const nm = socialProfile().name, el = h(`<div id="unameSheet"><h3>Pick your username</h3><div class="hint" style="margin:-4px 0 12px">Usernames are new. Friends find, add and tag you by it. Like X or Instagram: no spaces, nothing offensive, and it has to be unique.</div></div>`);
+  el.appendChild(unameField({ remote:true, value:nm && nm !== 'Fighter' ? nm : '', button:'Claim username', done:(hd, w) => claimFrom(w, hd, () => { closeSheet(); if (curRoute === 'friends') route(); }) }));
+  openSheet(el);
+}
+async function viewAdd(u){
+  if (!socialOn()) { replacing = true; location.replace('#/'); return; }
+  u = decodeURIComponent(String(u || '')); setHeader('Add friend', '', { parent:'#/' });
+  const v = $('#view'); if (!ForgedUsername.check(u).ok) { v.innerHTML = '<div class="card"><h2>Link not valid</h2><div class="hint">Ask your friend to send their profile link again.</div></div>'; return; }
+  let p = null; if (sUser()) { v.innerHTML = '<div class="card"><div class="hint">Loading…</div></div>'; try { p = await Cloud().findUsername(u); } catch(e) {} if (curRoute !== 'add') return; }
+  const name = (p && p.display_name) || sLS.get('addName', '') || u;
+  v.innerHTML = `<div class="card" id="addView"><div class="frow">${sAvatar(p || { display_name:name, avatar_initial:name[0].toUpperCase(), avatar_color:'flame' }, 'lg')}<div class="grow"><b>${esc(name)}</b><small>@${esc(p ? p.username : u)}</small></div></div>
+    <h2 style="margin-top:12px">Add ${esc(name)} as a friend?</h2>
+    ${sUser() && !p ? '<div class="hint">We couldn\'t find that username.</div>' : ''}
+    <button type="button" class="btn primary block" id="addGo" style="margin-top:12px" ${sUser() && !p ? 'disabled' : ''}>${sUser() ? `Add ${esc(name)}` : `Sign in to add ${esc(name)}`}</button>
+    <div class="hint">Shows only username and display name. Never your email, notes, weight or food.</div></div>`;
+  $('#addGo').onclick = () => { if (sUser()) addByUsername(u); else { sLS.set('addUser', u); go('#/signin'); } };
+}
+function renderUnameCard(){
+  const box = $('#unameCard'); if (!box) return; const un = sLS.get('uname', '');
+  if (!un) { box.innerHTML = '<h2>Pick your username</h2><div class="hint" style="margin:-4px 0 10px">Friends find, add and tag you by it. No spaces, and it has to be unique.</div>';
+    const b = h('<button type="button" class="btn primary block" id="pickUname">Pick username</button>'); b.onclick = () => unamePrompt(true); box.appendChild(b);
+    return; }
+  box.innerHTML = `<h2>Add friends</h2><button type="button" class="btn primary block" id="shareUname">Invite friends</button><div class="hint" style="margin:6px 0 12px">Sends your link (forgedfight.com/u/${esc(un)}). Friends tap it to add you. No code needed.</div>
+    <div class="addrow"><input class="input" id="findUname" style="text-transform:none;letter-spacing:normal" placeholder="Find by username" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="24"><button type="button" class="btn" id="findGo">Find</button></div><div id="findRes"></div>`;
+  $('#shareUname').onclick = shareProfile;
+  $('#findGo').onclick = async () => { const raw = $('#findUname').value.trim().replace(/^@/, ''), c = ForgedUsername.check(raw), out = $('#findRes');
+    if (!c.ok && c.code !== 'reserved') { out.innerHTML = `<div class="hint" style="color:#EF4B43">${esc(c.msg)}</div>`; return; }
+    out.innerHTML = '<div class="hint">Searching…</div>'; let p = null; try { p = await Cloud().findUsername(raw); } catch(e) {}
+    if (!p) { out.innerHTML = `<div class="hint">No one has the username @${esc(raw)}</div>`; return; }
+    out.innerHTML = `<div class="list-row" id="findRow" style="margin-top:10px">${sAvatar(p)}<div class="grow"><b>${esc(p.display_name)}</b><small>@${esc(p.username)}</small></div>${p.username.toLowerCase() === un.toLowerCase() ? '<span class="dim">You</span>' : '<button type="button" class="btn sm primary" id="findAdd">Add</button>'}</div>`;
+    const a = $('#findAdd'); if (a) a.onclick = () => addByUsername(p.username); };
+}
+/* ----- 3.16.0 tags: @friends on clips/photos. Friends who turned tags off never show up here, and the server refuses them. ----- */
+async function taggableFriends(){ const c = sLS.get('friendTags', null); if (c && Date.now() - c.at < 6e5) return c.list;
+  let list = []; try { list = await Cloud().taggableFriends(); } catch(e) {} sLS.set('friendTags', { at:Date.now(), list }); return list; }
+function tagPicker(){
+  const w = h(`<div class="tagpick" style="margin-top:12px"><label class="dim" style="font-size:12px;font-weight:700;letter-spacing:.06em">TAG FRIENDS</label><div class="tagchips" id="tagChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0"></div>
+    <input class="input" id="tagIn" placeholder="@ a friend" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"><div id="tagSug"></div></div>`);
+  const chosen = [], chips = w.querySelector('#tagChips'), inp = w.querySelector('#tagIn'), sug = w.querySelector('#tagSug'); let all = [];
+  taggableFriends().then(l => { all = l; draw(); });
+  const drawChips = () => { chips.innerHTML = chosen.map(u => `<span class="pill tagchip" data-u="${esc(u)}" style="cursor:pointer;text-transform:none">@${esc(u)} ✕</span>`).join(''); chips.querySelectorAll('[data-u]').forEach(c => c.onclick = () => { chosen.splice(chosen.indexOf(c.dataset.u), 1); drawChips(); draw(); }); };
+  const draw = () => { const q = inp.value.replace(/^@/, '').toLowerCase(); if (document.activeElement !== inp && !q) { sug.innerHTML = ''; return; }
+    const m = all.filter(f => !chosen.includes(f.username) && (f.username.toLowerCase().includes(q) || (f.display_name || '').toLowerCase().includes(q))).slice(0, 5);
+    sug.innerHTML = m.length ? m.map(f => `<div class="list-row" data-tag="${esc(f.username)}" style="cursor:pointer">${sAvatar(f)}<div class="grow"><b>@${esc(f.username)}</b><small>${esc(f.display_name || '')}</small></div></div>`).join('') : `<div class="hint">${all.length ? 'No friends match' : 'No friends to tag yet'}</div>`;
+    sug.querySelectorAll('[data-tag]').forEach(r => r.onclick = () => { if (chosen.length < 10) chosen.push(r.dataset.tag); inp.value = ''; drawChips(); draw(); inp.focus(); }); };
+  inp.oninput = draw; inp.onfocus = draw;
+  w.tags = () => chosen.slice();
+  return w;
+}
+const tagLine = p => (p.tags || []).length ? `<div class="mtags" style="margin-top:6px">${p.tags.map(u => `<span class="pill" style="text-transform:none">@${esc(u)}</span>`).join(' ')}</div>` : '';
 function socialAttach(u){
   ForgedSync.enabled = !!u;
   ForgedSync.adapter = u ? { push:() => socialSchedule() } : null;
   if (!u) return;
   socialSchedule(400);
   const inv = sLS.get('invite', ''); if (inv) { sLS.del('invite'); socialAccept(inv); }
+  if (unameOn()) { (async () => {
+    const want = sLS.get('wantUname', ''); if (want) { sLS.del('wantUname'); try { sLS.set('uname', await Cloud().claimUsername(want)); } catch(e) { toast(`@${want}: ${e.message}`); } }
+    if (!sLS.get('uname', '')) { try { const m = await Cloud().myUsername(); if (m && ForgedUsername.check(m).ok) sLS.set('uname', m); } catch(e) {} }
+    const au = sLS.get('addUser', ''); if (au) { sLS.del('addUser'); addByUsername(au); }
+    if (!sLS.get('uname', '')) whenSettled(unamePrompt);
+  })(); }
 }
-function socialClearLocal(){ ['queue','sent','cache','prof','last','invite','openH2h'].forEach(k => sLS.del(k)); }
+function socialClearLocal(){ ['queue','sent','cache','prof','last','invite','openH2h','uname','addUser','unamePrompted','friendTags'].forEach(k => sLS.del(k)); }
 async function socialRefresh(){
   await socialSync();
   const [invite, board, chs] = await Promise.all([sLS.get('cache', {}).invite || Cloud().myInvite(), Cloud().leaderboard(), Cloud().challenges()]);
@@ -4571,7 +4679,8 @@ async function viewFriends(){
     v.innerHTML = `${navigator.onLine === false ? `<div class="card offline" id="offlineNote">You're offline. Showing what was last synced${c.at ? ` (${sAgo(c.at)})` : ''}. Your progress syncs when you're back online.</div>` : ''}
       <div class="card" id="youCard"><div class="frow me">${sAvatar(meRow, 'lg')}<div class="grow"><b>${esc(meRow.display_name)}</b><small>${esc(u.email)}</small></div><button type="button" class="btn sm" id="editMe">Edit</button></div></div>
       ${mediaOn() ? `<div class="card" id="mediaCard"><h2>Clips &amp; photos <small>30 days</small></h2><button type="button" class="btn primary block" id="shareMedia">📷 Share clip or photo</button><div id="mediaFeed" style="margin-top:12px">${mediaFeedHtml(mediaCache)}</div></div>` : ''}
-      <div class="card" id="inviteCard"><h2>Add friends</h2>
+      ${unameOn() ? `<div class="card" id="unameCard"></div>` : ''}
+      <div class="card" id="inviteCard" ${unameOn() ? 'hidden' : ''}><h2>Add friends</h2>
         <div class="invrow"><div><small class="dim">Your invite code</small><div class="invcode" id="myCode">${esc(c.invite || '········')}</div></div><button type="button" class="btn primary" id="shareInvite" ${link ? '' : 'disabled'}>Share link</button></div>
         <div class="addrow"><input class="input" id="addCode" placeholder="Friend's code" autocapitalize="characters" autocomplete="off" maxlength="8"><button type="button" class="btn" id="addFriend">Add</button></div></div>
       <div class="card" id="h2hCard"><h2>Head-to-head</h2>${chs.length ? chs.map(ch => h2hRow(ch, (c.boards || {})[ch.id] || [])).join('') : `<div class="hint" style="margin:-4px 0 10px">${friends.length ? 'Pick a friend and a metric. Progress comes from what you both log.' : 'Add a friend first, then challenge them.'}</div>`}
@@ -4585,6 +4694,7 @@ async function viewFriends(){
         <div class="hint">Deleting your account removes your profile, friends and challenge progress from the server. Your workouts on this phone stay.</div></div>`;
     socialStatus();
     $('#editMe').onclick = profileSheet;
+    if (unameOn()) { renderUnameCard(); if (!sLS.get('uname', '')) whenSettled(unamePrompt); }
     $('#shareInvite').onclick = () => shareLink(link, `Add me on Forged (code ${c.invite})`);
     $('#addFriend').onclick = () => { const code = $('#addCode').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (!INVITE_RE.test(code)) { toast('Codes are 8 letters and numbers'); return; } socialAccept(code).then(f => { if (f) refresh(); }); };
@@ -4613,7 +4723,7 @@ function mediaFeedHtml(list){
   if (!list.length) return '<div class="hint" id="mediaEmpty">Nothing yet. Film a roll or snap a photo and share it with your friends.</div>';
   return list.map(p => `<div class="mpost" data-mid="${esc(p.id)}"><div class="frow">${sAvatar(p)}<div class="grow"><b>${esc(p.display_name)}${p.is_me ? ' <span class="pill">You</span>' : ''}</b><small>${sAgo(Date.parse(p.created_at))}</small></div>${p.is_me ? `<button type="button" class="btn sm ghost" data-mdel="${esc(p.id)}" aria-label="Delete post">Delete</button>` : ''}</div>
     <div class="mmedia">${!p.url ? '<div class="hint">Loading…</div>' : p.kind === 'video' ? `<video src="${esc(p.url)}" controls playsinline preload="metadata"></video>` : `<img src="${esc(p.url)}" alt="${esc(p.caption || 'Photo')}" loading="lazy">`}</div>
-    ${p.caption ? `<div class="mcap">${esc(p.caption)}</div>` : ''}</div>`).join('');
+    ${p.caption ? `<div class="mcap">${esc(p.caption)}</div>` : ''}${tagLine(p)}</div>`).join('');
 }
 function wireMediaFeed(){
   document.querySelectorAll('[data-mdel]').forEach(b => b.onclick = async () => { const p = (mediaCache || []).find(x => x.id === b.dataset.mdel); if (!p) return;
@@ -4657,10 +4767,13 @@ function mediaSheet(m){
   const el = h(`<div id="mediaSheet"><h3>Share with friends</h3>
     <div class="mmedia">${m.kind === 'video' ? `<video src="${url}" controls playsinline muted></video>` : `<img src="${url}" alt="Preview">`}</div>
     <input class="input" id="mediaCap" maxlength="200" placeholder="Add a caption (optional)" style="margin-top:12px">
+    <div id="tagSlot"></div>
     <div class="hint" style="margin-top:6px">Only your friends can see it. Gone after 30 days.</div>
     <button type="button" class="btn primary block" id="mediaPost" style="margin-top:12px">Post</button></div>`);
+  const tp = unameOn() ? tagPicker() : null; if (tp) el.querySelector('#tagSlot').appendChild(tp);
   el.querySelector('#mediaPost').onclick = async () => { const b = el.querySelector('#mediaPost'); b.disabled = true; b.textContent = 'Posting…';
-    try { await Cloud().mediaPost(m.blob, { kind:m.kind, caption:el.querySelector('#mediaCap').value.trim().slice(0, 200) }); closeSheet(); toast('Shared with friends'); mediaRefresh(); }
+    try { const row = await Cloud().mediaPost(m.blob, { kind:m.kind, caption:el.querySelector('#mediaCap').value.trim().slice(0, 200) });
+      if (tp && tp.tags().length && row && row.id) { try { await Cloud().tagMedia(row.id, tp.tags()); } catch(e) { toast(e.message); } } closeSheet(); toast('Shared with friends'); mediaRefresh(); }
     catch(e) { b.disabled = false; b.textContent = 'Post'; toast(/bucket|relation|media_posts|list_media|not found/i.test(e.message) ? 'Sharing isn\'t switched on yet.' : e.message); } };
   openSheet(el, () => URL.revokeObjectURL(url));
 }
@@ -4804,9 +4917,9 @@ async function viewInvite(code){
   let p = null, err = '';
   try { p = await Cloud().invitePreview(code); } catch(e) { err = e.message; }
   if (curRoute !== 'invite') return;
-  const name = p ? p.display_name : 'A friend';
+  const name = p ? p.display_name : (sLS.get('addName', '') || 'A friend');
   v.innerHTML = `<div class="card" id="inviteView">${p ? `<div class="frow">${sAvatar(p, 'lg')}<div class="grow"><b>${esc(name)}</b></div></div>` : ''}
-    <h2 style="margin-top:12px">${esc(name)} invited you to train together</h2>
+    <h2 style="margin-top:12px">Add ${esc(name)} as a friend?</h2><div class="hint" style="margin-top:-4px">${esc(name)} invited you to train together on Forged.</div>
     ${err ? `<div class="hint">${esc(err)}</div>` : p && !p.valid ? '<div class="hint">This invite has expired. Ask for a new link.</div>' : !p ? '<div class="hint">We couldn\'t find this invite. Check the code.</div>' : ''}
     <button type="button" class="btn primary block" id="invGo" style="margin-top:12px">${sUser() ? `Add ${esc(name)}` : `Sign in to add ${esc(name)}`}</button>
     <div class="hint">Friends see each other's rank and weekly counts, never notes, weight or food.</div></div>`;
@@ -4975,6 +5088,7 @@ function goBack(parent){
 const TARGET_HINT = 'Used to track your progress on the Nutrition screen. You can change these anytime in Profile.';
 const TARGET_LABEL = { cal:'Calories', p:'Protein (g)', c:'Carbs (g)', f:'Fat (g)' };
 function route(){
+  { const pa = pendingAdd(); if (pa && db.profile.setupDone && socialOn()) { sLS.del('pendingAdd'); sLS.set('addName', pa.name); location.replace(pa.u ? '#/add/' + encodeURIComponent(pa.u) : '#/invite/' + pa.code); return; } }
   document.body.classList.remove('setup-mode');
   const hash = location.hash.replace(/^#/, '') || '/';
   // leaving a half-filled workout via the browser/iOS back gesture or a link: put the form back and ask first
@@ -4991,7 +5105,7 @@ function route(){
   const [, a, b] = hash.split('/');
   curRoute = a || ''; curHash = hash;
   if (a !== 'log' && a !== 'edit') delete document.body.dataset.theme;
-  const tab = { '':'home', challenges:'home', rank:'home', join:'home', friends:'friends', h2h:'friends', signin:'friends', invite:'friends', badges:'settings', pro:'settings', history:'history', belts:'history', comps:'history', session:'history', benchmarks:'home', programs:'settings', program:'settings', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
+  const tab = { '':'home', challenges:'home', rank:'home', join:'home', friends:'friends', h2h:'friends', signin:'friends', invite:'friends', add:'friends', badges:'settings', pro:'settings', history:'history', belts:'history', comps:'history', session:'history', benchmarks:'home', programs:'settings', program:'settings', log:'log', edit:'history', stats:($('.tabbar a[data-tab="food"]')?.dataset.mode === 'stats' ? 'food' : 'home'), settings:'settings', food:'food', supps:'food' }[a||''] || 'home';
   document.querySelectorAll('.tabbar a').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   if (a !== 'log' && a !== 'edit') form = (a === 'session' ? null : form && !form.id ? form : null);
   switch (a || '') {
@@ -5006,6 +5120,7 @@ function route(){
     case 'h2h': viewH2h(b || ''); break;
     case 'signin': viewSignin(); break;
     case 'invite': viewInvite(b); break;
+    case 'add': viewAdd(b); break;
     case 'benchmarks': viewBenchmarks(); break;
     case 'programs': viewPrograms(); break;
     case 'program': viewProgram(b || ''); break;

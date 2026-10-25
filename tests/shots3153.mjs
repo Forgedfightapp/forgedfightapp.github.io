@@ -1,0 +1,22 @@
+import { chromium, devices } from 'playwright';
+const B='https://forgedfightapp.github.io/?cb='+Date.now();
+const br=await chromium.launch(); const ctx=await br.newContext({...devices['iPhone 13'], viewport:{width:390,height:844}}); const p=await ctx.newPage();
+const D=n=>{const d=new Date();d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
+const EN={grappling:true,striking:true,mma:true,weights:true,cardio:true,mobility:true,food:false,weight:false};
+const S=(id,date,o)=>({id,date,techniques:[],notes:'',weight:'',rolls:[],sample:false,createdAt:1,intensity:3,rpe:5,...o});
+const data={schema:7,sessions:[S('m1',D(0),{category:'mma',discipline:'mma',type:'class',duration:60,rounds:9,strike:{roundLen:5,mix:{pads:3,sparring:3,grappling:0,circuit:3},spar:[]}}),S('r1',D(0),{category:'mobility',discipline:'sauna',type:'other',duration:20,focus:[]})],profile:{name:'Steve',unit:'lb',distUnit:'mi',setupDone:true,tips:false,enabled:EN},nutrition:{entries:[],foods:[],water:[]},weights:[],belts:[],comps:[],injuries:[],strength:[]};
+await p.goto(B); await p.evaluate(d=>{localStorage.clear();localStorage.setItem('dm.bjj.v1',JSON.stringify(d))},data); await p.reload(); await p.waitForTimeout(1500);
+await p.goto(B+'#/log'); await p.waitForSelector('.cats'); await p.waitForTimeout(500);
+await p.locator('.cats >> text=Striking').first().click(); await p.waitForTimeout(600);
+const f=p.locator('.field',{has:p.locator('label',{hasText:/^Circuit$/})}).last();
+for(let i=0;i<3;i++){ await f.locator('button').last().click(); await p.waitForTimeout(100);}
+await f.scrollIntoViewIfNeeded(); await p.evaluate(()=>scrollBy(0,150)); await p.waitForTimeout(300);
+await p.screenshot({path:'/workspace/forged-shots/circuit-striking.png'});
+console.log('val', await f.locator('input').inputValue().catch(()=>'?'));
+await p.goto(B+'#/log'); await p.waitForTimeout(500); await p.locator('.cats >> text=Mobility').first().click(); await p.waitForTimeout(600);
+await p.locator('text=Sauna').first().scrollIntoViewIfNeeded(); await p.locator('[role="radio"]',{hasText:'Sauna'}).first().click().catch(e=>console.log('noradio')); await p.waitForTimeout(300);
+await p.screenshot({path:'/workspace/forged-shots/tmp-r.png'});
+const st=await p.evaluate(()=>localStorage.getItem('dm.bjj.v1')); await p.close(); const ctx2=await br.newContext({...devices['iPhone 13'], viewport:{width:390,height:844}}); const q=await ctx2.newPage();
+await q.goto(B); await q.evaluate(d=>{localStorage.clear();localStorage.setItem('dm.bjj.v1',d)},JSON.stringify(data)); await q.goto(B+'#/history'); await q.reload(); await q.waitForTimeout(1500);
+await q.screenshot({path:'/workspace/forged-shots/circuit-h3.png'});
+await br.close();

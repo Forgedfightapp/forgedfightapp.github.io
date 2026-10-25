@@ -88,6 +88,15 @@
     // --- profile, friends, invites ---
     saveProfile(p){ return rpc('upsert_profile', { p_display_name:p.name, p_avatar_color:p.color, p_rank_idx:p.rank, p_level:p.level, p_xp:p.xp, p_belt:p.belt }); },
     myInvite(){ return rpc('create_invite'); },
+    // 3.16.0 usernames (migration 005)
+    myUsername(){ return rpc('my_username'); },
+    usernameAvailable(u){ return rpc('username_available', { p_username:u }); },
+    claimUsername(u){ return rpc('claim_username', { p_username:u }); },
+    findUsername(u){ return rpc('find_username', { p_username:u }).then(first); },
+    addByUsername(u){ return rpc('add_friend_by_username', { p_username:u }).then(first); },
+    taggableFriends(){ return rpc('taggable_friends', {}).then(d => d || []); },
+    tagMedia(id, names){ return rpc('tag_media', { p_post:id, p_usernames:names }); },
+    setAllowTags(on){ return rpc('set_allow_tags', { p_allow:!!on }); },
     invitePreview(code){ return rpc('get_invite', { p_code:code }).then(first); },
     acceptInvite(code){ return rpc('accept_invite', { p_code:code }).then(first); },
     removeFriend(id){ return rpc('remove_friend', { p_friend:id }); },

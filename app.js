@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.15.1';
+const APP_VERSION = '3.15.2';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -816,14 +816,14 @@ const CATS = {
   cardio:{ label:'Cardio', color:'#6FD3A8', dur:30, disc:[['run','Run'],['bike','Bike'],['row','Row'],['swim','Swim'],['stairs','Stairs'],['other','Other']],
     legacy:[['rope','Jump rope']],   // 3.4.0: no longer in the picker; old sessions keep their label
     icon:'<path d="M3 12h4l2-5 4 10 2-5h6"/>' },
-  mobility:{ label:'Mobility', sub:'Yoga, stretching, foam rolling', color:'#B48CF2', dur:20, discLabel:'Session type', disc:[['yoga','Yoga'],['stretch','Stretching'],['foam','Foam rolling'],['flow','Mobility flow'],['recovery','Recovery/other']],
+  mobility:{ label:'Mobility', sub:'Yoga, stretching, foam rolling', color:'#B48CF2', dur:20, discLabel:'Session type', disc:[['yoga','Yoga'],['stretch','Stretching'],['foam','Foam rolling'],['flow','Mobility flow'],['sauna','Sauna'],['steam','Steam'],['recovery','Recovery/other']],
     icon:'<path d="M12 5a2 2 0 1 0 0-.1M4 10c3 1 5 1 8 1s5 0 8-1M12 11v4l-4 6M12 15l4 6"/>' }
 };
 const CAT_KEYS = Object.keys(CATS);
 const allDisc = c => [...CATS[c].disc, ...(CATS[c].legacy || [])];
 const STRIKE_TECH = ['Jab','Cross','Lead hook','Rear hook','Uppercut','Teep','Roundhouse kick','Low kick','Body kick','Head kick','Knee','Elbow','Clinch','Check kick','Slip & counter','Roll under','Parry','Footwork','Head movement','1-2-3','Jab-cross-low kick','Level change','Cage work'];
 const STRIKE_MIX = [['shadow','Shadow'],['pads','Pads'],['bag','Bag'],['drills','Drills'],['sparring','Sparring']];
-const MMA_MIX = [['pads','Pad work'],['sparring','Sparring'],['grappling','Grappling rounds']];
+const MMA_MIX = [['pads','Pad work'],['sparring','Sparring'],['grappling','Grappling rounds'],['circuit','Circuit']];
 const MIX_LEGACY = { drills:'Drilling' };   // 3.13.5: no longer in the picker; old sessions keep their label
 const MIX_KEYS = [...new Set(STRIKE_MIX.concat(MMA_MIX).map(x => x[0]).concat(Object.keys(MIX_LEGACY)))];
 const mixOf = c => c === 'mma' ? MMA_MIX : STRIKE_MIX;
@@ -1107,7 +1107,7 @@ function sessSub(s){
   const c = catOf(s), rolls = s.rolls||[];
   if (c === 'cardio' && s.cardio) { const k = s.cardio; const bits = [k.distance ? `${r1(k.distance)} ${k.unit}` : '', k.sec ? fmtDur(k.sec) : `${s.duration} min`, s.discipline === 'bike' ? speedStr(k.sec, k.distance, k.unit) : paceStr(k.sec, k.distance, k.unit)]; return bits.filter(Boolean).join(' · '); }
   if (c === 'weights') { const ex = s.exercises||[]; return [`${s.duration} min`, ex.length ? `${ex.length} exercise${ex.length>1?'s':''}` : '', volumeOf(s) ? `${Math.round(volumeOf(s)).toLocaleString()} ${unit()} vol` : '', ...(s.cardioAdd||[]).map(cardioAddText)].filter(Boolean).join(' · '); }
-  if (c === 'striking' || c === 'mma') { const m = s.strike?.mix || {}; return [`${s.duration} min`, s.rounds ? `${s.rounds} rds${s.strike ? ` × ${s.strike.roundLen} min` : ''}` : '', m.sparring ? `${m.sparring} sparring` : ''].filter(Boolean).join(' · '); }
+  if (c === 'striking' || c === 'mma') { const m = s.strike?.mix || {}; return [`${s.duration} min`, s.rounds ? `${s.rounds} rds${s.strike ? ` × ${s.strike.roundLen} min` : ''}` : '', m.sparring ? `${m.sparring} sparring` : '', m.circuit ? `${m.circuit} circuit` : ''].filter(Boolean).join(' · '); }
   if (c === 'mobility') { const fl = (s.focus||[]).map(k => (FOCUS.find(f => f[0] === k)||[k,k])[1]); return [`${s.duration} min`, fl.slice(0,3).join(', ') + (fl.length > 3 ? '…' : '')].filter(Boolean).join(' · '); }
   const w = rolls.filter(r => r.result==='win').length, l = rolls.filter(r => r.result==='loss').length;
   return [`${s.duration} min`, `${s.rounds||0} rounds`, rolls.length ? `${w}W ${l}L` : ''].filter(Boolean).join(' · ');

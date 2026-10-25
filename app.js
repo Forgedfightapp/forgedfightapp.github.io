@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.16.0';
+const APP_VERSION = '3.16.1';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -3726,6 +3726,7 @@ function markChallengeDone(key){
 }
 document.addEventListener('click', e => {
   const lr = e.target.closest('[data-logreps]'); if (lr) { e.preventDefault(); e.stopPropagation(); repsSheet(lr.dataset.logreps); return; }
+  const tk = e.target.closest('[data-chtick]'); if (tk) { e.preventDefault(); e.stopPropagation(); chTick(tk.dataset.chtick, Number(tk.dataset.dir)); return; }
   const dn = e.target.closest('[data-chdone]'); if (dn) { e.preventDefault(); e.stopPropagation(); markChallengeDone(dn.dataset.chdone); }
 });
 const CH_POOL = [
@@ -3781,6 +3782,15 @@ const CH_POOL = [
   { id:'m-push1000', p:'m', tier:3, t:'1,000 push-ups this month', goal:1000, unit:'reps', rep:'pushups', val:c => repTotal('pushups', c.from, c.to) }
 ];
 const CH_COUNT = { d:3, w:3, m:3 };
+const chTickable = t => t.p !== 'd' && !t.parts && !t.rep && !t.fmt && !['min','reps','sets','rounds'].includes(t.unit);
+function chTick(key, dir){
+  const c = currentChallenges().find(x => x.key === key); if (!c || !c.tick) return;
+  const m = db.chManual = db.chManual || {}, prev = m[key];
+  if (dir > 0) { if (c.value >= c.goal) return; m[key] = Math.min(c.goal, c.value + 1); }
+  else { const nv = c.value - 1; if (nv <= c.auto) delete m[key]; else m[key] = nv; }
+  save(); const y = window.scrollY; route(); window.scrollTo(0, y);
+  if (dir > 0) undoToast(`Done: ${c.title} (${Math.min(c.goal, c.value + 1)} / ${c.goal})`, () => { if (prev === undefined) delete m[key]; else m[key] = prev; save(); const y2 = window.scrollY; route(); window.scrollTo(0, y2); });
+}
 const chGoal = t => t.parts ? (t.parts.length === 1 ? t.parts[0][1] : 100) : typeof t.goal === 'function' ? t.goal() : t.goal;
 /* rep-based value: single exercise = its total; combos = % of the slowest part */
 function partsVal(t, from, to){
@@ -3813,8 +3823,10 @@ function prEvents(){
 }
 function evalChallenge(t, per, prs){
   const s = db.sessions.filter(x => x.date >= per.from && x.date <= per.to && gFair(x));
-  const goal = chGoal(t), v = (t.parts ? partsVal(t, per.from, per.to) : t.val({ s, from:per.from, to:per.to, prs:prs.filter(e => e.fair && e.date >= per.from && e.date <= per.to).length })) || 0;
-  return { id:t.id, key:`${per.key}:${t.id}`, p:t.p, tier:t.tier, title:t.t, goal, value:v, pct:Math.min(100, Math.round(v / goal * 100)), done:v >= goal, xp:CH_XP[t.p][t.tier],
+  const goal = chGoal(t), auto = (t.parts ? partsVal(t, per.from, per.to) : t.val({ s, from:per.from, to:per.to, prs:prs.filter(e => e.fair && e.date >= per.from && e.date <= per.to).length })) || 0;
+  // manual check-offs: stored as a running total that already includes auto, so v = max(auto, manual) never double counts; capped at goal
+  const tick = chTickable(t), man = tick ? Number((db.chManual || {})[`${per.key}:${t.id}`]) || 0 : 0, v = man > auto ? Math.min(goal, man) : auto;
+  return { id:t.id, tick, auto, man:v > auto, key:`${per.key}:${t.id}`, p:t.p, tier:t.tier, title:t.t, goal, value:v, pct:Math.min(100, Math.round(v / goal * 100)), done:v >= goal, xp:CH_XP[t.p][t.tier],
     ...(t.parts ? { parts:t.parts, how:t.how, scale:t.scale, rep:t.parts[0][0] } : t.rep ? { rep:t.rep } : {}),
     progress:t.parts ? partsProg(t, per.from, per.to) : t.fmt ? t.fmt(v) : `${Math.min(v, goal) === v ? Math.round(v * 10) / 10 : Math.round(v)} / ${goal}${t.unit ? ' ' + t.unit : ''}`, from:per.from, to:per.to, period:per.key };
 }
@@ -3833,7 +3845,7 @@ const levelOf = xp => { let L = 1; while (xpForLevel(L + 1) <= xp) L++; return L
 const rankIdx = L => RANKS.reduce((a, r, i) => L >= r[1] ? i : a, 0);
 let gCache = null, gCacheKey = '';
 function gameState(){
-  const key = JSON.stringify([db.sessions.length, db.sessions.reduce((a, s) => a + (s.updatedAt || s.createdAt || 0) % 1e7 + (s.duration||0), 0), db.strength.length, db.strength.filter(g => g.achieved).length, db.benchmarks.length, (db.nutrition.water||[]).length, db.nutrition.entries.length, db.weights.length, db.profile.challengeTarget, JSON.stringify(db.profile.enabled), db.profile.waterGoal, JSON.stringify(db.profile.targets||{}), db.comps.length, (db.belts||[]).length, repKey(), today(), JSON.stringify(db.game?.h2h || {})]);
+  const key = JSON.stringify([JSON.stringify(db.chManual || {}), db.sessions.length, db.sessions.reduce((a, s) => a + (s.updatedAt || s.createdAt || 0) % 1e7 + (s.duration||0), 0), db.strength.length, db.strength.filter(g => g.achieved).length, db.benchmarks.length, (db.nutrition.water||[]).length, db.nutrition.entries.length, db.weights.length, db.profile.challengeTarget, JSON.stringify(db.profile.enabled), db.profile.waterGoal, JSON.stringify(db.profile.targets||{}), db.comps.length, (db.belts||[]).length, repKey(), today(), JSON.stringify(db.game?.h2h || {})]);
   if (gCache && gCacheKey === key) return gCache;
   const parts = { log:0, challenges:0, streak:0, pr:0, goals:0, ring:0, h2h:0 }, done = [];
   Object.values(db.game?.h2h || {}).forEach(r => parts.h2h += r.r === 'won' ? XP_H2H_WIN : r.r === 'tied' ? XP_H2H_TIE : 0);
@@ -4294,6 +4306,7 @@ function rankChip(){
 }
 function chActions(c, home){
   if (c.done) return `<div class="chact"><button type="button" class="btn sm" data-sharech="${esc(c.key)}">Share</button></div>`;
+  if (c.tick) return `<div class="chact"><button type="button" class="btn sm primary" data-chtick="${esc(c.key)}" data-dir="1">Done</button></div>`;
   const lr = c.rep || (home ? 'pushups' : '');
   return lr || c.parts ? `<div class="chact">${lr ? `<button type="button" class="btn sm" data-logreps="${lr}"${home ? ' id="homeLogReps"' : ''}>Log reps</button>` : ''}${c.parts ? `<button type="button" class="btn sm primary" data-chdone="${esc(c.key)}">Done</button>` : ''}</div>` : '';
 }

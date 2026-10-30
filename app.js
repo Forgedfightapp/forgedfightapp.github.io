@@ -2495,6 +2495,7 @@ function viewPro(){
   $('#pwRestore').onclick = async () => { const r = await Payments.restore(); toast(r.stub ? 'Preview only: no purchases to restore' : `Restored ${r.restored}`); };
 }
 const sUser = () => socialOn() ? Cloud().user : null;
+// Phase 2 (not in 3.18.0): a Friends activity feed (crew sessions, PRs, belt promotions) alongside Coach tools.
 const S_ROUTES = ['friends','signin','invite','h2h','add'];
 const S_METRIC = { sessions:{ label:'Sessions', unit:'sessions' }, pushups:{ label:'Push-ups', unit:'push-ups' }, mat_minutes:{ label:'Mat hours', unit:'h' }, daily_streak:{ label:'Daily challenge streak', unit:'days in a row' }, xp:{ label:'Workout XP', unit:'XP' } };
 const S_SYNC = ['sessions','xp','pushups','mat_minutes','daily_done'];

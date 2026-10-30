@@ -1487,7 +1487,10 @@ function loadSample(){
             return { name:e.name, plan:{ sets:e.sets, lo, hi, unit:L.unit || 'reps' }, sets:Array.from({ length:e.sets }, (_, k) => ({ reps: k === e.sets - 1 && n === 0 && e.main && e.name === 'Bench press' ? lo - 1 : hi, weight:w0, rpe:'' })) }; }) })); }); }
     if (!Object.values(schedule()).some(a => (a||[]).length)) db.profile.schedule = { grappling:[1,3,6], striking:[2], weights:[2,4], mobility:[0,3], cardio:[5] }; }
   if (!(db.belts||[]).some(x => !x.sample)) { db.belts = sampleBelts(); syncProfileRank(); }
-  save(); toast(`Loaded ${sessions.length} sample sessions`); route();
+  /* the demo gets a ready-made assessment so Today's session works straight away (Profile > Redo assessment replaces it) */
+  if (!db.profile.assess?.done) db.profile.assess = { done:true, sample:true, at:today(), arts:['bjj'], primary:'bjj', belts:{}, schedule:{ mat:[1,3,6], lift:[2,4], len:45 }, locations:[{ id:'l1', name:'Gym', type:'gym', equip:FORGED_GEN.PRESET.gym.slice() }], loc:'l1', exp:'intermediate', goal:'strength', injuries:[] };
+  document.body.classList.remove('setup-mode');
+  save(); toast(`Loaded ${sessions.length} sample sessions`); go('#/'); route();
 }
 function sampleWeights(){
   // morning weigh-ins ~4x a week, trending from ~215 lb toward the 195 lb goal with day-to-day noise
@@ -3082,6 +3085,7 @@ function viewAssess(){
     const B = $('#asBody'), card = (t, sub) => { const c = h(`<div class="card"><h2>${esc(t)}</h2>${sub ? `<div class="hint" style="margin:-4px 0 10px">${esc(sub)}</div>` : ''}</div>`); B.appendChild(c); return c; };
     if (st === 'arts') { const c = card('What do you train?', 'Pick every art you train, then your main one.');
       c.appendChild(chips(ARTS, k => A.arts.includes(k), true, k => { A.arts = tog(A.arts, k); if (!A.arts.includes(A.primary)) A.primary = A.arts[0] || ''; }, 'asArts'));
+      if (!redo && !db.sessions.length) { const ls = h('<button type="button" class="btn block ghost" id="loadSample" style="margin-top:12px">Load sample data (demo)</button>'); ls.onclick = () => loadSample(); B.appendChild(ls); }
       if (A.arts.length > 1) { c.appendChild(h('<div class="label sect" style="margin-top:12px">Main art</div>')); c.appendChild(chips(ARTS.filter(x => A.arts.includes(x[0])), k => A.primary === k, false, k => A.primary = k, 'asPrimary')); } }
     if (st === 'belts') A.arts.filter(k => BELT_ARTS[k]).forEach(k => { const Ar = BELT_ARTS[k], b = A.belts[k] = A.belts[k] || { belt:Ar.belts[0], stripes:0, date:'' }, c = card(`${Ar.label} ${Ar.noun}`, 'This starts your belt tracker. The date is optional.');
       c.dataset.art = k; c.appendChild(chips(Ar.belts.map(x => [x, beltName(x, k)]), x => b.belt === x, false, x => { b.belt = x; b.stripes = 0; }));

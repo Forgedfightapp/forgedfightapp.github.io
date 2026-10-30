@@ -112,28 +112,5 @@ window.FORGED_PROGRAMS = (() => {
     { id:'joints', pro:true, name:'Joint health', short:'Shoulders and knees', ex:[ E('Band pull-apart',2,15,'30 s'), E('Band external rotation',2,12,'30 s'), E('Spanish squat hold',3,30,'45 s'), E('Tibialis raise',2,15,'30 s') ] }
   ];
   const disclaimer = 'These are general training programs, not medical advice or a plan made for you. If you have an injury, pain or a health condition, get checked by a doctor or physio first, and work with a qualified coach. Stop any exercise that hurts.';
-  /* 3.5.0 weight-management plans: simple calorie/protein targets that pair with a lifting program.
-     kcal: [delta for weeks 1-2, delta after] vs maintenance; rate: expected lb/week (mid-point); prot: g per lb of current weight. */
-  const weightPlans = [
-    { id:'lean', mode:'gain', name:'Lean Gain', short:'8–12 weeks · small surplus', lengths:[8,10,12], weeks:10, kcal:[250, 350], prot:1, rate:0.375, fat:0.25, pair:'luf3',
-      blurb:'Add size slowly so most of it is muscle. A small surplus, about 1 g of protein per lb, more carbs to fuel training, and three strength sessions a week to give the extra food a job.',
-      aim:'Aim to gain about 0.25–0.5 lb (0.1–0.25 kg) a week on your weekly average.',
-      checkin:['Weigh yourself 3–4 mornings a week: after the bathroom, before food or drink.','Look at the weekly average, not single weigh-ins. Water and salt move the scale 1–3 lb day to day.','Check every 2 weeks and change one thing at a time.'],
-      adjust:['Weekly average flat for 2 weeks: add 150 kcal a day (mostly carbs).','Gaining more than 1 lb a week: take away 150 kcal a day. Faster than that is mostly fat.','Feeling flat or sore on the mats: eat the extra carbs around training.'],
-      pairNote:'Gaining works best with progressive strength work. Three days a week gives the surplus something to build.' },
-    { id:'maintain', mode:'maintain', name:'Maintain & Perform', short:'Hold your weight, train hard', lengths:[4,8,12], weeks:8, kcal:[0, 0], prot:0.9, rate:0, fat:0.28, pair:'full2',
-      blurb:'Stay within a few pounds of your weight while you train hard. Eat at maintenance, keep protein high, and fuel the hard sessions.',
-      aim:'Stay within ±3 lb (±1.5 kg) of your starting weight on your weekly average.',
-      checkin:['Weigh yourself 3–4 mornings a week: after the bathroom, before food or drink.','Use the weekly average. One heavy day after a salty meal is just water.','Check every 2 weeks.'],
-      adjust:['Weekly average above your range for 2 weeks: take away 150 kcal a day.','Below your range for 2 weeks: add 150 kcal a day.','Big training week or a camp: add carbs on the hardest days instead of eating less.'],
-      pairNote:'Two lifting days fit around 4–5 mat sessions and keep you strong without extra fatigue.' },
-    { id:'cut', mode:'lose', name:'Cut for Comp / Fat Loss', short:'6–12 weeks · steady deficit', lengths:[6,8,10,12], weeks:8, kcal:[-500, -500], prot:1, rate:-1, fat:0.28, pair:'full2', pairComp:'comp', capPct:1,
-      blurb:'Lose fat at a pace you can train on. A steady deficit (never more than about 1% of your body weight a week), high protein to keep muscle, and an easier final week so you arrive strong. No crash diets or water cuts.',
-      aim:'Aim to lose about 0.5–1% of your body weight a week on your weekly average.',
-      checkin:['Weigh yourself 3–4 mornings a week: after the bathroom, before food or drink.','Use the weekly average. Daily swings of 1–3 lb are water, not fat.','Check every 2 weeks. Making weight for a comp: aim to be close to it a week out.'],
-      adjust:['Weekly average flat for 2 weeks: take away 150 kcal a day (from carbs or fat, not protein).','Losing more than 1% of body weight a week, or training feels weak: add 150 kcal a day.','Never go below the floor the app shows. Final week: ease the deficit and keep training light.'],
-      pairNote:'Keep lifting heavy-ish while you cut so you hold on to strength. Two days is enough while dieting.' }
-  ];
-  const weightDisclaimer = 'General guidance, not medical advice or a diet made for you. Calorie numbers are estimates. If you have a health condition, are under 18, are pregnant, or have a history of disordered eating, talk to a doctor or registered dietitian first. Never cut weight by dehydrating.';
-  return { library:L, templates, finishers, weightPlans, weightDisclaimer, disclaimer, rpeNote:RPE };
+  return { library:L, templates, finishers, disclaimer, rpeNote:RPE };
 })();

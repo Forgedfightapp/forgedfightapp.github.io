@@ -23,7 +23,7 @@ const v6 = { schema:6, sessions:[1,2,3,4,5].map(i => S('m'+i, D(-40 - i), { inte
   supps:{ items:[{ id:'cr', name:'Creatine', dose:'5', unit:'g', time:'morning', schedule:{ type:'daily' }, start:D(-50) }, { id:'smp', name:'Sample fish oil', sample:true }], log:[{ id:'l1', itemId:'cr', date:D(-45), takenAt:1 }, { id:'l2', itemId:'smp', date:D(-45), sample:true }] }, weights:[], belts:[] };
 await seed(v6);
 let d = await db();
-ok('v6 → v7: effort (RPE) mapped from intensity 1→2, 2→4, 3→6, 4→8, 5→10', d.schema === 7 && [1,2,3,4,5].every(i => d.sessions.find(s => s.id === 'm'+i).rpe === i*2), JSON.stringify(d.sessions.map(s => [s.intensity, s.rpe])));
+ok('v6 → v8: effort (RPE) mapped', [1,2,3,4,5].every(i => d.sessions.find(s => s.id === 'm'+i).rpe === i*2)); // 3.18.0: removed with the trimmed spec (schema 8 / supplements / goal celebration) — check('v6 → v7: effort (RPE) mapped from intensity 1→2
 ok('old intensity values are kept', [1,2,3,4,5].every(i => d.sessions.find(s => s.id === 'm'+i).intensity === i));
 ok('v6 backup kept', await page.evaluate(() => !!localStorage.getItem('dm.bjj.v1.backup.v6')));
 ok('supplements archived (real data kept, sample dropped), not in the live data', !d.supps && d.archive?.supps?.items.length === 1 && d.archive.supps.items[0].name === 'Creatine' && d.archive.supps.log.length === 1);
@@ -39,24 +39,21 @@ for (const c of ['grappling','striking','mma']) { await page.goto(BASE + '#/'); 
   const want = c === 'grappling' ? '["Class","Open mat","Private","Competition","Seminar","Other"]' : '["Class","Pad work","Private","Competition","Seminar","Other"]';
   ok(`${c}: Session type = ${JSON.parse(want).join(', ')}`, JSON.stringify(opts) === want, JSON.stringify(opts)); }
 await page.locator('.cats button[data-c="mma"]').tap(); await settle(200);
-ok('MMA work breakdown still has Drilling', await page.locator('.mixgrid .field label', { hasText:/^Drilling$/ }).count() === 1);
+// 3.18.0: MMA work breakdown trimmed from the log form
 await page.goto(BASE + '#/'); await settle(150);
 if (await page.locator('.sheet [data-ok]').count()) { await page.locator('.sheet [data-ok]').tap(); await settle(300); }
-ok('no Supplements anywhere: nav says Food, no Home card', (await page.locator('.tabbar a[data-tab="food"] span').innerText()) === 'Food' && await page.locator('#suppCard').count() === 0);
+ok('no Supplements anywhere: nav says Build, no Home card', (await page.locator('.tabbar a[data-tab="build"] span').innerText()) === 'Build' && await page.locator('#suppCard').count() === 0);
 await page.goto(BASE + '#/supps'); await settle(300);
-ok('#/supps goes to Food', (await page.evaluate(() => location.hash)) === '#/food');
+ok('#/supps goes to Build', (await page.evaluate(() => location.hash)) === '#/build');
 await page.goto(BASE + '#/settings'); await settle(300);
-ok('What I track has no Supplements toggle', await page.locator('input[data-sec="supps"]').count() === 0);
-ok('Profile > Your data notes the archived supplements', /Supplement tracking was removed in 3\.1\. Your 1 supplement and 1 check-off are kept/.test(await page.locator('#suppArchiveNote').innerText()));
 let [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#exp').tap()]); await dl.saveAs('/tmp/feat-exp1.json');
 let exp = JSON.parse(fs.readFileSync('/tmp/feat-exp1.json','utf8'));
-ok('export keeps archived supplements', exp.archive?.supps?.items?.[0]?.name === 'Creatine' && !exp.supps && exp.schema === 7);
+// 3.18.0: removed with the trimmed spec (schema 8 / supplements / goal celebration) — check('export keeps archived supplements'
 // old 3.0 backup with supplements imports, archived
 fs.writeFileSync('/tmp/feat-old.json', JSON.stringify({ app:'forged', version:'3.0.0', ...v6 }));
 await page.setInputFiles('#impFile', '/tmp/feat-old.json'); await page.locator('.sheet [data-ok]').tap(); await settle(400);
 d = await db(); ok('old backup with supplements imports (archived)', d.archive?.supps?.items.length === 1 && !d.supps && d.sessions.length === 5);
 await page.goto(BASE); await settle(200);
-ok('first-run has no Supplements tile', await page.evaluate(() => { localStorage.clear(); return true; }) && (await page.reload(), await page.waitForSelector('#catTiles'), await page.locator('.tile[data-k="supps"]').count()) === 0);
 
 /* 2. load math + warnings */
 const loadSess = [];
@@ -91,9 +88,9 @@ d = await db(); const c1 = d.sessions.find(s => s.category === 'cardio');
 ok('effort and feel stay optional (quick log saves without them)', c1 && c1.rpe === undefined && c1.feel === undefined);
 
 /* 4. stats: weekly load chart + ratio */
-await page.goto(BASE + '#/stats'); await page.waitForSelector('#loadCard');
-ok('stats: 12-week load chart + ratio label', await page.locator('#loadCard svg rect.bar').count() === 12 && ['fresh','building','high load'].includes((await page.locator('#acwrLabel').innerText()).toLowerCase()));
-await page.locator('#loadCard').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, -100)); await settle(); await hideToast();
+await page.goto(BASE + '#/stats'); await page.waitForSelector('#weeklyCard');
+ok('stats: load folded into the weekly chart + ratio label', await page.locator('#weeklyCard #loadLine').count() === 1 && ['fresh','building','high load'].includes((await page.locator('#acwrLabel').innerText()).toLowerCase()));
+await page.locator('#weeklyCard').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, -100)); await settle(); await hideToast();
 await page.screenshot({ path:`${SHOTS}/42-load-chart.png` });
 
 /* 5. weekly schedule */
@@ -114,7 +111,7 @@ await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); await page
 await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); await page.locator('.actions [data-save]').tap(); await settle(300);
 ok('ring: 2 / 3, not hit yet', /^2 \/ 3/.test(await page.locator('#chText').innerText()) && (await db()).challenges.length === 0);
 await page.locator('.quick [data-rep]').first().tap(); await settle(250);
-ok('3rd workout hits the goal: celebration + month recorded once', await page.locator('.confetti').count() === 1 && (await db()).challenges.length === 1 && /Monthly goal hit/.test(await page.locator('#challenge').innerText()));
+// 3.18.0: removed with the trimmed spec (schema 8 / supplements / goal celebration) — check('3rd workout hits the goal: celebration + month recorded once'
 await page.waitForTimeout(2700); await page.goto(BASE + '#/stats'); await settle(200); await page.goto(BASE + '#/'); await settle(300);
 ok('no repeat celebration; history kept', await page.locator('.confetti').count() === 0 && (await db()).challenges.length === 1);
 await page.goto(BASE + '#/settings/schedule'); await page.waitForSelector('#scheduleCard'); await settle();
@@ -124,25 +121,7 @@ await page.goto(BASE + '#/stats'); await settle(200);
 ok('stats lists months achieved', /1 month achieved/.test(await page.locator('#challengeHist').innerText()));
 ok('backfill helper: months with ≥ target workouts', (await T(() => window.DM_TEST.challengeMonths([{date:'2026-01-02'},{date:'2026-01-03'},{date:'2026-02-01'}], 2, '2026-03'))).length === 1);
 
-/* 7. competitions */
-await page.goto(BASE + '#/settings'); await page.waitForSelector('#compsProfile');
-await page.locator('#compsProfile [data-addcomp]').tap(); await page.waitForSelector('#compName');
-await page.fill('#compName', 'City Open'); await page.fill('#compDate', D(5)); await page.dispatchEvent('#compDate', 'change'); await page.fill('#compClass', 'Light (Gi)'); await page.fill('#compTarget', '170');
-await page.locator('.sheet [data-save]').tap(); await settle(400);
-await page.goto(BASE + '#/'); await settle(300);
-ok('Home: "5 days to City Open" + taper tips in the final week', (await page.locator('#compTitle').innerText()) === '5 days to City Open' && await page.locator('#taperTips li').count() === 5, await page.locator('#compCard').innerText());
-ok('days-to helper', (await T(d => window.DM_TEST.daysTo(d), D(12))) === 12);
-await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); d.comps[0].date = new Date(Date.now() + 20*864e5).toLocaleDateString('en-CA'); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }); await page.reload(); await settle(300);
-ok('no taper tips 20 days out', await page.locator('#taperTips').count() === 0 && /20 days to City Open/.test(await page.locator('#compTitle').innerText()));
-await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); d.comps[0].date = new Date(Date.now() - 2*864e5).toLocaleDateString('en-CA'); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); }); await page.reload(); await settle(300);
-ok('after the event Home asks for the result', /How did it go/.test(await page.locator('#compCard').innerText()));
-await page.locator('#compCard [data-comp]').tap(); await page.waitForSelector('#compResult');
-await page.locator('#compResult button', { hasText:'Medal' }).tap(); await page.locator('#compResult button', { hasText:'Gold' }).tap();
-await page.locator('#compResult textarea').fill('Three subs, one points win.'); await page.locator('.sheet [data-save]').tap(); await settle(400);
-d = await db(); ok('past comp keeps result + notes', d.comps[0].result === 'medal' && d.comps[0].medal === 'gold' && d.comps[0].notes === 'Three subs, one points win.');
-await page.goto(BASE + '#/history'); await settle(200); await page.locator('.histseg a', { hasText:'Comps' }).tap(); await settle(300);
-ok('History > Comps shows past results', /City Open/.test(await page.locator('#pastComps').innerText()) && /Gold/i.test(await page.locator('#pastComps').innerText()) && /1 medal/.test(await page.locator('#pastComps').innerText()));
-
+/* 7. competitions: 3.18.0 shows comps as a light entry on Belts (covered in p3180 + multisport) */
 /* 8. benchmarks */
 ok('Epley: 200 × 5 → 233.3; 1 rep → weight', Math.abs((await T(() => window.DM_TEST.epley(200, 5))) - 233.333) < .01 && (await T(() => window.DM_TEST.epley(315, 1))) === 315);
 await page.goto(BASE + '#/benchmarks'); await page.waitForSelector('#benchAll');
@@ -181,61 +160,13 @@ await T(() => { window.DM_TEST.db.injuries[0].healed = new Date().toLocaleDateSt
 d = await db(); ok('mark healed: entry kept as healed',  !!d.injuries[0].healed && (await T(() => window.DM_TEST.activeInjuries().length)) === 0);
 await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); ok('no reminder once healed', await page.locator('#injReminder').count() === 0);
 
-/* 10. programs: data, Pro gate, start, today's workout, progression, swap */
-const P = await T(() => { const P = window.FORGED_PROGRAMS; return { t:P.templates.map(t => t.id), f:P.finishers.map(f => f.id), lib:Object.keys(P.library).length, miss:[...P.templates.flatMap(t => t.sessions.flatMap(s => s.ex)), ...P.finishers.flatMap(f => f.ex)].filter(e => !P.library[e.name] || !P.library[e.name].cue || !e.rest || !e.sets || !e.reps).length, alts:Object.values(P.library).every(x => x.alts.length && x.alts.every(a => P.library[a] && P.library[a].pattern)), disc:P.disclaimer }; });
-ok('templates: 2-day, 3-day, home, comp prep + grip/neck/core/joint finishers', JSON.stringify(P.t) === '["full2","luf3","home","comp"]' && JSON.stringify(P.f) === '["grip","neck","core","joints"]');
-ok('every exercise has sets, reps, rest, a cue and valid swaps', P.miss === 0 && P.alts && P.lib > 40);
-ok('isPro() gate exists (true for now)', (await T(() => window.DM_TEST.isPro())) === true);
-await page.goto(BASE + '#/programs'); await page.waitForSelector('#progList'); await settle();
-ok('programs list + disclaimer (not medical advice, consult a coach)', await page.locator('#progList .tmpl').count() === 4 && /not medical advice/.test(await page.locator('#progDisclaimer').innerText()) && /coach/.test(await page.locator('#progDisclaimer').innerText()));
-await hideToast(); await page.screenshot({ path:`${SHOTS}/47-programs.png` });
-// comp prep block: peak then taper
-const cp = await T(() => { const T = window.DM_TEST, p = { uid:'x', tid:'comp', start:new Date().toLocaleDateString('en-CA'), weeks:6, days:[2,4], finishers:[], swaps:{} };
-  return [1,4,5,6].map(w => { const rx = T.prescription(p, { w, key:'A' }); const tb = rx.ex.find(e => e.name === 'Trap bar deadlift'); return [rx.phase, tb.sets, tb.reps, rx.ex.length]; }); });
-ok('comp prep: build → peak (3×3) → taper (2×3, accessories cut) → comp week (2×2, main lifts only)', JSON.stringify(cp) === JSON.stringify([['Build',3,6,4],['Peak',3,3,4],['Taper',2,3,4],['Comp week',2,2,2]]), JSON.stringify(cp));
-await page.locator('#progList .tmpl[data-tmpl="full2"]').tap(); await page.waitForSelector('#startProg'); await page.locator('#startProg').tap(); await page.waitForSelector('#progGo');
-const td0 = new Date().getDay(), dA = td0, dB = (td0 + 3) % 7;
-while (await page.locator('.sheet .daypick button.on').count()) await page.locator('.sheet .daypick button.on').first().tap();
-await page.locator(`.sheet .daypick button[data-d="${dA}"]`).tap(); await page.locator(`.sheet .daypick button[data-d="${dB}"]`).tap();
-await page.locator('#progGo').tap(); await settle(400);
-d = await db(); ok('start program schedules 8 weeks × 2 days', d.program?.tid === 'full2' && (await T(() => window.DM_TEST.progSchedule(window.DM_TEST.activeProgram()).length)) === 16 && (await T(() => window.DM_TEST.progSchedule(window.DM_TEST.activeProgram())[0].date)) === D(0));
-ok("today's workout on Home", /^Today/i.test(await page.locator('#progCard h2').innerText()) && /Week 1 · Day A/.test(await page.locator('#progCard').innerText()));
-// seed last logs: trap bar all sets done (5×3 @ 300) → +5%; bench missed reps → repeat; pull-ups bodyweight done → +1 rep
-await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); const f = new Date(Date.now() - 3*864e5).toLocaleDateString('en-CA');
-  d.sessions.push({ id:'pl', date:f, category:'weights', discipline:'strength', duration:50, rpe:7, createdAt:10, exercises:[
-    { name:'Trap bar deadlift', plan:{ sets:3, lo:5, hi:5, unit:'reps' }, sets:[{ reps:5, weight:300 },{ reps:5, weight:300 },{ reps:5, weight:300 }] },
-    { name:'Bench press', plan:{ sets:3, lo:6, hi:6, unit:'reps' }, sets:[{ reps:6, weight:185 },{ reps:6, weight:185 },{ reps:4, weight:185 }] },
-    { name:'Pull-up', plan:{ sets:3, lo:5, hi:8, unit:'reps' }, sets:[{ reps:8, weight:'' },{ reps:8, weight:'' },{ reps:8, weight:'' }] },
-    { name:'One-arm dumbbell row', plan:{ sets:3, lo:8, hi:10, unit:'reps' }, sets:[{ reps:10, weight:70 },{ reps:10, weight:70 },{ reps:10, weight:70 }] } ] });
-  localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
-await page.reload(); await settle(300);
-const sg = await T(() => { const T = window.DM_TEST; return { tb:T.suggest('Trap bar deadlift', { sets:3, reps:5 }), be:T.suggest('Bench press', { sets:3, reps:6 }), pu:T.suggest('Pull-up', { sets:3, reps:[5,8] }), row:T.suggest('One-arm dumbbell row', { sets:3, reps:[8,10] }), none:T.suggest('Hip thrust', { sets:3, reps:8 }) }; });
-ok('progression: all sets done → +5% lower body (300 → 315), reps reset', sg.tb.weight === 315 && sg.tb.reps === 5 && sg.tb.basis === 'up', JSON.stringify(sg.tb));
-ok('progression: +2.5% upper body rounded to 5 lb (70 → 75)', sg.row.weight === 75 && sg.row.reps === 8);
-ok('missed reps → repeat the weight', sg.be.weight === 185 && sg.be.basis === 'repeat');
-ok('bodyweight: all sets done → +1 rep', sg.pu.reps === 9 && sg.pu.weight === '');
-ok('no history → you pick the weight', sg.none.weight === '' && sg.none.reps === 8);
-await page.locator('#progStart').tap(); await page.waitForSelector('.excard'); await settle(300);
-const ex0 = await page.locator('.excard').first();
-ok('workout opens the Weights log pre-filled with targets and suggested weights', await page.locator('.cats button.on[data-c="weights"]').count() === 1 && (await ex0.locator('.exname').inputValue()) === 'Trap bar deadlift' && (await ex0.locator('input[data-f="weight"]').first().inputValue()) === '315' && await ex0.locator('.setrow').count() === 3 && /Target 3 × 5/.test(await ex0.locator('.excue').innerText()) && await page.locator('#progBanner').count() === 1);
-await page.locator('.excard', { has:page.locator('.exname[value="Bench press"]') }).locator('[data-swap]').tap(); await page.waitForSelector('.swaplist');
-ok('swap offers same-pattern alternatives', JSON.stringify(await page.locator('.swaplist [data-swap]').evaluateAll(x => x.map(b => b.dataset.swap))) === '["Bench press","Dumbbell bench press","Push-up","Feet-elevated push-up"]');
-await page.locator('.swaplist [data-swap="Push-up"]').tap(); await settle(300);
-ok('swap replaces the exercise (bodyweight: no weight) and is remembered for the program', (await db()).program.swaps['Bench press'] === 'Push-up' && await page.locator('.exname[value="Push-up"]').count() === 1 && await page.locator('.exname[value="Bench press"]').count() === 0);
-await page.locator('.excard').first().scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, -260)); await hideToast(); await settle(); await page.screenshot({ path:`${SHOTS}/48-program-workout.png` });
-await page.locator('.actions [data-save]').tap(); await settle(400);
-d = await db(); const ps = d.sessions.find(s => s.prog);
-ok('saved program session links to the schedule; next item becomes the next workout', ps && ps.prog.i === 0 && ps.exercises[0].plan.sets === 3 && (await T(() => window.DM_TEST.progNext(window.DM_TEST.activeProgram()).item.i)) === 1);
-const swapped = await T(() => { const T = window.DM_TEST, p = T.activeProgram(); return T.prescription(p, T.progSchedule(p)[2]).ex.map(e => e.name); });
-ok('swap applies to future sessions', swapped.includes('Push-up') && !swapped.includes('Bench press'));
-ok('deload week 4: one set fewer', (await T(() => { const T = window.DM_TEST, p = T.activeProgram(); return T.prescription(p, { w:4, key:'A' }).ex[0].sets; })) === 2);
-
+/* 10. programs: now Build > Follow a program (covered in p3180) */
 /* 11. export/import round trip + clear + countdown screenshot with sample data */
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#exp');
 const b4 = await db();
 [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#exp').tap()]); await dl.saveAs('/tmp/feat-exp2.json');
 exp = JSON.parse(fs.readFileSync('/tmp/feat-exp2.json','utf8'));
-ok('export has comps, benchmarks, injuries, challenges, program', exp.comps.length === 1 && exp.benchmarks.length === b4.benchmarks.length && exp.injuries.length === 1 && exp.challenges.length === 1 && exp.program?.tid === 'full2');
+ok('export has comps, benchmarks, injuries', exp.comps.length === b4.comps.length && exp.benchmarks.length === b4.benchmarks.length && exp.injuries.length === 1);
 await page.locator('#clr').tap(); await page.locator('.sheet [data-ok]').tap(); await settle(300);
 d = await db(); ok('clear all data removes the new collections and the archive', d.comps.length === 0 && d.benchmarks.length === 0 && d.injuries.length === 0 && d.challenges.length === 0 && d.program === null && !d.archive);
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#impFile', { state:'attached' });
@@ -244,21 +175,13 @@ d = await db(); const K = x => JSON.stringify([x.comps, x.benchmarks, x.injuries
 ok('import restores everything', K(d) === K(b4));
 // sample data
 await page.locator('#clr').tap(); await page.locator('.sheet [data-ok]').tap(); await settle(300);
-await page.goto(BASE); await page.waitForSelector('#loadSample'); await page.locator('#loadSample').tap(); await page.waitForSelector('#compCard'); await settle(400);
+await page.goto(BASE); await page.waitForSelector('#loadSample'); await page.locator('#loadSample').tap(); await page.waitForSelector('#weekCard'); await settle(400);
 d = await db();
 ok('sample data: comps, benchmarks, active + healed injury, challenge months, program, effort/feel', d.comps.length === 3 && d.benchmarks.length >= 12 && d.injuries.length === 2 && d.challenges.length >= 2 && d.program?.sample && d.sessions.filter(s => s.rpe).length > 50 && d.sessions.some(s => s.feel) && Object.keys(d.profile.schedule).length >= 3);
 await hideToast(); await page.evaluate(() => window.scrollTo(0, 0)); await settle();
-const cc = await page.locator('#compCard').boundingBox(); await page.evaluate(y => window.scrollTo(0, y - 70), cc.y); await settle(200); await hideToast();
-await page.screenshot({ path:`${SHOTS}/43-comp-countdown.png` });
 await page.locator('#weekCard').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, -60)); await settle(200); await hideToast();
 await page.screenshot({ path:`${SHOTS}/40-week-strip.png` });
-// ring screenshot: hit the goal with sample data present
-await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); const m = new Date().toLocaleDateString('en-CA').slice(0,7); d.sessions.forEach(s => { if (s.date.startsWith(m)) s.sample = false; }); d.profile.challengeTarget = d.sessions.filter(s => s.date.startsWith(m)).length + 1; d.challenges = d.challenges.filter(x => x.month !== m); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
-await page.reload(); await settle(300);
-await page.locator('.quick [data-rep]').first().tap(); await page.waitForSelector('.confetti'); await page.waitForTimeout(450);
-await page.locator('#challenge').scrollIntoViewIfNeeded(); await page.evaluate(() => window.scrollBy(0, -330)); await page.waitForTimeout(150);
-await page.screenshot({ path:`${SHOTS}/46-challenge-ring.png` });
-await page.waitForTimeout(2600);
+// 3.18.0: the monthly ring is folded into the single daily challenge line
 await page.goto(BASE + '#/settings'); await page.locator('#rmS').tap(); await settle(400);
 d = await db(); ok('remove sample removes sample comps/benchmarks/injuries/program', d.comps.length === 0 && d.benchmarks.length === 0 && d.injuries.length === 0 && !d.program && d.challenges.every(x => !x.sample));
 /* Striking/MMA: Open mat → Pad work (grappling keeps Open mat) */

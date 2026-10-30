@@ -17,7 +17,7 @@ const tut = () => page.locator('#tut');
 const seenNow = () => page.evaluate(() => JSON.parse(localStorage.getItem('forged.tut.seen') || '{}'));
 
 /* 1. onboarding: no tutorial over setup */
-await seed(null, '#/');
+await seed(null, '#/assess');
 ok('no tutorial over the onboarding setup flow', await page.evaluate(() => document.body.classList.contains('setup-mode')) && await tut().count() === 0);
 
 /* 2. automated browsers without opt-in see nothing (keeps other suites unblocked) */
@@ -50,7 +50,7 @@ ok('Skip closes and marks log seen', await tut().count() === 0 && (await seenNow
 ok('log form still works under it', await page.locator('#view .field').count() > 0);
 
 /* 5. every page */
-for (const [hash, key] of [['#/food','food'],['#/history','history'],['#/challenges','challenges'],['#/belts','belts'],['#/friends','friends'],['#/settings','settings'],['#/stats','stats'],['#/programs','programs'],['#/benchmarks','benchmarks'],['#/comps','comps']]) {
+for (const [hash, key] of [['#/build','build'],['#/history','history'],['#/challenges','challenges'],['#/belts','belts'],['#/friends','friends'],['#/settings','settings'],['#/stats','stats'],['#/benchmarks','benchmarks']]) {
   const all = await page.evaluate(() => FORGED_TUT.pages);
   const seen = Object.fromEntries(all.filter(k => k !== key).map(k => [k, 1]));
   await seed(data, hash.replace('?pro=1',''), seen);

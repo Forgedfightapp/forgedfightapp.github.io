@@ -103,15 +103,7 @@ await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1
 await page.setInputFiles('#impFile', '/tmp/sg-exp.json'); await page.locator('.sheet [data-ok]').tap(); await settle(400);
 d = await db(); ok('import restores strength goals', d.strength.length === exp.strength.length && d.strength.find(g => g.id === 'g1').achieved.value === 253);
 
-/* 7. onboarding: strength goals only when Weights is picked */
-await page.goto(BASE); await page.evaluate(() => localStorage.clear()); await page.reload(); await page.waitForSelector('#catTiles');
-await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.waitForSelector('#setupDone');
-ok('onboarding without Weights: no strength goals', await page.locator('#setupSG-bench').count() === 0);
-await page.locator('#setupBack').tap(); await page.waitForSelector('#aboutNext'); await page.locator('#setupBack').tap(); await page.waitForSelector('#catTiles'); await page.locator('.tile[data-k="weights"]').tap(); await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.waitForSelector('#setupDone');
-ok('onboarding with Weights: bench/squat/deadlift/OHP + pull-ups/push-ups/dead hang + date', await page.locator('[id^="setupSG-"]').count() === 7 && await page.locator('#setupSGDate').count() === 1);
-await page.locator('#setupSG-squat').fill('315'); await page.locator('#setupSG-pushups').fill('50'); await page.locator('#setupSGDate').fill(D(90)); await page.locator('#setupDone').tap(); await page.waitForSelector('#weekCard');
-d = await db(); ok('onboarding saves only the filled strength goals', d.strength.length === 2 && d.strength.some(g => g.key === 'squat' && g.target === 315 && g.date === D(90)) && d.strength.some(g => g.key === 'pushups' && g.target === 50));
-
+/* 7. (3.18.0) onboarding is the assessment now; strength goals are set from Profile > Strength goals */
 /* 8. sample data */
 await page.goto(BASE); await page.evaluate(() => localStorage.clear()); await page.reload(); await page.waitForSelector('#loadSample'); await page.locator('#loadSample').tap(); await settle(600);
 d = await db(); ok('sample data includes strength goals (one achieved)', d.strength.filter(g => g.sample).length === 4 && d.strength.some(g => g.sample && g.achieved));

@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.17.1';
+const APP_VERSION = '3.18.0';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -1280,8 +1280,6 @@ function strengthPrCard(){
 const num = v => { const n = Number(v); return isFinite(n) && n > 0 ? n : 0; };
 const r1 = n => Math.round(n*10)/10;
 const LB_PER_KG = 1 / KG_PER_LB;
-/* pure: inputs in any unit → targets. i = { sex:'m'|'f', age, cm, kg, goalKg, act, pace, mode? }
-   mode (3.5.0): 'lose' | 'maintain' | 'gain'. Without it the direction comes from goal vs current (as before). */
 
 
 
@@ -1359,7 +1357,6 @@ function viewSettings(){
   v.appendChild(data);
   v.appendChild(h(`<div class="card"><h2>Install on iPhone</h2><div style="color:var(--muted);font-size:14px">In Safari, tap <b style="color:var(--text)">Share</b> → <b style="color:var(--text)">Add to Home Screen</b>. It opens full-screen and works offline.</div></div>`));
   if (socialOn()) v.appendChild(h(`<div class="card" id="friendsCard"><h2>Friends</h2><a class="list-row" href="#/friends" id="friendsProfileLink" style="text-decoration:none;color:inherit"><div class="grow"><b>Friends &amp; head-to-head</b><small>${sUser() ? `Signed in as ${esc(sUser().email)}` : 'Optional account. Only summaries are shared.'}</small></div>›</a></div>`));
-  // 3.13.0: medals, badges and looks removed from Profile (data kept, not shown)
   { const row = h(`<div class="card" id="shareProfileCard"><h2>Train with friends</h2><div class="hint" style="margin:-4px 0 10px">Send your link. Friends who tap it can add you in one step, even if they're new to Forged.</div><button type="button" class="btn primary block" id="shareProfile">Share my profile</button></div>`);
     row.querySelector('#shareProfile').onclick = shareProfile; v.appendChild(row); }
   { const MF = 'https://matfinderhq.com', row = h(`<div class="card" id="findGymCard"><a class="list-row" id="findGym" href="${MF}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit"><div class="grow"><b>Find a gym</b><small>Search gyms near you on MatFinder</small></div><span style="color:var(--accent)">↗</span></a></div>`);
@@ -1373,7 +1370,7 @@ function viewSettings(){
   const rm = $('#rmS'); if (rm) rm.onclick = removeSample;
   $('#clr').onclick = async () => {
     if (await confirmSheet('Clear all data?', `This permanently deletes ${db.sessions.length} sessions, ${db.weights.length} weigh-ins, ${db.belts.length} belt promotions, competitions, benchmarks, injuries, your program and your profile from this device. Export a backup first if you want to keep them.`, 'Clear everything')) {
-      db = emptyDb(); gPending = null; save(); form = null; toast('All data cleared'); go('#/');
+      db = emptyDb(); save(); form = null; toast('All data cleared'); go('#/');
     }
   };
 }
@@ -1712,6 +1709,10 @@ function compSheet(id){
   const del = btns.querySelector('[data-del]'); if (del) del.onclick = () => { const before = db.comps.slice(); db.comps = db.comps.filter(x => x.id !== c.id); save(); closeSheet(); undoToast('Competition deleted', () => { db.comps = before; save(); route(); }); whenSettled(route); };
   el.appendChild(btns); openSheet(el, null, { closeLabel:'Cancel' });
 }
+function compDetail(c){ const k = compKind(c.sport), bits = [];
+  if (k === 'grappling' || k === 'other') { if (c.gi) bits.push(GI_OPTS.find(g => g[0] === c.gi)[1]); if (c.division) bits.push(c.division); }
+  if (k === 'striking' || k === 'mma') { if (c.bout) bits.push(BOUT_TYPES.find(b => b[0] === c.bout)[1]); if (c.rounds) bits.push(`${c.rounds} × ${c.roundMin || 3} min`); }
+  return bits; }
 function compsList(list){ return list.map(c => `<button type="button" class="list-row comprow" data-comp="${esc(c.id)}" data-sport="${esc(c.sport)}"><div class="grow"><b>${esc(c.name)}</b><small>${[fmtShort(c.date), c.sport, c.weightClass, ...compDetail(c)].filter(Boolean).map(esc).join(' · ')}${c.date < today() && c.fmt === 'tournament' && (c.mw || c.ml) ? ` · ${c.mw || 0}–${c.ml || 0} in matches` : ''}${c.notes && c.date < today() ? ` · ${esc(c.notes.slice(0, 60))}` : ''}</small></div>${c.date >= today() ? `<span class="pill">${daysTo(c.date)} d</span>` : c.result ? `<span class="pill res-${c.result}">${esc(resultLabel(c))}</span>` : '<span class="pill">Add result</span>'}${c.sample ? '<span class="pill sample">Sample</span>' : ''}</button>`).join(''); }
 function wireComps(root){ root.querySelectorAll('[data-comp]').forEach(b => b.onclick = e => { if (e.target.closest('a')) return; compSheet(b.dataset.comp); }); root.querySelectorAll('[data-addcomp]').forEach(b => b.onclick = () => compSheet(null)); }
 /* record from past comps: bouts count W/L/D; tournaments add their match wins/losses and medals */
@@ -1840,7 +1841,7 @@ function injurySheet(id){
   const nt = h(`<textarea class="input" rows="2" placeholder="What happened? What makes it worse?">${esc(x.notes)}</textarea>`); nt.oninput = () => x.notes = nt.value; el.appendChild(field('Notes', nt));
   if (ex) { const ch = sevChart(ex); if (ch) el.appendChild(field('Severity over time', h(`<div>${ch}</div>`))); }
   const btns = h(`<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">${ex ? `<button type="button" class="btn danger" data-del>Delete</button><button type="button" class="btn" data-heal>${ex.healed ? 'Not healed yet' : 'Mark healed'}</button>` : ''}<button type="button" class="btn primary" style="flex:1" data-save>${ex ? 'Save' : 'Save injury'}</button></div>`);
-  btns.querySelector('[data-save]').onclick = () => { if (!x.area) { toast('Pick an area'); return; } const rec = sanitizeInjuries([{ ...x, sample:false }])[0]; db.injuries = db.injuries.filter(i => i.id !== rec.id).concat(rec); save(); closeSheet(); toast(ex ? 'Saved' : 'Injury logged'); if (!ex) offerMarksPause(rec.severity); whenSettled(route); };
+  btns.querySelector('[data-save]').onclick = () => { if (!x.area) { toast('Pick an area'); return; } const rec = sanitizeInjuries([{ ...x, sample:false }])[0]; db.injuries = db.injuries.filter(i => i.id !== rec.id).concat(rec); save(); closeSheet(); toast(ex ? 'Saved' : 'Injury logged'); whenSettled(route); };
   const heal = btns.querySelector('[data-heal]'); if (heal) heal.onclick = () => { ex.healed = ex.healed ? '' : today(); save(); closeSheet(); toast(ex.healed ? 'Marked healed' : 'Marked active'); whenSettled(route); };
   const del = btns.querySelector('[data-del]'); if (del) del.onclick = () => { const before = db.injuries.slice(); db.injuries = db.injuries.filter(i => i.id !== x.id); save(); closeSheet(); undoToast('Injury deleted', () => { db.injuries = before; save(); route(); }); whenSettled(route); };
   el.appendChild(btns); openSheet(el, null, { closeLabel:'Cancel' });
@@ -2938,6 +2939,7 @@ function viewSignin(){
   const inv = sLS.get('invite', '');
   $('#view').innerHTML = `<div class="card" id="signinCard"><h2>Sign in or create an account</h2><p class="dim" style="margin:-4px 0 14px">We'll email you a 6-digit code. No password.${inv ? ' Then we add your friend.' : ''}</p>
     <div class="field"><label for="siEmail">Email</label><input class="input" id="siEmail" type="email" inputmode="email" autocomplete="email" autocapitalize="off" placeholder="you@example.com" value="${esc(sLS.get('email', ''))}"></div>
+    <label class="checkrow" id="siNma"><input type="checkbox" ${db.profile.nmaAt ? 'checked' : ''}><span>${esc(NMA_TEXT)} <a href="terms.html#medical" target="_blank" rel="noopener">Terms</a></span></label>
     <button type="button" class="btn primary block" id="siSend">Email me a code</button>
     <div id="siCodeWrap" hidden><div class="field" style="margin-top:14px"><label for="siCode">Code from the email</label><input class="input otp" id="siCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456"></div>
       <button type="button" class="btn primary block" id="siVerify">Sign in</button><button type="button" class="btn block ghost" id="siResend" style="margin-top:8px">Send a new code</button>
@@ -2947,6 +2949,8 @@ function viewSignin(){
   const em = $('#siEmail'), wrap = $('#siCodeWrap'), code = $('#siCode');
   let sentAt = 0;
   const send = async () => {
+    if (!$('#siNma input').checked) { toast('Please tick the not-medical-advice box'); return; }
+    if (!db.profile.nmaAt) { db.profile.nmaAt = new Date().toISOString(); save(); }
     const e = em.value.trim(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) { toast('Enter your email address'); em.focus(); return; }
     if (Date.now() - sentAt < 60000) { toast('Wait a minute before asking for another code'); return; }
     const b = $('#siSend'); b.disabled = true;
@@ -3058,7 +3062,9 @@ const GEN = window.FORGED_GEN;
 const ARTS = [['bjj','BJJ'],['wrestling','Wrestling'],['judo','Judo'],['sambo','Sambo'],['muaythai','Muay Thai'],['boxing','Boxing'],['kickboxing','Kickboxing'],['mma','MMA'],['karate','Karate'],['taekwondo','Taekwondo']];
 const ART_CAT = { bjj:'grappling', wrestling:'grappling', judo:'grappling', sambo:'grappling', muaythai:'striking', boxing:'striking', kickboxing:'striking', karate:'striking', taekwondo:'striking', mma:'mma' };
 const NMA_TEXT = 'I understand Forged gives general training information, not medical advice. I\u2019ll check with a medical professional before training with an injury or health condition.';
-const needsAssessment = () => !db.profile.assess?.done && !db.profile.sampleProfile;
+// like tutorials: automated browsers (older test suites) skip the automatic gate unless they opt in; #/assess and ?start=assess always work
+const assessGate = () => { try { return !navigator.webdriver || localStorage.getItem('forged.assess.force') === '1'; } catch(e) { return true; } };
+const needsAssessment = () => !db.profile.assess?.done && assessGate();
 /* prefill from what an existing user already has */
 function assessDraft(){
   const p = db.profile, a = p.assess || {}, sch = p.schedule || {};
@@ -3161,10 +3167,11 @@ function workoutHtml(w, id){
     ${w.rehab.length ? `<div class="label sect">Rehab &amp; mobility</div><div id="gxRehab">${w.rehab.map(e => `<div class="list-row"><div class="grow"><b>${esc(e.name)}</b><small>${esc(e.dose)} · ${esc(e.area)}</small><small class="dim">${esc(e.cue)}</small></div></div>`).join('')}</div><div class="disclaimer" id="gxNote">⚠️ ${esc(w.note)}</div>` : ''}
     ${w.main[0] ? `<div class="hint" style="margin-top:8px">📈 ${esc(w.main[0].prog)}</div>` : ''}</div>`;
 }
+const signed = n => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)}`;
 const repsArr = r => { const m = String(r).match(/\d+/g) || ['10']; return [Number(m[0]), Number(m[1] || m[0])]; };
 function startGenerated(w, type){
   const ex = w.main.concat(w.acc).map(e => progExercise({ name:e.name, sets:e.sets, reps:repsArr(e.reps), rest:e.rest }));
-  guardLeave(() => { form = blankSession('weights'); form.exercises = ex; form.discipline = 'strength'; form.duration = w.est; form._durTouched = true; form.notes = `${TYPE_LABEL[type]} · generated`; formBase = null; go('#/log'); });
+  guardLeave(() => { form = blankSession('weights'); form.exercises = ex; form.discipline = 'strength'; form.notes = `${TYPE_LABEL[type]} · generated`; formBase = null; go('#/log'); });
 }
 /* one control: Quick or Full; a location picker when more than one is saved; swap by equipment or by pain */
 function genControls(st){
@@ -3191,7 +3198,7 @@ function swapGenSheet(name, st, redraw){
 }
 /* Home: Today's session */
 function todayCard(){
-  if (!assess().done) return '';
+  if (!assess().done) return `<div class="card" id="todayCard"><h2>Today's session</h2><div class="hint" style="margin:0 0 10px">Take the 2-minute assessment and we’ll build workouts around your arts, schedule, equipment and injuries.</div><a class="btn primary block" href="#/assess" id="takeAssess">Take the assessment</a>${db.sessions.length ? '' : '<button type="button" class="btn block ghost" id="loadSample" style="margin-top:8px">Load sample data (demo)</button>'}</div>`;
   const st = todayState(), { it, nx, mat } = todayPlan();
   if (!it) return `<div class="card" id="todayCard"><h2>Today's session <small>${mat ? 'mat day' : 'rest day'}</small></h2><div class="hint" style="margin:0 0 10px">${mat ? 'Mat day: train hard and recover. ' : ''}${nx ? `Next lift: <b>${DOW[nx.dow]}</b> · ${TYPE_LABEL[nx.type]}` : 'Add lift days in your assessment.'}</div><a class="btn block" href="#/build">Build a workout anyway</a></div>`;
   const w = buildWorkout(it.type, st, it.lightLegs);
@@ -3199,7 +3206,7 @@ function todayCard(){
     ${genControls(st)}${workoutHtml(w, 'todayList')}
     <div class="grid2" style="margin-top:12px"><button type="button" class="btn" data-shuffle>Shuffle</button><button type="button" class="btn primary" data-startgen id="startSession">Start session</button></div></div>`;
 }
-function wireToday(v){ const c = v.querySelector('#todayCard'); if (!c || !c.dataset.type) return; const { it } = todayPlan(); wireGen(c, todayState(), buildWorkout(it.type, todayState(), it.lightLegs), it.type, () => route()); }
+function wireToday(v){ const ls = v.querySelector('#loadSample'); if (ls) ls.onclick = loadSample; const c = v.querySelector('#todayCard'); if (!c || !c.dataset.type) return; const { it } = todayPlan(); wireGen(c, todayState(), buildWorkout(it.type, todayState(), it.lightLegs), it.type, () => route()); }
 /* Build a workout: Generate (any day type) or Follow a program */
 let buildType = 'full';
 function viewBuild(tab){
@@ -3229,7 +3236,7 @@ function viewBuild(tab){
   wireGen(v.querySelector('#buildCard'), st, w, buildType, () => route());
 }
 
-const RETURN_NAME = h0 => { const a = (h0 || '/').split('/')[1] || ''; return ({ '':'Home', food:'Food', stats:'Stats', history:'History', log:'Log', edit:'workout', comps:'Comps', benchmarks:'Benchmarks', session:'workout' })[a] || 'previous page'; };
+const RETURN_NAME = h0 => { const a = (h0 || '/').split('/')[1] || ''; return ({ '':'Home', build:'Build', stats:'Stats', history:'History', log:'Log', edit:'workout', comps:'Comps', benchmarks:'Benchmarks', session:'workout' })[a] || 'previous page'; };
 function unsavedInput(){
   if (onForm() && formDirty()) return true;
   const scope = [...document.querySelectorAll('#sheet:not([hidden]) input, #sheet:not([hidden]) textarea')];
@@ -3263,8 +3270,6 @@ function goBack(parent){
     else { replacing = true; location.replace(parent); }
   }));
 }
-const TARGET_HINT = 'Used to track your progress on the Nutrition screen. You can change these anytime in Profile.';
-const TARGET_LABEL = { cal:'Calories', p:'Protein (g)', c:'Carbs (g)', f:'Fat (g)' };
 function route(){
   { const pa = pendingAdd(); if (pa && db.profile.setupDone && socialOn()) { sLS.del('pendingAdd'); sLS.set('addName', pa.name); location.replace(pa.u ? '#/add/' + encodeURIComponent(pa.u) : '#/invite/' + pa.code); return; } }
   document.body.classList.remove('setup-mode');
@@ -3336,6 +3341,10 @@ document.querySelector('.tabbar').addEventListener('click', e => {
 });
 window.addEventListener('storage', e => { if (e.key === STORE_KEY) { db = load(); if (db.belts.length) syncProfileRank(); route(); } });
 db = load(); if (db.belts.length) syncProfileRank();   // profile rank always follows the event log (covers migrated logs)
+/* 3.18.0: deep links from the website: ?start=assess opens the assessment, ?start=signin opens sign-in */
+(() => { const q = new URLSearchParams(location.search), st = q.get('start'), to = { assess:'#/assess', signin:'#/signin' }[st];
+  if (!to) return; q.delete('start'); history.replaceState(history.state, '', location.pathname + (q.toString() ? '?' + q : '') + to); })();
+if (!localStorage.getItem(STORE_KEY)) save(); // first launch: write the empty store so later reads never see null
 if (readDraft() && /^#?\/?$/.test(location.hash)) { draftResume(); history.replaceState(history.state, '', '#/log'); }
 route();
 socialBoot();

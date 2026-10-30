@@ -5,7 +5,7 @@ await c.addInitScript(()=>{window.FORGED_CONFIG={social:true};window.__FORGED_QU
 const d={schema:7,sessions:[],profile:{name:'CRUSHER CALDWELL',unit:'lb',distUnit:'mi',setupDone:true,tips:false,enabled:{grappling:true,food:false}},nutrition:{entries:[],foods:[],water:[]},weights:[],belts:[],comps:[],injuries:[],strength:[]};
 await p.goto(B); await p.evaluate(d=>{localStorage.clear();localStorage.setItem('forged.uname.preview','1');localStorage.setItem('dm.bjj.v1',JSON.stringify(d));localStorage.setItem('forged.tut.seen',JSON.stringify({home:1,weight:1,friends:1,settings:1,badges:1,rank:1}))},d); await p.reload();
 await p.goto(B+'#/friends'); await p.waitForSelector('#goSignin'); await p.locator('#goSignin').tap(); await p.waitForSelector('#siEmail');
-await p.locator('#siEmail').fill('steve@example.com'); await p.locator('#siSend').tap(); await p.waitForSelector('#siCodeWrap:not([hidden])'); await p.locator('#siCode').fill('123456'); await p.waitForSelector('#youCard',{timeout:8000});
+await p.locator('#siEmail').fill('steve@example.com'); await p.locator('#siNma input').check(); await p.locator('#siSend').tap(); await p.waitForSelector('#siCodeWrap:not([hidden])'); await p.locator('#siCode').fill('123456'); await p.waitForSelector('#youCard',{timeout:8000});
 await p.evaluate(()=>{localStorage.setItem('forged.social.uname','"crusher_caldwell"'); window.__mockSb.addUser({name:'Alex',username:'alex.rolls'});}); await p.reload(); await p.waitForTimeout(1500);
 const sel=await p.locator('#unameCard:not([hidden])').count()?'#unameCard':'#inviteCard'; const card=p.locator(sel);
 if(sel==='#unameCard'){ await p.fill('#findUname','alex.rolls'); await p.locator('#findGo').tap(); await p.waitForSelector('#findRow'); }

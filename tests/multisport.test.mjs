@@ -42,14 +42,9 @@ await radioX('#compBout', 'Amateur').tap(); await page.fill('#compRounds', '3');
 await page.locator('.sheet [data-save]').tap(); await settle(400);
 let d = await db(), mt = d.comps.find(c => c.name === 'Thai Fight Night');
 ok('saved: sport, bout type, rounds, minutes, weigh-in, fmt bout', mt && mt.sport === 'Muay Thai' && mt.bout === 'am' && mt.rounds === 3 && mt.roundMin === 2 && mt.weighIn === `${D(4)}T18:00` && mt.fmt === 'bout' && !mt.gi && !mt.division, JSON.stringify(mt));
-await page.goto(BASE + '#/'); await page.waitForSelector('#compCard');
-ok('Home countdown shows the bout details and weigh-in', /Amateur · 3 × 2 min/.test(await page.locator('#compDetail').innerText()) && /Weigh-in/.test(await page.locator('#compWeigh').innerText()) && /6:00 PM/.test(await page.locator('#compWeigh').innerText()));
-ok('striking fight-week tips: sparring taper, pad sharpness, weigh-in rehydration', await page.locator('#taperTips').getAttribute('data-kind') === 'striking' && /Fight week/i.test(await page.locator('#taperTips').innerText()) && /sparring/i.test(await page.locator('#taperTips').innerText()) && /pads/i.test(await page.locator('#taperTips').innerText()) && /rehydration/i.test(await page.locator('#taperTips').innerText()));
-
-/* MMA taper */
-await T(() => { const x = JSON.parse(localStorage.getItem('dm.bjj.v1')); x.comps[0].sport = 'MMA'; localStorage.setItem('dm.bjj.v1', JSON.stringify(x)); }); await page.reload(); await page.waitForSelector('#taperTips');
-ok('MMA fight-week tips mix both (sparring + rolling)', await page.locator('#taperTips').getAttribute('data-kind') === 'mma' && /rolling/i.test(await page.locator('#taperTips').innerText()));
-ok('tip of the day comp context follows the comp sport (MMA → no gi/BJJ-only tips)', await T(() => window.DM_TEST.tipDeck(undefined, 'comp').deck.slice(0, window.DM_TEST.tipDeck(undefined, 'comp').pri).every(t => !t.s.length || t.s.includes('mma'))));
+await page.goto(BASE + '#/belts'); await page.waitForSelector('#compsCard');
+ok('3.18.0: the comp shows as a light entry on Belts (no Home countdown)', /Thai Fight Night/.test(await page.locator('#compsCard').innerText()) && await page.locator('#compCard').count() === 0);
+// 3.18.0: fight-week taper tips and tip-of-the-day are gone (Home comp card removed)
 
 /* results: past comps of several sports */
 const past = [
@@ -63,13 +58,13 @@ const past = [
 await seed(base({ profile:prof({ enabled:EN({ grappling:true, striking:true, mma:true }) }), comps:past }));
 d = await db();
 ok('old comps migrate without losing anything (win → single match)', d.comps.find(c => c.id === 'old').result === 'win' && d.comps.find(c => c.id === 'old').fmt === 'bout');
-await page.goto(BASE + '#/comps'); await page.waitForSelector('#compRecord');
-const rec = await page.locator('#compRecord .recrow').evaluateAll(r => r.map(x => [x.dataset.sport, x.querySelector('span').textContent]));
-ok('Past: W-L record per sport (tournament match wins/losses + bouts; draws; medals)', JSON.stringify(rec) === JSON.stringify([['BJJ','5W · 1L · 🥇'],['Muay Thai','1W · 1L'],['Judo','0W · 0L'],['MMA','0W · 0L · 1D']]), JSON.stringify(rec));
-ok('Past header totals', /6W · 2L · 1D · 1 medal/.test(await page.locator('#pastComps h2').innerText()), await page.locator('#pastComps h2').innerText());
+await page.goto(BASE + '#/belts'); await page.waitForSelector('#compRecord');
+await page.evaluate(() => { const p = document.querySelector('#pastComps'); if (p) p.open = true; });
+ok('Past header totals (light entry on Belts)', /6W · 2L · 1D · 1 medal/.test(await page.locator('#compRecord').innerText()), await page.locator('#compRecord').innerText());
 ok('result pills show method / medal / draw', /Win · Decision/i.test(await page.locator('[data-comp="p3"]').innerText()) && /Loss · KO\/TKO/i.test(await page.locator('[data-comp="p4"]').innerText()) && /Gold/i.test(await page.locator('[data-comp="p1"]').innerText()) && /Draw/i.test(await page.locator('[data-comp="p5"]').innerText()));
 ok('list rows show sport details (Gi · division; Smoker · 3 × 2 min)', /Gi · Adult · Blue/.test(await page.locator('[data-comp="p1"]').innerText()) && /Smoker \/ interclub · 3 × 2 min/.test(await page.locator('[data-comp="p3"]').innerText()));
 /* enter a result for the judo tournament */
+await page.evaluate(() => { const p = document.querySelector('#pastComps'); if (p) p.open = true; });
 await page.locator('[data-comp="p6"]').tap(); await page.waitForSelector('#compResult');
 ok('judo: tournament result asks for medal + matches won/lost; no bout fields', await page.locator('#compMW').count() === 1 && await page.locator('#compBout').count() === 0 && await page.locator('#compGi').count() === 0);
 await radioX('#compResult', 'Medal').tap(); await radioX('#compResult', '🥉 Bronze').tap(); await page.fill('#compMW', '2'); await page.fill('#compML', '1');
@@ -77,6 +72,7 @@ await page.locator('.sheet [data-save]').tap(); await settle(400);
 d = await db(); const jc = d.comps.find(c => c.id === 'p6');
 ok('judo medal + record saved', jc.result === 'medal' && jc.medal === 'bronze' && jc.mw === 2 && jc.ml === 1);
 /* a bout result with a method */
+await page.evaluate(() => { const p = document.querySelector('#pastComps'); if (p) p.open = true; });
 await page.locator('[data-comp="p5"]').tap(); await page.waitForSelector('#compResult');
 await radioX('#compResult', 'Win').tap(); await settle(100);
 ok('MMA win methods: KO/TKO, Submission, Decision, DQ', JSON.stringify(await page.locator('#compMethod [role="radio"]').allInnerTexts()) === JSON.stringify(['KO/TKO','Submission','Decision','DQ']));

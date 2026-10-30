@@ -13,7 +13,7 @@ const settle = (ms=300) => page.waitForTimeout(ms);
 const hideToast = async () => { await page.evaluate(() => document.querySelector('#toast').classList.remove('show','act')); await page.waitForTimeout(450); };
 
 /* ---------- 1. duration math ---------- */
-await page.goto(BASE); await page.waitForSelector('#catTiles');
+await page.goto(BASE); await page.waitForSelector('#todayCard');
 const D = (a, b) => page.evaluate(([a, b]) => { const x = window.DM_TEST.diffYMD(a, b); return `${x.y}y${x.m}m${x.d}d|${window.DM_TEST.fmtSpan(x)}`; }, [a, b]);
 const cases = [
   ['2024-01-31','2024-02-29','0y1m0d|1 mo','month end clamps (leap Feb)'],
@@ -31,7 +31,7 @@ for (const [a, b, want, name] of cases) { const got = await D(a, b); ok(`duratio
 /* ---------- 2. belt + stripe events (3.2.0): separate dated events, backdating, missing stripes, edit/delete ---------- */
 const TODAY = await page.evaluate(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
 const YM = (a, b) => page.evaluate(([a, b]) => { const x = window.DM_TEST.diffYMD(a, b); return x.y ? `${x.y} yr${x.y > 1 ? 's' : ''} ${x.m} mo${x.m === 1 ? '' : 's'}` : x.m ? `${x.m} mo${x.m === 1 ? '' : 's'}` : `${x.d} day${x.d === 1 ? '' : 's'}`; }, [a, b]);
-await page.locator('#go').tap(); await page.locator('#skipAbout').tap(); await page.locator('#skipGoals').tap(); await page.waitForSelector('#weekCard'); await page.goto(BASE + '#/settings'); await page.reload(); await page.waitForSelector('#beltCard');
+await page.goto(BASE); await page.waitForSelector('#weekCard'); await page.goto(BASE + '#/settings'); await page.reload(); await page.waitForSelector('#beltCard');
 ok('home belt card prompts to log first belt', (await page.locator('#beltCard').innerText()).includes('Log your belt'));
 let taps = 0;
 taps++; await page.locator('#beltCard [data-promo]').tap(); await page.waitForSelector('#beltPick');
@@ -137,7 +137,7 @@ await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v
   profile:{ belt:'purple', stripes:3, promotedOn:'2025-05-01', unit:'lb', setupDone:true, enabled:{ grappling:true, food:false, supps:false } }, nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] }, weights:[] })); });
 await page.goto(BASE + '#/settings'); await page.reload(); await page.waitForSelector('#beltCard'); await settle(200);
 let mg = await page.evaluate(() => ({ d:JSON.parse(localStorage.getItem('dm.bjj.v1')), b:localStorage.getItem('dm.bjj.v1.backup.v3') }));
-ok('v3 → v4: old belt setting becomes a belt event + 3 stripe events (dates flagged to set)', mg.d.schema === 7 && mg.d.belts.length === 4 && mg.d.belts[0].belt === 'purple' && mg.d.belts[0].kind === 'belt' && mg.d.belts[0].date === '2025-05-01' && mg.d.belts.filter(e => e.kind === 'stripe' && e.approx).length === 3 && mg.d.sessions.length === 1, JSON.stringify(mg.d.belts));
+ok('v3 → v4: old belt setting becomes a belt event + 3 stripe events (dates flagged to set)', mg.d.schema === 8 && mg.d.belts.length === 4 && mg.d.belts[0].belt === 'purple' && mg.d.belts[0].kind === 'belt' && mg.d.belts[0].date === '2025-05-01' && mg.d.belts.filter(e => e.kind === 'stripe' && e.approx).length === 3 && mg.d.sessions.length === 1, JSON.stringify(mg.d.belts));
 ok('v3 → v4: backup kept', !!mg.b && JSON.parse(mg.b).schema === 3 && JSON.parse(mg.b).profile.belt === 'purple');
 ok('migrated rank shows on Home (3.16.3: no session count / mat hours)', (await page.locator('#beltCard').textContent()).includes('Purple belt · 3 stripes') && !/session|on the mat/i.test(await page.locator('#beltCard').textContent()) && !/ h since/.test(await page.locator('#beltCard').textContent()));
 await page.evaluate(() => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify({ schema:3, sessions:[], profile:{ belt:'blue', stripes:1, promotedOn:'', setupDone:true }, nutrition:{ entries:[], foods:[] }, supps:{ items:[], log:[] }, weights:[] })); });

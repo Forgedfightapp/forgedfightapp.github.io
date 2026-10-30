@@ -65,9 +65,9 @@ const alex = await page.evaluate(D0 => { const m = window.__mockSb; const id = m
   m.progress(id, 'sessions', D0, 4); m.progress(id, 'xp', D0, 30); m.progress(id, 'pushups', D0, 80); return id; }, D(0));
 // sign in
 await page.locator('#goSignin').tap(); await page.waitForSelector('#signinCard');
-await page.locator('#siEmail').fill('steve@'); await page.locator('#siSend').tap(); await settle(page, 150);
+await page.locator('#siEmail').fill('steve@'); await page.locator('#siNma input').check(); await page.locator('#siSend').tap(); await settle(page, 150);
 ok('sign-in: rejects a bad email', /enter your email/i.test(await toastText(page)));
-await page.locator('#siEmail').fill('steve@example.com'); await page.locator('#siSend').tap(); await page.waitForSelector('#siCodeWrap:not([hidden])');
+await page.locator('#siEmail').fill('steve@example.com'); await page.locator('#siNma input').check(); await page.locator('#siSend').tap(); await page.waitForSelector('#siCodeWrap:not([hidden])');
 const otp = await page.evaluate(() => window.__mockSb.lastOtp);
 ok('sign-in: one-time code requested, redirect URL is the live site', otp.email === 'steve@example.com' && otp.options.emailRedirectTo === 'https://forgedfightapp.github.io/' && otp.options.shouldCreateUser === true, JSON.stringify(otp));
 ok('sign-in: code field is numeric with one-time-code autofill', await page.locator('#siCode').getAttribute('autocomplete') === 'one-time-code' && await page.locator('#siCode').getAttribute('inputmode') === 'numeric');
@@ -165,7 +165,7 @@ await page.goto(BASE + '#/invite/ALEX2345'); await page.waitForSelector('#invGo'
 ok('invite link signed out: "Sign in to add Alex"', /sign in to add alex/i.test(await page.locator('#invGo').innerText()));
 await page.locator('#invGo').tap(); await page.waitForSelector('#signinCard');
 ok('the invite is remembered through sign-in', await page.evaluate(() => JSON.parse(localStorage.getItem('forged.social.invite')) === 'ALEX2345') && /add your friend/i.test(await page.locator('#signinCard').innerText()));
-await page.locator('#siEmail').fill('new@example.com'); await page.locator('#siSend').tap(); await page.waitForSelector('#siCodeWrap:not([hidden])');
+await page.locator('#siEmail').fill('new@example.com'); await page.locator('#siNma input').check(); await page.locator('#siSend').tap(); await page.waitForSelector('#siCodeWrap:not([hidden])');
 await page.locator('#siCode').fill('123456'); await page.waitForFunction(() => /now friends/i.test(document.querySelector('#toast').innerText), null, { timeout:8000 });
 ok('after sign-in the pending invite is accepted automatically', await page.evaluate(id => window.__mockSb.state.friends.some(([a, b]) => b === id), alex));
 ok('mock mode: zero requests to supabase.co', sbHits === 0, String(sbHits));
@@ -190,7 +190,7 @@ await ctx.close();
   });
   const vendor = []; page.on('request', q => { if (q.url().includes('vendor/supabase-js')) vendor.push(q.url()); });
   await seed(page, '#/signin'); await page.waitForSelector('#siEmail');
-  await page.locator('#siEmail').fill('steve@example.com'); await page.locator('#siSend').tap(); await page.waitForSelector('#siCodeWrap:not([hidden])', { timeout:10000 });
+  await page.locator('#siEmail').fill('steve@example.com'); await page.locator('#siNma input').check(); await page.locator('#siSend').tap(); await page.waitForSelector('#siCodeWrap:not([hidden])', { timeout:10000 });
   const otpReq = seen.find(x => x.p === '/auth/v1/otp');
   ok('real supabase-js: vendored copy loaded from this site (no CDN)', vendor.length >= 1 && vendor.every(u => u.startsWith(BASE)), vendor.join());
   ok('real supabase-js: OTP request uses the publishable key + redirect to the live site', otpReq && otpReq.h.apikey === 'sb_publishable_hspLZBFgnh5VhAeMXnBaSA_2agWNO41' && decodeURIComponent(otpReq.q).includes('redirect_to=https://forgedfightapp.github.io/') && JSON.parse(otpReq.b).email === 'steve@example.com', JSON.stringify(otpReq && { q:otpReq.q, b:otpReq.b }));

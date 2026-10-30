@@ -20,7 +20,7 @@ const signIn = async page => {
   await page.goto(BASE); await page.evaluate(d => { localStorage.clear(); localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); localStorage.setItem('forged.tut.seen', JSON.stringify({ home:1, friends:1 })); }, db0);
   await page.goto(BASE + '#/friends'); await page.waitForSelector('#goSignin');
   await page.locator('#goSignin').tap(); await page.waitForSelector('#siEmail');
-  await page.locator('#siEmail').fill('steve@example.com'); await page.locator('#siSend').tap(); await page.waitForSelector('#siCodeWrap:not([hidden])');
+  await page.locator('#siEmail').fill('steve@example.com'); await page.locator('#siNma input').check(); await page.locator('#siSend').tap(); await page.waitForSelector('#siCodeWrap:not([hidden])');
   await page.locator('#siCode').fill('123456'); await page.waitForSelector('#youCard', { timeout:8000 }); };
 
 /* 1. flag off (before migration 004): no media UI at all */

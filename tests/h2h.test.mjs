@@ -26,7 +26,7 @@ await page.goto(BASE); await ev(d => { localStorage.clear(); localStorage.setIte
 await page.goto(BASE + '#/friends'); await page.waitForSelector('#goSignin');
 const alex = await ev(() => { const m = window.__mockSb; return m.addUser({ name:'Alex', color:'sky', rank:2, level:12, xp:5200 }); });
 await page.locator('#goSignin').tap(); await page.waitForSelector('#siEmail');
-await page.locator('#siEmail').fill('steve@example.com'); await page.locator('#siSend').tap(); await page.waitForSelector('#siCodeWrap:not([hidden])');
+await page.locator('#siEmail').fill('steve@example.com'); await page.locator('#siNma input').check(); await page.locator('#siSend').tap(); await page.waitForSelector('#siCodeWrap:not([hidden])');
 await page.locator('#siCode').fill('123456'); await page.waitForSelector('#youCard', { timeout:8000 });
 await ev(id => { const m = window.__mockSb; m.befriend(m.me(), id); }, alex);
 await page.reload(); await page.waitForSelector('#newH2h:not([disabled])', { timeout:8000 });
@@ -69,7 +69,7 @@ await page.locator('#h2hDecline').tap(); await settle(800);
 ok('decline: marked declined, back to Friends', await ev(([id]) => window.__mockSb.state.parts.find(p => p.c === id && p.u === window.__mockSb.me()).status === 'declined', [inv2]) && (await ev(() => location.hash)) === '#/friends');
 
 /* 4. finished challenge: winner, XP, badge (final one day after the end) */
-const xp0 = await ev(() => DM_TEST.gameState().xp);
+
 const mkEnded = (metric, mine, theirs, endAgo) => ev(([a, metric, mine, theirs, endAgo]) => { const m = window.__mockSb, s = m.state, me = m.me();
   const iso = d => d.toLocaleDateString('en-CA'), dd = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
   const id = 'e' + (++s.n); s.challenges[id] = { id, kind:'h2h', metric, title:'', starts_on:dd(endAgo + 6), ends_on:dd(endAgo), created_by:me };
@@ -82,15 +82,14 @@ const won = await mkEnded('sessions', 4, 2, 3);
 await page.goto(BASE + '#/h2h/' + won); await page.waitForSelector('#h2hResult', { timeout:8000 }); await settle(500);
 ok('final: "You won!" banner, no XP', /You won!/i.test(await page.locator('#h2hResult').innerText()) && !/XP/.test(await page.locator('#h2hResult').innerText()));
 ok('win toast (no XP)', /You won vs Alex!/.test(await toastText()) && !/XP/.test(await toastText()));
-ok('win stored once with +50 XP', await ev(id => DM_TEST.db.game.h2h[id].r, won) === 'won' && (await ev(() => DM_TEST.gameState().xp)) === xp0 + 50);
-ok('badge earned: Head-to-head winner', await ev(() => DM_TEST.badgeState().find(b => b.id === 'h2hwin').earned));
+ok('win stored once (3.18.0: no XP)', await ev(id => DM_TEST.db.game.h2h[id].r, won) === 'won' && Object.values(await ev(() => DM_TEST.db.game.h2h)).filter(x => x.r === 'won').length === 1);
 ok('Leave hidden after final', await page.locator('#h2hLeave').isHidden());
 await page.screenshot({ path:`${SHOTS}/84-h2h.png` });
 await page.reload(); await page.waitForSelector('#h2hResult'); await settle(500);
-ok('reopening does not award twice', (await ev(() => DM_TEST.gameState().xp)) === xp0 + 50);
+ok('reopening does not record twice', Object.values(await ev(() => DM_TEST.db.game.h2h)).filter(x => x.r === 'won').length === 1);
 const lost = await mkEnded('pushups', 50, 120, 4), tied = await mkEnded('mat_minutes', 60, 60, 5), none = await mkEnded('pushups', 0, 0, 14);
 await page.goto(BASE + '#/friends'); await page.waitForSelector('#h2hCard'); await settle(1200);
-ok('Friends refresh records loss + tie: tie +25, loss 0', await ev(([l, t]) => [DM_TEST.db.game.h2h[l]?.r, DM_TEST.db.game.h2h[t]?.r].join(), [lost, tied]) === 'lost,tied' && (await ev(() => DM_TEST.gameState().xp)) === xp0 + 75);
+ok('Friends refresh records loss + tie', await ev(([l, t]) => [DM_TEST.db.game.h2h[l]?.r, DM_TEST.db.game.h2h[t]?.r].join(), [lost, tied]) === 'lost,tied');
 await page.goto(BASE + '#/h2h/' + lost); await page.waitForSelector('#h2hResult');
 ok('loss shows who won', /Alex won/i.test(await page.locator('#h2hResult').innerText()));
 

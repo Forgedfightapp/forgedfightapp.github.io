@@ -113,7 +113,7 @@
     const legTypes = types.filter(t => t !== 'upper'), upTypes = types.filter(t => t === 'upper');
     const out = {}, order = legDays.concat(other); const q = legTypes.concat(upTypes);
     // fill leg-friendly days with leg types first, then the rest
-    order.forEach((d, i) => { const t = q[i]; out[d] = { dow:d, type:t, lightLegs:!ok(d) && t !== 'upper', beforeMat:!ok(d) }; });
+    order.forEach((d, i) => { const t = q[i] === 'lower' && !ok(d) ? 'full' : q[i]; out[d] = { dow:d, type:t, lightLegs:!ok(d) && t !== 'upper', beforeMat:!ok(d) }; });
     return lift.map(d => out[d]);
   }
   /* one workout. a = assessment {exp, goal, arts, primary, injuries, equip}; opts {type, minutes, lightLegs, seed, swaps} */

@@ -12,17 +12,10 @@ const tut = async () => { while (await page.locator('.sheet [data-ok]').count())
 await page.goto(BASE); await page.locator('#loadSample').tap(); await page.waitForSelector('#weekCard'); await settle(1000);
 await page.evaluate(() => { const d = JSON.parse(localStorage.getItem('dm.bjj.v1')); d.profile.enabled.weights = true; d.profile.wgroups = ['back','legs','chest']; localStorage.setItem('dm.bjj.v1', JSON.stringify(d)); });
 await page.reload(); await page.waitForSelector('#weekCard');
-// Quick workout: no duplicate kinds, injury (sample has active left knee) respected
-const kindsOk = await page.evaluate(() => { for (let k = 0; k < 30; k++) for (const g of [['back','legs'],['back','arms'],['back','chest','legs'],['full'],['back','shoulders','arms']]) { const big = ['row','pull','squat','single-leg','hinge','h-push','v-push','hip-ext'], l = DM_TEST_GEN(g, k), kinds = l.map(DM_TEST_KIND).filter(x => big.includes(x)); if (new Set(kinds).size !== kinds.length) return g.join(',') + ':' + l.join('|'); } return true; });
-ok('no duplicate movement patterns (e.g. two rows)', kindsOk === true, String(kindsOk));
-const injOk = await page.evaluate(() => { for (let k = 0; k < 30; k++) { const l = DM_TEST_GEN(['legs','core'], k); if (l.some(n => /squat|lunge|step-up|wall sit|swing/i.test(n))) return l.join('|'); if (l.length < 4) return 'short:' + l.join('|'); } return true; });
-ok('left knee injury: no squats or lunges, alternatives fill in', injOk === true, String(injOk));
-await page.goto(BASE + '#/log'); await page.waitForSelector('.cats'); await settle(200); await tut();
-await page.locator('.cats button[data-c="weights"]').tap(); await settle(300); await tut();
-ok('injury note on Quick workout', await page.locator('#wgInj').count() === 1);
-await page.evaluate(() => { document.querySelector('#wgCard').scrollIntoView({ block:'start' }); window.scrollBy(0, -70); }); await settle(300);
-await page.screenshot({ path:`${SHOTS}/97-quick-workout-injury.png` });
-await page.locator('#wgUse').tap(); await settle(600);
+// 3.18.0: a generated session (Build a workout) starts in the live logger
+await page.goto(BASE + '#/build'); await page.waitForSelector('#buildCard'); await settle(300); await tut();
+await page.screenshot({ path:`${SHOTS}/97-build-workout.png` });
+await page.locator('#buildCard [data-startgen]').tap(); await page.waitForSelector('.excard'); await settle(600);
 // live logging
 const ex = await page.locator('.excard:not(.carow)').count(); ok('workout loaded into log', ex >= 4, String(ex));
 await page.locator('.excard').first().locator('[data-done]').first().tap(); await settle(200);

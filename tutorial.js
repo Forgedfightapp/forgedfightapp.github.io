@@ -4,12 +4,9 @@ const KEY = 'forged.tut.seen';
 const T = {
   home:{ title:'Home', steps:[
     ['.tabbar a[data-tab="log"]', 'Log a workout', 'Tap + any time to log a session. It takes a few taps.'],
-    ['#marks', 'Daily marks', 'Today\'s progress: train, recover and fuel.'],
+    ['#todayCard', 'Today\'s session', 'Your workout for today, built from your assessment. Pick Quick or Full, then tap Start session.'],
     ['#weekCard', 'This week', 'Your week at a glance.'],
-    ['.tabbar', 'Get around', () => document.querySelector('.tabbar a[data-tab="friends"]:not([hidden])') ? 'Use the bar at the bottom to move between Home, History, Friends, Food and Profile.' : 'Use the bar at the bottom to move between Home, History, Food and Profile.'] ] },
-  weight:{ title:'Weight', steps:[
-    ['#weightCard .wmodes, .wmodes', 'Pick your goal', 'Choose Lose, Maintain or Gain. Your targets follow your choice.'],
-    ['#weightCard', 'Track it', 'Log your weight a few times a week. We show your 7-day trend so daily swings don\'t throw you off.'] ] },
+    ['.tabbar', 'Get around', () => document.querySelector('.tabbar a[data-tab="friends"]:not([hidden])') ? 'Use the bar at the bottom to move between Home, History, Friends, Build and Profile.' : 'Use the bar at the bottom to move between Home, History, Food and Profile.'] ] },
   log:{ title:'Log session', steps:[
     ['#view .field', 'What did you do?', 'Pick the type of training, then set time and how hard it was.'],
     ['#detailsSec', 'Details', 'Add rounds, techniques and notes if you want. All optional.'],
@@ -17,13 +14,11 @@ const T = {
   history:{ title:'History', steps:[
     ['#q', 'Search', 'Find any past workout by type, technique or note.'],
     ['#list', 'Your workouts', 'Tap one to see details, edit it or log it again.'] ] },
-  food:{ title:'Food', steps:[
-    ['#dailyNutri', 'Daily nutrition', 'Calories, protein, carbs and fat for today.'],
-    ['#calcFood', 'Add food', 'Search or scan a barcode. We fill in calories and macros for you.'],
-    ['#waterCard', 'Water', 'Tap a button each time you drink. Set a daily goal in Profile.'],
-    ['#savedFoods', 'Your foods', 'Foods you use a lot are saved here for one-tap logging.'] ] },
+  build:{ title:'Build a workout', steps:[
+    ['#buildCard, #view .card', 'Generate', 'Pick full, upper or lower body and Quick or Full. Swap anything that hurts or needs gear you don\'t have.'],
+    ['#weekPlan', 'Your week', 'Lift days fit around your mat days, with easy legs the day before you roll.'] ] },
   stats:{ title:'Stats', steps:[
-    ['#view .card', 'Your numbers', 'See time on the mat, training load and trends by week.'] ] },
+    ['#view .card', 'Your numbers', 'See time on the mat, training load and your strength PRs.'] ] },
   challenges:{ title:'Challenges', steps:[
     ['#view .card', 'Weekly challenges', 'Quick daily, weekly and monthly challenges.'],
     ['#logRepsTop', 'Reps', 'Log push-ups, pull-ups and more toward rep challenges.'],
@@ -32,21 +27,16 @@ const T = {
     ['#friendsIntro, #goSignin, #youCard', 'Sign in', 'Sign in with your email to use Friends. Everything else works without an account.'],
     ['#inviteCard, #shareInvite', 'Invite', 'Share your invite link or code so friends can add you.'],
     ['#shareMedia', 'Share a clip', 'Film a roll or snap a photo and share it with friends. Gone after 30 days.'],
-    ['#boardCard', 'Leaderboard', 'See how you stack up this week. Friends never see notes, weight or food.'] ] },
+    ['#boardCard', 'Leaderboard', 'See how you stack up this week. Friends never see your notes or weight.'] ] },
   belts:{ title:'Belt tracker', steps:[
     ['#artSwitch, #view .seg', 'Your art', 'Switch between martial arts if you train more than one.'],
     ['#timeline, #view > .btn.primary', 'Your journey', 'Log belts and stripes with dates. We show time at each rank.'],
     ['#addArt', 'Add an art', 'Track a new martial art here.'] ] },
-  comps:{ title:'Competitions', steps:[
-    ['#view .card', 'Competitions', 'Add upcoming events and log results to track your record.'] ] },
   benchmarks:{ title:'Strength', steps:[
     ['#view .card', 'Benchmarks', 'Log tests like your best lift. Set goals and watch your progress.'] ] },
-  programs:{ title:'Programs', steps:[
-    ['#view .card', 'Programs', 'Pick a plan and we lay out each session for you, week by week.'] ] },
   settings:{ title:'Profile', steps:[
     ['#beltsProfile .card, #injuryCard', 'Belt & injuries', 'Your belt rank and any injuries live here.'],
-    ['#sectionsCard', 'Pick what you track', 'Turn sections like Food or Weight on and off.'],
-    ['#targetsCard', 'Goals', 'Set calorie, protein and water goals, or use the calculator.'],
+    ['#assessCard', 'Training profile', 'Redo your assessment any time your schedule, gear or injuries change.'],
     ['#tutReplay', 'Need a refresher?', 'Tap Replay tutorials to see these tips again.'] ] }
 };
 const seen = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch(e) { return {}; } };

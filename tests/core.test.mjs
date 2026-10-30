@@ -25,10 +25,9 @@ await page.getByRole('button', { name: /Load sample data/ }).tap();
 await page.waitForSelector('#weekCard');
 const n0 = (await db()).sessions.length;
 ok('sample data loads', n0 > 20, `(${n0} sessions)`);
-ok('home shows essentials only', await page.locator('#nutriCard').count() === 0 && await page.locator('#rankChip').count() === 0 && await page.locator('#beltCard').count() === 0 && await page.locator('#suppCard').count() === 0 && await page.locator('.tabbar a[data-tab="food"] span').innerText() === 'Food' && await page.locator('svg.chart:not(.sev)').count() === 0);
-await page.locator('#seeStats').tap(); await page.waitForSelector('#catCard');
+ok('home shows essentials only', await page.locator('#nutriCard').count() === 0 && await page.locator('#rankChip').count() === 0 && await page.locator('#beltCard').count() === 0 && await page.locator('#suppCard').count() === 0 && await page.locator('.tabbar a[data-tab="build"] span').innerText() === 'Build' && await page.locator('svg.chart:not(.sev)').count() === 0);
+await page.locator('#seeStats').tap(); await page.waitForSelector('#weeklyCard');
 ok('weekly chart renders (stats)', await page.locator('svg.chart g.wk').count() === 12);
-ok('weight chart renders (stats)', await page.locator('svg.chart path.line').count() === 1);
 const month0 = Number(await stat('Sessions in'));
 await page.goto(BASE + '#/settings'); await page.waitForSelector('#beltCard');
 ok('belt card (Profile)', /blue belt/i.test(await page.locator('#beltCard').innerText()));
@@ -55,7 +54,6 @@ const sugg = page.locator('.field', { hasText: 'Techniques drilled' }).locator('
 ok('technique autocomplete suggests', await sugg.count() === 1);
 await sugg.tap();
 await techInput.fill('Test Technique Zeta'); await techInput.press('Enter');
-await page.locator('.field', { hasText: 'Body weight' }).locator('input').fill('201.4');
 await page.locator('textarea').fill('Playwright test session');
 await page.screenshot({ path: `${SHOTS}/02-log-session-form.png` });
 await page.screenshot({ path: `${SHOTS}/02b-log-session-form-full.png`, fullPage:true });
@@ -85,12 +83,11 @@ await page.screenshot({ path: `${SHOTS}/03b-form-with-roll.png`, fullPage:true }
 await page.locator('.actions [data-save]').tap();
 await page.waitForSelector('#weekCard');
 let d = await db(); const mine = d.sessions.find(s => s.notes === 'Playwright test session');
-ok('session saved', !!mine && mine.gi === 'nogi' && mine.type === 'private' && mine.rpe === 8 && mine.intensity === 4 && mine.feel === 4 && mine.weight === 201.4 && mine.techniques.includes('Test Technique Zeta'), JSON.stringify(mine && {gi:mine.gi,type:mine.type,dur:mine.duration,w:mine.weight}));
+ok('session saved', !!mine && mine.gi === 'nogi' && mine.type === 'private' && mine.rpe === 8 && mine.intensity === 4 && mine.feel === 4 && mine.techniques.includes('Test Technique Zeta'), JSON.stringify(mine && {gi:mine.gi,type:mine.type,dur:mine.duration,w:mine.weight}));
 ok('roll saved', mine?.rolls.length === 1 && mine.rolls[0].partner === 'Edited Partner' && mine.rolls[0].subsLanded[0] === 'Omoplata' && mine.rolls[0].subsTapped[0] === 'Heel hook' && mine.rolls[0].stuck[0] === 'Turtle');
 ok('dashboard week count +1', Number(await page.locator('#weekSum b').first().innerText()) === week0 + 1, `${week0} -> ${await page.locator('#weekSum b').first().innerText()}`);
-await page.goto(BASE + '#/stats'); await page.waitForSelector('#catCard');
+await page.goto(BASE + '#/stats'); await page.waitForSelector('#weeklyCard');
 ok('stats month count +1', Number(await stat('Sessions in')) === month0 + 1);
-ok('weight trend shows latest weight', (await page.locator('#weightStats').innerText()).includes('201.4'));
 await page.goto(BASE); await page.waitForSelector('#weekCard');
 
 // autocomplete includes custom tag from history

@@ -16,11 +16,11 @@ for (const w of [390, 375]) {
     await page.locator(`.cats button[data-c="${c}"]`).tap(); await settle(200);
     const t = `${w}px ${c}:`;
     ok(`${t} no expander / no "Add details" toggle; details always shown`, await page.locator('#view details.details').count() === 0 && !(await page.locator('#view').innerText()).includes('Add details') && await page.locator('#detailsSec').isVisible() && (await page.locator('#detailsSec .sect-title').textContent()).startsWith('Details'));
-    const EXP = { grappling:['Session type','Techniques drilled','Notes','How did it feel?','Rounds','Rolls','Effort (RPE)','Body weight','Import from device','Heart rate'],
-      striking:['Session type','Worked on','Notes','How did it feel?','Total rounds','Rounds by type','Sparring partners','Effort (RPE)','Body weight','Import from device','Heart rate'],
-      mma:['Session type','Striking techniques','Grappling techniques','Notes','How did it feel?','Total rounds','Rounds by type','Sparring partners','Effort (RPE)','Body weight','Import from device','Heart rate'],
-      mobility:['Session type','Duration','Date','Focus areas','Notes','How did it feel?','Effort (RPE)','Body weight','Import from device','Heart rate'],
-      weights:['Notes','How did it feel?','Effort (RPE)','Body weight','Import from device','Heart rate'], cardio:['Distance','Time (h:mm:ss)','Notes','How did it feel?','Effort (RPE)','Body weight','Import from device','Heart rate'] }[c];
+    const EXP = { grappling:['Session type','Techniques drilled','Notes','How did it feel?','Rounds','Rolls','Effort (RPE)'],
+      striking:['Session type','Worked on','Notes','How did it feel?','Total rounds','Rounds by type','Sparring partners','Effort (RPE)'],
+      mma:['Session type','Striking techniques','Grappling techniques','Notes','How did it feel?','Total rounds','Rounds by type','Sparring partners','Effort (RPE)'],
+      mobility:['Session type','Duration','Date','Focus areas','Notes','How did it feel?','Effort (RPE)'],
+      weights:['Notes','How did it feel?','Effort (RPE)'], cardio:['Distance','Time (h:mm:ss)','Notes','How did it feel?','Effort (RPE)'] }[c];
     const order = await page.evaluate(names => { const y = txt => { const l = [...document.querySelectorAll('#view .field>label, #view .field>.label')].find(x => x.textContent.trim().startsWith(txt)); return l ? l.getBoundingClientRect().top + scrollY : null; };
       return names.map(y); }, EXP);
     ok(`${t} order ${EXP.join(' → ')}`, order.every(x => x != null) && order.every((x,i) => !i || x > order[i-1]), JSON.stringify(order));
@@ -33,7 +33,6 @@ for (const w of [390, 375]) {
       ok(`${t} technique chips wrap (≤2 rows, none cut off at the edge)`, ch.n > 4 && ch.rows >= 1 && ch.rows <= 2 && ch.cut === 0 && ch.partial === 0, JSON.stringify(ch));
       await page.locator('#detailsSec').click({ position:{ x:5, y:5 } }).catch(() => {});
     }
-    ok(`${t} import keeps GPX/TCX/FIT/CSV + helper text`, (await page.locator('.field', { has:page.locator('label', { hasText:'Import from device' }) }).innerText()).includes('GPX · TCX · FIT · CSV') && await page.locator('.field', { has:page.locator('label', { hasText:'Import from device' }) }).locator('.hint').count() === 1);
     // duration digits never clipped
     const di = page.locator('.field', { has:page.locator('label', { hasText:/^Duration$/ }) }).locator('input');
     const fits = [];

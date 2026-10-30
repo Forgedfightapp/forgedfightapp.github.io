@@ -22,7 +22,7 @@ for (const [w, h] of [[320, 568], [375, 667], [393, 852], [430, 932]]) {
       inside:tabs.every(t => t.r.left >= bar.left - .5 && t.r.right <= bar.right + .5), labels:tabs.every(t => t.s.scrollWidth <= t.s.clientWidth + 1 && t.s.getBoundingClientRect().width <= t.r.width + .5),
       fabCenter:Math.abs((fab.left + fab.right) / 2 - (bar.left + bar.right) / 2), fabAbove:fab.top < bar.top - 30, barH:bar.height };
   });
-  ok(`${w}px: tab order Home, History, Friends, Food, Profile`, g.order === 'home,history,friends,food,settings', g.order);
+  ok(`${w}px: tab order Home, History, Friends, Build, Profile`, g.order === 'home,history,friends,build,settings', g.order);
   ok(`${w}px: single row, nothing wraps`, g.oneRow && g.inside, JSON.stringify(g));
   ok(`${w}px: equal widths and spacing`, g.wSpread < 1 && g.gSpread < 1, JSON.stringify(g));
   ok(`${w}px: labels fit`, g.labels);

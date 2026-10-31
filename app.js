@@ -749,7 +749,7 @@ function setHeader(title, action='', back=null){
   br.hidden = !back;
   if (back) { br.querySelector('span').textContent = back.label || 'Back'; br.querySelector('button').setAttribute('aria-label', back.label || 'Back'); br.querySelector('button').onclick = () => goBack(back.parent || '#/'); }
   if (title) { t.textContent = title; tg.innerHTML = 'For the fight'; }
-  else { t.innerHTML = '<img class="banner-mark" src="brand/forged/forged-mark-512.png" alt="" width="44" height="44"><img class="banner-logo" src="brand/forged/wordmark-header.svg" alt="Forged" width="767" height="192">'; tg.innerHTML = '<b>For the fight</b>'; }
+  else { t.innerHTML = '<img class="banner-mark" src="brand/forged/forged-mark-512.png" alt="" width="44" height="44"><span class="banner-logo">FORGED</span>'; tg.innerHTML = '<b>For the fight</b>'; }
   document.querySelector('.topbar').classList.toggle('home', !title);
   $('#topAction').innerHTML = action;
 }

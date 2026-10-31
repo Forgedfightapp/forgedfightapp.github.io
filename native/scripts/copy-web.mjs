@@ -7,5 +7,5 @@ const FILES = ['index.html', 'privacy.html', 'terms.html', 'styles.css', 'config
 const DIRS = ['icons', 'vendor', 'brand/forged', 'brand/fonts'];
 rmSync(out, { recursive:true, force:true }); mkdirSync(out, { recursive:true });
 for (const f of FILES) cpSync(join(root, f), join(out, f));
-for (const d of DIRS) if (existsSync(join(root, d))) cpSync(join(root, d), join(out, d), { recursive:true, filter:s => !/\/tools(\/|$)/.test(s) });
+for (const d of DIRS) if (existsSync(join(root, d))) cpSync(join(root, d), join(out, d), { recursive:true });
 console.log('web files copied to', out);

@@ -256,7 +256,7 @@ details.more .grid3{padding-bottom:4px}
 .topbar{background:rgba(11,11,12,.9)}
 .banner-mark{display:block;height:44px;width:44px;margin-right:8px;flex:none}
 #title:has(.banner-mark){display:flex;align-items:center}
-.banner-logo{display:block;height:44px;width:auto;aspect-ratio:767/192}
+.banner-logo{display:block;font-family:var(--font-head);font-weight:800;font-size:46px;line-height:44px;letter-spacing:.01em;color:#fff}
 .topbar.home{padding-top:calc(16px + var(--safe-t))}
 .topbar.home h1{line-height:0}
 .tagline b{font-weight:600;color:var(--wordmark-gray);letter-spacing:.24em;text-transform:uppercase}

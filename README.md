@@ -232,7 +232,7 @@ On every release, bump `APP_VERSION` in `app.js` **and** the `CACHE` name in `sw
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 
 ## Brand (3.0.0: FORGED)
-Logo: the anvil-and-flame mark (source `/workspace/forged-logo/forged-anvil-flame.jpg`, 1024², black background). Assets live in `brand/forged/`:
+Logo: the FORGED mark and wordmark (sources in `/workspace/forged-logo/`: `forged-mark-*` for icons, `forged-wordmark-*` for splash and the og card; dark versions on the dark UI). Assets live in `brand/forged/`:
 `forged-mark-512.png` (in-app mark), `icon-1024/512/192.png`, `icon-maskable-512/192.png` (mark at 82% on black), `apple-touch-icon.png` (180),
 `favicon-32/16.png`, `og-card.png` (1200×630 share card), `icon-preview.png`. The header wordmark is live text in Barlow Condensed. Copies used by the manifest are in `icons/`.
 Native icons: `native/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png` (1024) and Android `mipmap-*` (black background).

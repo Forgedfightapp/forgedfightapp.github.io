@@ -1,4 +1,4 @@
-// 3.9.0 first-visit tutorials: coach-mark tour per page, seen state in localStorage, never over onboarding, replay from Profile.
+// 3.9.0 first-visit tutorials: spotlight tour per page, seen state in localStorage, never over onboarding, replay from Profile.
 import { chromium, devices } from 'playwright';
 const BASE = process.env.BASE || 'http://localhost:8787/';
 const SHOTS = process.env.SHOTS || '/workspace/bjj-tracker/screenshots';

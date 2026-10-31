@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.18.1';
+const APP_VERSION = '3.18.2';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -1404,7 +1404,7 @@ function sampleOtherWorkouts(){
   let seed = 31; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd()*a.length)], out = [], start = addDays(new Date(), -84), total = 84;
   const sparNotes = ['Kept my hands up better. Still dropping the right after the jab.','Got caught with low kicks — check earlier.','Good pressure, cut off the ring well.','Clinch work felt strong, need sharper knees.'];
-  const partners = ['Mo','Sam','Coach Lee','Tasha','Vince'];
+  const partners = ['Mo','Sam','Lee','Tasha','Vince'];
   const lifts = [['Back squat', 245, 275, 5], ['Bench press', 185, 205, 5], ['Deadlift', 315, 355, 3], ['Overhead press', 115, 130, 5], ['Pull-up', 0, 0, 8], ['Barbell row', 155, 175, 8]];
   for (let d = new Date(start), i = 0; d <= new Date(); d = addDays(d, 1), i++) {
     const dow = d.getDay(), prog = i / total, date = iso(d), created = Math.min(Date.now() - 120000, d.getTime() - 3600e3);
@@ -1441,11 +1441,11 @@ function sampleOtherWorkouts(){
 function loadSample(){
   let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const pick = a => a[Math.floor(rnd()*a.length)];
-  const partners = ['Marcus','Jake','Coach Ray','Danny','Priya','Luis','Tom','Andre','Kevin'];
+  const partners = ['Marcus','Jake','Ray','Danny','Priya','Luis','Tom','Andre','Kevin'];
   const subsWin = ['Armbar','Rear naked choke','Triangle','Kimura','Guillotine','Americana','Cross collar choke','Darce'];
   const subsLoss = ['Triangle','Guillotine','Rear naked choke','Arm triangle','Heel hook','Bow and arrow','Kimura','Ezekiel','Darce'];
   const stuckP = ['Bottom side control','Back taken','Bottom half guard','Turtle','Bottom mount','Can\'t pass half guard','Front headlock'];
-  const notes = ['Felt sharp today. Hip escapes are finally automatic.','Gassed in round 4 — need more cardio.','Coach showed a great detail on the knee slice: underhook first, then slide.','Kept getting flattened in half guard. Fight for the underhook earlier.','Good rolls. Hit the armbar from mount twice.','Open mat, lots of positional sparring from bottom side.','Light flow rolls, nursing a sore knee.','Competition prep — hard rounds, short rest.'];
+  const notes = ['Felt sharp today. Hip escapes are finally automatic.','Gassed in round 4 — need more cardio.','Drilled a great detail on the knee slice: underhook first, then slide.','Kept getting flattened in half guard. Fight for the underhook earlier.','Good rolls. Hit the armbar from mount twice.','Open mat, lots of positional sparring from bottom side.','Light flow rolls, nursing a sore knee.','Competition prep — hard rounds, short rest.'];
   const start = addDays(new Date(), -84), sessions = [];
   let w = 214.6;
   for (let d = new Date(start), i = 0; d <= new Date(); d = addDays(d, 1), i++) {
@@ -2495,7 +2495,6 @@ function viewPro(){
   $('#pwRestore').onclick = async () => { const r = await Payments.restore(); toast(r.stub ? 'Preview only: no purchases to restore' : `Restored ${r.restored}`); };
 }
 const sUser = () => socialOn() ? Cloud().user : null;
-// Phase 2 (not in 3.18.0): a Friends activity feed (crew sessions, PRs, belt promotions) alongside Coach tools.
 const S_ROUTES = ['friends','signin','invite','h2h','add'];
 const S_METRIC = { sessions:{ label:'Sessions', unit:'sessions' }, pushups:{ label:'Push-ups', unit:'push-ups' }, mat_minutes:{ label:'Mat hours', unit:'h' }, daily_streak:{ label:'Daily challenge streak', unit:'days in a row' }, xp:{ label:'Workout XP', unit:'XP' } };
 const S_SYNC = ['sessions','xp','pushups','mat_minutes','daily_done'];

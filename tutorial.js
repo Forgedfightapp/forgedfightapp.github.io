@@ -1,4 +1,4 @@
-/* Forged first-visit tutorials: a short coach-mark tour the first time each page opens. */
+/* Forged first-visit tutorials: a short spotlight tour the first time each page opens. */
 (function(){
 const KEY = 'forged.tut.seen';
 const T = {

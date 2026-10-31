@@ -1,6 +1,6 @@
 /* Forged: built-in strength programs for grapplers (data only, loaded before app.js).
    General, conservative programming: standard compound lifts, 2-3 reps in reserve, low volume around mat training.
-   Every exercise has a movement pattern, equipment, a one-line coaching cue and swap alternatives.
+   Every exercise has a movement pattern, equipment, a one-line form cue and swap alternatives.
    unit: 'reps' (default) | 'sec' (holds) | 'm' (carries). load: false = bodyweight / band (progress by reps, not weight). */
 window.FORGED_PROGRAMS = (() => {
   const L = {}; // exercise library
@@ -57,7 +57,7 @@ window.FORGED_PROGRAMS = (() => {
   ex('Band neck work (4-way)', 'neck', 'band', 'Light band, slow controlled reps front, back and sides; never to pain or fatigue.', ['Neck isometric holds','Lying plate neck curl'], { load:false });
   ex('Neck isometric holds', 'neck', 'bodyweight', 'Press your head gently into your hand in each direction; about 50% effort, no movement.', ['Band neck work (4-way)'], { load:false, unit:'sec' });
   ex('Lying plate neck curl', 'neck', 'plate', 'Light plate on a folded towel, slow small reps, stop well short of fatigue.', ['Band neck work (4-way)','Neck isometric holds'], {});
-  ex('Supported neck bridge', 'neck', 'bodyweight', 'Only if pain-free and coached: hands take most of the weight, small range, never roll onto the top of the head.', ['Neck isometric holds','Band neck work (4-way)'], { load:false, unit:'sec' });
+  ex('Supported neck bridge', 'neck', 'bodyweight', 'Only if pain-free and supervised: hands take most of the weight, small range, never roll onto the top of the head.', ['Neck isometric holds','Band neck work (4-way)'], { load:false, unit:'sec' });
   // grip
   ex('Gi or towel hang', 'grip', 'pull-up bar', 'Grip the gi or a towel over the bar, shoulders active, stop before the grip fully fails.', ['Dead hang','Plate pinch hold','Farmer carry'], { load:false, unit:'sec' });
   ex('Dead hang', 'grip', 'pull-up bar', 'Overhand grip, shoulders slightly engaged, breathe and hold.', ['Gi or towel hang','Farmer carry'], { load:false, unit:'sec' });
@@ -111,6 +111,6 @@ window.FORGED_PROGRAMS = (() => {
     { id:'core', pro:true, name:'Core & hips', short:'Anti-rotation, adductors, hip mobility', ex:[ E('Pallof press',2,10,'45 s'), E('Copenhagen plank',2,15,'45 s'), E('90/90 hip switch',2,8,'30 s'), E('Dead bug',2,8,'45 s') ] },
     { id:'joints', pro:true, name:'Joint health', short:'Shoulders and knees', ex:[ E('Band pull-apart',2,15,'30 s'), E('Band external rotation',2,12,'30 s'), E('Spanish squat hold',3,30,'45 s'), E('Tibialis raise',2,15,'30 s') ] }
   ];
-  const disclaimer = 'These are general training programs, not medical advice or a plan made for you. If you have an injury, pain or a health condition, get checked by a doctor or physio first, and work with a qualified coach. Stop any exercise that hurts.';
+  const disclaimer = 'These are general training programs, not medical advice or a plan made for you. If you have an injury, pain or a health condition, get checked by a doctor or physio first, and work with a qualified trainer. Stop any exercise that hurts.';
   return { library:L, templates, finishers, disclaimer, rpeNote:RPE };
 })();

@@ -4,7 +4,7 @@
 'use strict';
 
 const STORE_KEY = 'dm.bjj.v1';
-const APP_VERSION = '3.18.0';
+const APP_VERSION = '3.18.1';
 
 const SUBMISSIONS = ['Rear naked choke','Armbar','Triangle','Kimura','Guillotine','Americana','Darce','Anaconda','Arm triangle','Ezekiel','Bow and arrow','Cross collar choke','Loop choke','Baseball bat choke','North-south choke','Omoplata','Straight ankle lock','Heel hook','Kneebar','Toe hold','Calf slicer','Wrist lock','Gogoplata','Paper cutter','Clock choke','Von Flue choke','Banana split','Estima lock'];
 const POSITIONS = ['Bottom side control','Bottom mount','Back taken','Turtle','Bottom half guard','Closed guard (bottom)','Stuck in closed guard','Knee on belly','North-south bottom','Can\'t pass half guard','Can\'t pass De La Riva','Can\'t pass butterfly','Leg entanglement','Front headlock','Getting stalled','Guard pulled on me'];
@@ -749,7 +749,7 @@ function setHeader(title, action='', back=null){
   br.hidden = !back;
   if (back) { br.querySelector('span').textContent = back.label || 'Back'; br.querySelector('button').setAttribute('aria-label', back.label || 'Back'); br.querySelector('button').onclick = () => goBack(back.parent || '#/'); }
   if (title) { t.textContent = title; tg.innerHTML = 'For the fight'; }
-  else { t.innerHTML = '<img class="banner-logo" src="brand/forged/wordmark-header.svg" alt="Forged" width="767" height="192">'; tg.innerHTML = '<b>For the fight</b>'; }
+  else { t.innerHTML = '<img class="banner-mark" src="brand/forged/forged-mark-512.png" alt="" width="44" height="44"><img class="banner-logo" src="brand/forged/wordmark-header.svg" alt="Forged" width="767" height="192">'; tg.innerHTML = '<b>For the fight</b>'; }
   document.querySelector('.topbar').classList.toggle('home', !title);
   $('#topAction').innerHTML = action;
 }
@@ -2477,7 +2477,7 @@ function viewPro(){
   let plan = PRO_PLANS[0].id;
   const v = $('#view');
   v.innerHTML = `<div class="paywall" id="paywall">
-    <div class="pw-hero"><img src="brand/forged/forged-mark.svg" alt="" width="84" height="84"><h2>Forged <span>Pro</span></h2><p>Train with a plan. Every tool in Forged, unlocked.</p>
+    <div class="pw-hero"><img src="brand/forged/forged-mark-512.png" alt="" width="84" height="84"><h2>Forged <span>Pro</span></h2><p>Train with a plan. Every tool in Forged, unlocked.</p>
       <span class="pw-trial" id="pwTrial">${PRO_TRIAL_DAYS}-day free trial</span></div>
     <ul class="pw-feats" id="pwFeats">${PRO_FEATURES.map(([i, t, d]) => `<li><span class="pw-i" aria-hidden="true">${i}</span><div><b>${t}</b><small>${d}</small></div></li>`).join('')}</ul>
     <div class="pw-plans" id="pwPlans" role="radiogroup" aria-label="Choose a plan">${PRO_PLANS.map(p => `<button type="button" class="pw-plan" role="radio" data-plan="${p.id}">${p.best ? '<em>Best value</em>' : ''}<b>${p.label}</b><span class="pw-price">${p.price}<small>${p.per}</small></span><small>${p.note}</small></button>`).join('')}</div>
@@ -2996,7 +2996,7 @@ async function viewInvite(code){
 /* ---------- share cards (canvas → Web Share with files, or download) ---------- */
 const SHARE_FMT = { square:[1080, 1080], story:[1080, 1920] };
 let shareImgCache = null;
-function loadShareImg(){ if (shareImgCache) return shareImgCache; shareImgCache = new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = 'brand/forged/forged-mark.svg'; }); return shareImgCache; }
+function loadShareImg(){ if (shareImgCache) return shareImgCache; shareImgCache = new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = 'brand/forged/forged-mark-512.png'; }); return shareImgCache; }
 function shareContent(kind, x, showNums){
   const hide = v => showNums ? v : '•••', u = unit();
   if (kind === 'session') { const c = catOf(x), st = [];

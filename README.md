@@ -232,11 +232,10 @@ On every release, bump `APP_VERSION` in `app.js` **and** the `CACHE` name in `sw
 quick log takes ≤3 taps from Home and writes the final screenshots, so run it last. Import fixtures: `tests/fixtures/` (regenerate with `python3 tests/make_fixtures.py`).
 
 ## Brand (3.0.0: FORGED)
-Assets live in `brand/forged/`: `forged-mark.svg` (icon mark), `wordmark.svg` (mark + FORGED + FOR THE FIGHT, text as outlines), `wordmark-text.svg`,
-`wordmark-light-bg.svg`, `wordmark-header.svg` (used in the header), `app_icon.svg` / `app_icon_maskable.svg` (mark inside the safe circle),
-`favicon.svg`, PNGs `icon-1024/512/192.png`, `icon-maskable-512/192.png`, `apple-touch-icon.png` (180), `favicon-32/16.png`, and `icon-preview.png`.
-Copies used by the manifest are in `icons/`. To regenerate: `python3 brand/forged/make_forged.py` → `node brand/forged/tools/tightsvg.mjs <pad> <svgs>` →
-`node brand/forged/tools/render.mjs brand/forged/icon-jobs.json` → `node brand/forged/tools/forgedprev.mjs` (Playwright needed).
+Logo: the anvil-and-flame mark (source `/workspace/forged-logo/forged-anvil-flame.jpg`, 1024², black background). Assets live in `brand/forged/`:
+`forged-mark-512.png` (in-app mark), `icon-1024/512/192.png`, `icon-maskable-512/192.png` (mark at 82% on black), `apple-touch-icon.png` (180),
+`favicon-32/16.png`, `og-card.png` (1200×630 share card), `icon-preview.png`, plus the `wordmark*.svg` files (header text). Copies used by the manifest are in `icons/`.
+Native icons: `native/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png` (1024) and Android `mipmap-*` (black background).
 Colors on the near-black base `--bg #0B0B0C` (surfaces #161618 / #1F1F22):
 - `--brand` / `--accent-fill #F2711C` is the flame orange for fills, with dark text `--accent-ink #0B0B0C` on it (6.7:1). Primary buttons now use dark text on orange.
 - `--accent #F58A45` is for small orange text: 8.1:1 on the background, 7.4:1 / 6.7:1 on surfaces.

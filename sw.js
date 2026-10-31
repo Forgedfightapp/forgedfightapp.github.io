@@ -1,12 +1,12 @@
 /* Forged service worker: caches the app shell for offline use. */
-const CACHE = 'forged-shell-v3.18.0';
+const CACHE = 'forged-shell-v3.18.1';
 const SHELL = [
   './', 'index.html', 'styles.css', 'config.js', 'social.js', 'username.js', 'app.js', 'programs.js', 'generator.js', 'tutorial.js', 'manifest.webmanifest', 'privacy.html', 'terms.html',
   'vendor/supabase-js-2.117.2.js',
-  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
+  'icons/icon-192.png', 'icons/icon-512.png',
   'icons/icon-maskable-192.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png', 'icons/favicon-32.png', 'icons/favicon-16.png',
-  'brand/forged/wordmark-header.svg', 'brand/forged/wordmark.svg', 'brand/forged/forged-mark.svg', 'brand/forged/BarlowCondensed-ExtraBold.ttf',
+  'brand/forged/wordmark-header.svg', 'brand/forged/wordmark.svg', 'brand/forged/forged-mark-512.png', 'brand/forged/BarlowCondensed-ExtraBold.ttf',
   'brand/fonts/Oswald.ttf', 'brand/fonts/Barlow-Regular.ttf', 'brand/fonts/Barlow-SemiBold.ttf'
 ];
 self.addEventListener('install', e => {

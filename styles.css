@@ -254,6 +254,8 @@ details.more .grid3{padding-bottom:4px}
 .toast .undo,.toast .tbtn{border:0;background:var(--bg);color:var(--accent);font-weight:800;border-radius:999px;min-height:36px;padding:0 14px;cursor:pointer}
 /* ---- brand header / splash ---- */
 .topbar{background:rgba(11,11,12,.9)}
+.banner-mark{display:block;height:44px;width:44px;margin-right:8px;flex:none}
+#title:has(.banner-mark){display:flex;align-items:center}
 .banner-logo{display:block;height:44px;width:auto;aspect-ratio:767/192}
 .topbar.home{padding-top:calc(16px + var(--safe-t))}
 .topbar.home h1{line-height:0}
